@@ -10,7 +10,13 @@ package jp.tkc.st15iplayer.audio;
  * ('H' then 'C' 1) therefore never touches focus or plays. PCM that cannot be
  * played (before 'H', while corked, after an unsupported 'H', or after close)
  * is discarded rather than blocking the reader, which must keep draining the
- * socket.
+ * socket. Fakepulse is paced only by the socket while connected, so audio of
+ * an unsupported format is discarded at the rate it would play; otherwise
+ * Soloist would run ahead of real time.
+ *
+ * A failed write releases the track and throws, so the client is dropped and
+ * reconnects with a new 'H' (and gets a new track, e.g. after mediaserver
+ * restarts).
  *
  * All methods except close() run on the reading thread.
  */
@@ -53,6 +59,8 @@ public final class StreamSession implements FrameReader.Listener {
         void debug(String msg);
 
         long uptimeMs();
+
+        void sleep(long ms);
     }
 
     private final Host host;
@@ -67,6 +75,8 @@ public final class StreamSession implements FrameReader.Listener {
     private boolean reported; // onPlaying(true) sent
     private boolean focused;
     private String discardReason;
+    private long bytesPerSecond;
+    private long paceBytes; // discarded but not yet slept for
     private long frames, bytes, discarded, statsAt;
 
     public StreamSession(Host host, Focus focus) {
@@ -93,12 +103,17 @@ public final class StreamSession implements FrameReader.Listener {
     @Override
     public void header(int rate, int channels) {
         host.log("H rate " + rate + " channels " + channels);
+        if (rate <= 0 || channels <= 0) {
+            throw new IllegalArgumentException("unusable header: rate " + rate + ", channels " + channels);
+        }
         if (track != null && rate == this.rate && channels == this.channels) return;
         releaseTrack();
         this.rate = rate;
         this.channels = channels;
         unsupported = false;
         discardReason = null;
+        bytesPerSecond = (long) rate * channels * 2; // < 2^63 for int inputs
+        paceBytes = 0;
         Track t = channels == 1 || channels == 2 ? host.createTrack(rate, channels) : null;
         if (t == null) {
             unsupported = true;
@@ -118,6 +133,7 @@ public final class StreamSession implements FrameReader.Listener {
                 host.log("discarding PCM " + why);
             }
             discarded++;
+            if (unsupported && !closed) pace(len);
             return;
         }
         discardReason = null;
@@ -132,16 +148,18 @@ public final class StreamSession implements FrameReader.Listener {
         int wrote = 0;
         while (len > 0 && !closed) {
             int w = track.write(buf, off, len);
-            if (w <= 0) {
-                if (w < 0) host.log("track write failed: " + w);
-                break;
+            if (w < 0) {
+                host.log("track write failed: " + w + ", dropping client");
+                releaseTrack();
+                throw new IllegalStateException("AudioTrack.write returned " + w);
             }
+            if (w == 0) break; // stopped
             off += w;
             len -= w;
             wrote += w;
         }
         bytes += wrote;
-        frames++;
+        if (len == 0) frames++;
         if (wrote > 0) setReported(true);
         long now = host.uptimeMs();
         if (statsAt == 0) statsAt = now;
@@ -172,6 +190,15 @@ public final class StreamSession implements FrameReader.Listener {
             focused = false;
         }
         setReported(false);
+    }
+
+    /** Sleeps for as long as len bytes of the current format would play. */
+    private void pace(int len) {
+        paceBytes += len;
+        long ms = paceBytes * 1000 / bytesPerSecond;
+        if (ms <= 0) return;
+        paceBytes -= ms * bytesPerSecond / 1000;
+        host.sleep(ms);
     }
 
     private void releaseTrack() {

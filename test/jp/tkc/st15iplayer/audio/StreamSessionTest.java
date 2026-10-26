@@ -2,6 +2,7 @@ package jp.tkc.st15iplayer.audio;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -16,6 +17,8 @@ public class StreamSessionTest {
     boolean rejectTracks;
     int writeLimit = Integer.MAX_VALUE;
     boolean writeReturnsZero;
+    int writeResult; // returned instead of writing when non-zero
+    long slept;
 
     final class FakeTrack implements StreamSession.Track {
         final String name;
@@ -25,6 +28,7 @@ public class StreamSessionTest {
         @Override public void flush() { events.add("flush " + name); }
         @Override public int write(byte[] b, int off, int len) {
             if (writeReturnsZero) return 0;
+            if (writeResult != 0) return writeResult;
             int n = Math.min(len, writeLimit);
             events.add("write " + name + " " + n);
             return n;
@@ -47,6 +51,7 @@ public class StreamSessionTest {
         @Override public void log(String msg) { logs.add(msg); }
         @Override public void debug(String msg) { logs.add(msg); }
         @Override public long uptimeMs() { return 0; }
+        @Override public void sleep(long ms) { slept += ms; }
     };
 
     final StreamSession session = new StreamSession(host, focus);
@@ -202,6 +207,56 @@ public class StreamSessionTest {
         writeReturnsZero = true;
         p();
         assertTrue(take().contains("play 44100/2"));
+    }
+
+    @Test public void writeErrorReleasesTrackAndDropsClient() {
+        session.header(44100, 2);
+        p();
+        take();
+        writeResult = -6;
+        try {
+            p();
+            fail("expected IllegalStateException");
+        } catch (IllegalStateException expected) {
+        }
+        assertEquals(Arrays.asList("release 44100/2"), take());
+        assertEquals(1, countLogs("write failed"));
+        session.finish();
+        assertEquals(Arrays.asList("abandon", "playing false"), take());
+    }
+
+    @Test public void unsupportedFormatDiscardsAtRealTimePace() {
+        session.header(44100, 6); // 529200 bytes/s
+        for (int i = 0; i < 150; i++) p(); // 150 * 3528 = 529200 bytes
+        assertEquals(1000, slept);
+        assertEquals(Arrays.<String>asList(), take());
+    }
+
+    @Test public void rejectedTrackDiscardsAtRealTimePace() {
+        rejectTracks = true;
+        session.header(12345, 2); // 49380 bytes/s
+        byte[] b = new byte[1000];
+        for (int i = 0; i < 49; i++) session.pcm(b, 0, b.length);
+        session.pcm(b, 0, 380);
+        assertEquals(1000, slept);
+    }
+
+    @Test public void otherDiscardsAreNotPaced() {
+        p(); // before header
+        session.header(44100, 2);
+        session.cork(true);
+        p();
+        session.close();
+        p();
+        assertEquals(0, slept);
+    }
+
+    @Test public void unusableHeaderDropsClient() {
+        try {
+            session.header(0, 2);
+            fail("expected IllegalArgumentException");
+        } catch (IllegalArgumentException expected) {
+        }
     }
 
     @Test public void finishWithoutTrackIsQuiet() {

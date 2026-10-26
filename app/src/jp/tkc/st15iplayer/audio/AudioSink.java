@@ -117,6 +117,11 @@ public final class AudioSink {
         public long uptimeMs() {
             return SystemClock.elapsedRealtime();
         }
+
+        @Override
+        public void sleep(long ms) {
+            SystemClock.sleep(ms);
+        }
     };
 
     /** @param listener may be null */
