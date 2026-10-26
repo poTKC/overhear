@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Builds fakepulse (libpulse.so.0) with zig cc.
+# Builds fakepulse (libpulse.so.0) and, for armhf, libargkey.so with zig cc.
 #   native/build.sh [host] [armhf]    (default: both)
 #   host  -> build/native/host/libpulse.so.0   (macOS arm64, for native/test)
 #   armhf -> build/native/armhf/libpulse.so.0  (glibc 2.38+, Cortex-A8, for the device)
+#            build/native/armhf/libargkey.so   (Soloist API key preload, see argkey.c)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -23,6 +24,9 @@ for t in "${targets[@]}"; do
     armhf)
         zig cc -target arm-linux-gnueabihf.2.38 -mcpu=cortex_a8 -shared -fPIC -O2 -fvisibility=hidden \
             -Wl,-soname,libpulse.so.0 -s "${CFLAGS[@]}" -o "$out/libpulse.so.0" native/fakepulse.c -lpthread -lm
+        zig cc -target arm-linux-gnueabihf.2.38 -mcpu=cortex_a8 -shared -fPIC -O2 -fvisibility=hidden \
+            -Wl,-soname,libargkey.so -s "${CFLAGS[@]}" -Inative -o "$out/libargkey.so" native/argkey.c -ldl
+        echo "built $out/libargkey.so"
         ;;
     *)
         echo "native/build.sh: unknown target $t" >&2

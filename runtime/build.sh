@@ -5,6 +5,7 @@
 #   libdl.so.2             Debian trixie glibc (libc6), for Soloist
 #   libatomic.so.1         Debian trixie libatomic1
 #   libpulse.so.0          fakepulse (native/build.sh armhf)
+#   libargkey.so           API key preload for Soloist (native/argkey.c)
 #   cacert.pem             Mozilla CA bundle
 #   VERSION                content hash, so the app knows when to re-extract
 # Debian packages are pinned by filename and sha256; downloads are cached in
@@ -127,9 +128,10 @@ if count != 1:
 open(path, "wb").write(data.replace(old, new))
 PY
 
-# 4. fakepulse (always rebuilt so native changes are picked up)
+# 4. fakepulse and argkey (always rebuilt so native changes are picked up)
 native/build.sh armhf >/dev/null
 cp build/native/armhf/libpulse.so.0 "$STAGE/libpulse.so.0"
+cp build/native/armhf/libargkey.so "$STAGE/libargkey.so"
 
 # 5. Mozilla CA bundle (cached; delete build/cache/cacert.pem to refresh)
 if [ ! -s "$CACHE/cacert.pem" ]; then

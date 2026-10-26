@@ -19,3 +19,7 @@ ASAN=(-fsanitize=address -fno-omit-frame-pointer -g -O1)
 clang "${ASAN[@]}" "${WARN[@]}" -shared -fvisibility=hidden -o "$out/libpulse-asan.so.0" native/fakepulse.c
 clang "${ASAN[@]}" "${WARN[@]}" -o "$out/harness-asan" native/test/harness.c
 ASAN_OPTIONS=abort_on_error=1 "$out/harness-asan" "$out/libpulse-asan.so.0" native/test/symbols.txt "$out/out.raw"
+
+echo "== argkey (host build, ASan)"
+clang "${ASAN[@]}" "${WARN[@]}" -Inative -o "$out/argkey-test" native/test/argkey_test.c native/argkey.c
+ASAN_OPTIONS=abort_on_error=1 "$out/argkey-test"

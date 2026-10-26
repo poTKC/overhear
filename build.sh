@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Builds build/st15i-player.apk without Gradle.
 # Overrides: ANDROID_HOME, BUILD_TOOLS (build-tools dir), ANDROID_PLATFORM_JAR,
-# DEBUGGABLE=0 to leave out android:debuggable (on by default for the debug key).
+# DEBUGGABLE=0 to leave out android:debuggable (on by default for the debug key),
+# SKIP_RUNTIME=1 to package build/assets as it is instead of running runtime/build.sh.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -19,9 +20,13 @@ for tool in javac keytool zip; do
     command -v "$tool" >/dev/null || die "$tool not found on PATH"
 done
 
-# Clean intermediates; build/assets and build/native are filled by other steps.
+# Clean intermediates; build/assets, build/native and build/cache belong to
+# runtime/build.sh and native/build.sh.
 mkdir -p build
-find build -mindepth 1 -maxdepth 1 ! -name assets ! -name native -exec rm -rf {} +
+find build -mindepth 1 -maxdepth 1 ! -name assets ! -name native ! -name cache -exec rm -rf {} +
+
+# Runtime bundle (assets/runtime); cached and reproducible, so cheap to rerun.
+[ "${SKIP_RUNTIME:-0}" = 1 ] || runtime/build.sh
 mkdir -p build/gen build/classes build/dex
 
 "$BT/aapt2" compile --dir app/res -o build/res.zip

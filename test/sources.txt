@@ -5,3 +5,8 @@ app/src/jp/tkc/st15iplayer/audio/StreamSession.java
 app/src/jp/tkc/st15iplayer/ws/WebSocketClient.java
 app/src/jp/tkc/st15iplayer/soloist/PlayerState.java
 app/src/jp/tkc/st15iplayer/soloist/SoloistClient.java
+app/src/jp/tkc/st15iplayer/runtime/Dns.java
+app/src/jp/tkc/st15iplayer/runtime/HelperOutput.java
+app/src/jp/tkc/st15iplayer/runtime/LogRing.java
+app/src/jp/tkc/st15iplayer/runtime/ProgressListener.java
+app/src/jp/tkc/st15iplayer/runtime/SoloistCommand.java
