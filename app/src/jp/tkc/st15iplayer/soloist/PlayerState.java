@@ -60,7 +60,12 @@ public final class PlayerState {
         public final String title;
         public final List<String> artists;
         public final String album;
+        /** The largest useful cover (640 px): large, else default, else any. */
         public final String coverUrl;
+        /** About 300 px: default, else large, else any. */
+        public final String mediumCoverUrl;
+        /** About 64 px: small, else default, else large, else any. */
+        public final String smallCoverUrl;
         public final long durationMs;
 
         Track(JSONObject item) {
@@ -79,6 +84,8 @@ public final class PlayerState {
             artists = Collections.unmodifiableList(a);
             album = name(entityDecorations(d == null ? null : d.optJSONObject("parent")));
             coverUrl = cover(d);
+            mediumCoverUrl = cover(d, "default", "large");
+            smallCoverUrl = cover(d, "small", "default", "large");
             JSONObject playback = d == null ? null : d.optJSONObject("playback");
             durationMs = playback == null ? 0 : Math.max(0, playback.optLong("duration_ms", 0));
         }
@@ -255,6 +262,9 @@ public final class PlayerState {
 
     public String getCoverUrl() { return track.coverUrl; }
 
+    /** A cover of about 300 px (what a 240 px view needs), or null. */
+    public String getMediumCoverUrl() { return track.mediumCoverUrl; }
+
     /** 0 if unknown. */
     public long getDurationMs() { return track.durationMs; }
 
@@ -302,19 +312,29 @@ public final class PlayerState {
 
     /** visual_identity.cover: large, else default, else the first one. */
     static String cover(JSONObject decorations) {
+        return cover(decorations, "large", "default");
+    }
+
+    /** visual_identity.cover: the first of the sizes found, in order, else the first cover. */
+    static String cover(JSONObject decorations, String... sizes) {
         JSONObject vi = decorations == null ? null : decorations.optJSONObject("visual_identity");
         JSONArray covers = vi == null ? null : vi.optJSONArray("cover");
         if (covers == null) return null;
-        String large = null, dflt = null, any = null;
+        String[] found = new String[sizes.length];
+        String any = null;
         for (int i = 0; i < covers.length(); i++) {
             JSONObject c = covers.optJSONObject(i);
             String url = str(c, "url");
             if (url == null) continue;
             String size = str(c, "size");
-            if ("large".equals(size) && large == null) large = url;
-            else if ("default".equals(size) && dflt == null) dflt = url;
+            for (int k = 0; k < sizes.length; k++) {
+                if (sizes[k].equals(size) && found[k] == null) found[k] = url;
+            }
             if (any == null) any = url;
         }
-        return large != null ? large : dflt != null ? dflt : any;
+        for (String f : found) {
+            if (f != null) return f;
+        }
+        return any;
     }
 }

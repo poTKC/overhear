@@ -93,6 +93,10 @@ public final class RuntimeInstaller {
     public File dataDir() { return new File(filesDir, "soloist-data"); }
     public File cacheDir() { return new File(context.getCacheDir(), "soloist"); }
     public File homeDir() { return filesDir; }
+    /** The st15i-fetch helper (installed by ensureBundle). */
+    public File helperBin() { return new File(runtimeDir(), HELPER); }
+    /** The CA bundle for st15i-fetch --ca. */
+    public File caFile() { return new File(runtimeDir(), SoloistCommand.CACERT); }
 
     /**
      * Copies assets/runtime/* to filesDir/runtime/ unless the installed

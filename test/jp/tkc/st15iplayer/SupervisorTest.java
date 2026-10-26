@@ -26,7 +26,9 @@ public class SupervisorTest {
         @Override public void stop() { calls.add("stop"); }
         @Override public void schedule(long delayMs) { calls.add("schedule " + delayMs); }
         @Override public void cancelTimer() { calls.add("cancel"); }
-        @Override public void failed(String reason) { calls.add("failed " + reason); }
+        @Override public void failed(String reason, boolean autoRetry) {
+            calls.add("failed " + reason + (autoRetry ? " (retry)" : ""));
+        }
     };
 
     @Before public void setUp() {
@@ -410,7 +412,8 @@ public class SupervisorTest {
         started(t);
         exit(1, false, false, t + 2000);
         String c = take();
-        assertTrue(c, c.startsWith("[failed Soloist keeps exiting"));
+        assertEquals("[failed " + Supervisor.KEEPS_EXITING + " (retry), schedule "
+                + Supervisor.RETRY_COOLDOWN_MS + "]", c);
         assertEquals(Supervisor.State.FAILED, s.state());
     }
 
@@ -542,5 +545,114 @@ public class SupervisorTest {
             s.onTimer();
         }
         assertEquals(Supervisor.State.STARTING, s.state());
+    }
+
+    // --- giving up: fatal stays failed, non-fatal retries after a cooldown ---
+
+    private void giveUpOnStartFailures() {
+        s.begin(true);
+        for (int i = 0; i < Supervisor.MAX_SHORT_RUNS - 1; i++) {
+            startFailed("download failed", true);
+            s.onTimer();
+        }
+        startFailed("download failed", true);
+        assertEquals(Supervisor.State.FAILED, s.state());
+    }
+
+    @Test public void tenStartFailuresRetryAfterTheCooldown() {
+        giveUpOnStartFailures();
+        String c = take();
+        assertTrue(c, c.endsWith("failed " + Supervisor.KEEPS_FAILING + " (retry), schedule "
+                + Supervisor.RETRY_COOLDOWN_MS + "]"));
+        assertTrue(s.willRetry());
+        s.onTimer();
+        assertEquals("[start]", take());
+        assertEquals(Supervisor.State.STARTING, s.state());
+        // A fresh count: nine more failures do not give up.
+        for (int i = 0; i < Supervisor.MAX_SHORT_RUNS - 1; i++) {
+            startFailed("download failed", true);
+            s.onTimer();
+        }
+        assertEquals(Supervisor.State.STARTING, s.state());
+    }
+
+    @Test public void nonFatalGiveUpRetriesWhenWifiComesBack() {
+        giveUpOnStartFailures();
+        take();
+        s.onWifi(false);
+        assertEquals("[]", take());
+        assertEquals(Supervisor.State.FAILED, s.state());
+        s.onWifi(true);
+        assertEquals("[cancel, start]", take());
+    }
+
+    @Test public void fatalGiveUpIgnoresTimerAndWifi() {
+        s.begin(true);
+        startFailed("no API key", false);
+        assertEquals("[start, failed no API key]", take());
+        assertFalse(s.willRetry());
+        s.onTimer();
+        s.onWifi(false);
+        s.onWifi(true);
+        assertEquals("[]", take());
+        assertEquals(Supervisor.State.FAILED, s.state());
+        s.restart(); // the user taps retry
+        assertEquals("[start]", take());
+    }
+
+    @Test public void shortRunsAfterAnAuthErrorAreFatal() {
+        s.begin(true);
+        long t = 0;
+        for (int i = 0; i < Supervisor.MAX_SHORT_RUNS; i++) {
+            started(t);
+            s.onAuthError();
+            exit(1, false, false, t + 2000);
+            if (i < Supervisor.MAX_SHORT_RUNS - 1) s.onTimer();
+            t += 100000;
+        }
+        String c = take();
+        assertTrue(c, c.endsWith("failed " + Supervisor.KEEPS_EXITING + "]"));
+        s.onTimer();
+        assertFalse(s.willRetry());
+        s.onWifi(false);
+        s.onWifi(true);
+        assertEquals(Supervisor.State.FAILED, s.state());
+    }
+
+    @Test public void anAuthErrorOfAnEarlierRunDoesNotMakeTheGiveUpFatal() {
+        s.begin(true);
+        long t = 0;
+        for (int i = 0; i < Supervisor.MAX_SHORT_RUNS; i++) {
+            started(t);
+            if (i == 0) s.onAuthError();
+            exit(1, false, false, t + 2000);
+            if (i < Supervisor.MAX_SHORT_RUNS - 1) s.onTimer();
+            t += 100000;
+        }
+        assertTrue(s.willRetry());
+    }
+
+    @Test public void refreshCapIsFatal() {
+        running(0);
+        long t = 0;
+        for (int i = 0; i < 4; i++) {
+            t += 120000;
+            exit(10, true, false, t);
+            if (s.state() == Supervisor.State.FAILED) break;
+            s.onTimer();
+            started(t + 1000);
+        }
+        assertEquals(Supervisor.State.FAILED, s.state());
+        assertFalse(s.willRetry());
+        s.onTimer();
+        assertEquals(Supervisor.State.FAILED, s.state());
+    }
+
+    @Test public void userRetryCancelsThePendingCooldown() {
+        giveUpOnStartFailures();
+        take();
+        s.restart();
+        assertEquals("[cancel, start]", take());
+        assertFalse(s.willRetry());
     }
 }

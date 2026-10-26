@@ -1,0 +1,157 @@
+package jp.tkc.st15iplayer;
+
+import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.os.Process;
+import android.util.Log;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+
+import jp.tkc.st15iplayer.runtime.Dns;
+import jp.tkc.st15iplayer.runtime.LineReader;
+import jp.tkc.st15iplayer.runtime.RuntimeInstaller;
+import jp.tkc.st15iplayer.soloist.MainThreadExecutor;
+
+/**
+ * The app's one ArtworkLoader: covers are fetched with st15i-fetch (Android
+ * 4.3's own TLS cannot reach i.scdn.co reliably) into cacheDir/art and
+ * decoded as RGB_565 bitmaps scaled to the view size. At most two fetches
+ * run at once, each killed after FETCH_TIMEOUT_MS.
+ */
+final class Artwork {
+    private static final String TAG = "ST15iArtwork";
+    static final long DISK_MAX_BYTES = 5L * 1024 * 1024;
+    static final long FETCH_TIMEOUT_MS = 30000;
+    static final long FAILURE_RETRY_MS = 60000;
+    private static final int MAX_LINE_BYTES = 4096;
+
+    private static ArtworkLoader<Bitmap> loader;
+    private static ScheduledExecutorService watchdog;
+
+    private Artwork() {}
+
+    /** Main thread. */
+    static ArtworkLoader<Bitmap> loader(Context context) {
+        if (loader != null) return loader;
+        final Context app = context.getApplicationContext();
+        final RuntimeInstaller installer = new RuntimeInstaller(app);
+        ThreadFactory low = new ThreadFactory() {
+            private int n;
+
+            @Override public Thread newThread(final Runnable r) {
+                Thread t = new Thread(new Runnable() {
+                    @Override public void run() {
+                        Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND);
+                        r.run();
+                    }
+                }, "artwork-" + (++n));
+                t.setDaemon(true);
+                return t;
+            }
+        };
+        ThreadPoolExecutor pool = new ThreadPoolExecutor(2, 2, 30, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<Runnable>(), low);
+        pool.allowCoreThreadTimeOut(true);
+        watchdog = Executors.newSingleThreadScheduledExecutor(low);
+
+        ArtworkLoader.Fetcher fetcher = new ArtworkLoader.Fetcher() {
+            @Override public void fetch(String url, File out) throws IOException {
+                runHelper(installer, url, out);
+            }
+        };
+        ArtworkLoader.Decoder<Bitmap> decoder = new ArtworkLoader.Decoder<Bitmap>() {
+            @Override public Bitmap decode(File file, int sizePx) throws IOException {
+                return decodeScaled(file, sizePx);
+            }
+        };
+        loader = new ArtworkLoader<Bitmap>(new File(app.getCacheDir(), "art"), DISK_MAX_BYTES,
+                FAILURE_RETRY_MS, fetcher, decoder, pool, new MainThreadExecutor());
+        return loader;
+    }
+
+    /** st15i-fetch get url out; throws unless it printed "done" and exited 0. */
+    static void runHelper(RuntimeInstaller installer, String url, File out) throws IOException {
+        File helper = installer.helperBin();
+        if (!helper.canExecute()) throw new IOException("st15i-fetch is not installed yet");
+        List<String> cmd = new ArrayList<String>();
+        cmd.add(helper.getPath());
+        cmd.add("--ca");
+        cmd.add(installer.caFile().getPath());
+        cmd.add("--dns");
+        cmd.add(Dns.helperArg(RuntimeInstaller.systemDns()));
+        cmd.add("get");
+        cmd.add(url);
+        cmd.add(out.getPath());
+        final java.lang.Process p = new ProcessBuilder(cmd).directory(installer.runtimeDir())
+                .redirectErrorStream(true).start();
+        ScheduledFuture<?> kill = watchdog.schedule(new Runnable() {
+            @Override public void run() {
+                p.destroy();
+            }
+        }, FETCH_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+        boolean done = false;
+        String last = "";
+        int code;
+        try {
+            p.getOutputStream().close();
+            LineReader r = new LineReader(p.getInputStream(), MAX_LINE_BYTES);
+            String line;
+            while ((line = r.readLine()) != null) {
+                if (line.equals("done")) done = true;
+                else if (!line.startsWith("progress ")) last = line;
+            }
+            code = p.waitFor();
+        } catch (InterruptedException e) {
+            p.destroy();
+            Thread.currentThread().interrupt();
+            throw new IOException("interrupted");
+        } finally {
+            kill.cancel(false);
+            try {
+                p.getInputStream().close();
+            } catch (IOException e) {
+                // ignore
+            }
+        }
+        if (code != 0 || !done || !out.isFile()) {
+            Log.w(TAG, "artwork fetch failed (" + code + "): " + last);
+            throw new IOException("st15i-fetch: " + last);
+        }
+    }
+
+    /** Decodes file as RGB_565, scaled so its smaller side is about sizePx. */
+    static Bitmap decodeScaled(File file, int sizePx) throws IOException {
+        BitmapFactory.Options o = new BitmapFactory.Options();
+        o.inJustDecodeBounds = true;
+        BitmapFactory.decodeFile(file.getPath(), o);
+        if (o.outWidth <= 0 || o.outHeight <= 0) throw new IOException("not an image");
+        int sample = ArtworkLoader.sampleSize(o.outWidth, o.outHeight, sizePx);
+        BitmapFactory.Options d = new BitmapFactory.Options();
+        d.inSampleSize = sample;
+        d.inPreferredConfig = Bitmap.Config.RGB_565;
+        d.inDither = true;
+        int side = Math.min(o.outWidth, o.outHeight) / sample;
+        if (side > sizePx) {
+            // BitmapFactory scales by inTargetDensity / inDensity after sampling.
+            d.inScaled = true;
+            d.inDensity = side;
+            d.inTargetDensity = sizePx;
+        } else {
+            d.inScaled = false;
+        }
+        Bitmap b = BitmapFactory.decodeFile(file.getPath(), d);
+        if (b == null) throw new IOException("cannot decode");
+        return b;
+    }
+}

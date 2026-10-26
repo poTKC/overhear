@@ -197,6 +197,8 @@ public class PlayerStateTest {
         assertEquals("6bbcc1f1e0d78d1c", first.uid);
         assertEquals("autoplay", first.source);
         assertEquals("https://i.scdn.co/image/ab67616d0000b273fcda1903d978d02fd3f5334b", first.coverUrl);
+        assertEquals("https://i.scdn.co/image/ab67616d00004851fcda1903d978d02fd3f5334b", first.smallCoverUrl);
+        assertEquals("https://i.scdn.co/image/ab67616d00001e02fcda1903d978d02fd3f5334b", first.mediumCoverUrl);
         try {
             q.clear();
             fail("queue must be unmodifiable");
@@ -213,6 +215,29 @@ public class PlayerStateTest {
         assertEquals("s", s.getCoverUrl());
         s.apply(new JSONObject(String.format(item, "[]")));
         assertNull(s.getCoverUrl());
+    }
+
+    @Test public void mediumCoverPrefersDefaultThenLarge() throws Exception {
+        s.apply(fixture("track_changed"));
+        assertEquals("https://i.scdn.co/image/ab67616d00001e022caa8b78b32389a29806ca4a", s.getMediumCoverUrl());
+        String item = "{\"type\":\"track_changed\",\"item\":{\"decorations\":{\"visual_identity\":{\"cover\":%s}}}}";
+        s.apply(new JSONObject(String.format(item, "[{\"url\":\"s\",\"size\":\"small\"},"
+                + "{\"url\":\"l\",\"size\":\"large\"}]")));
+        assertEquals("l", s.getMediumCoverUrl());
+        s.apply(new JSONObject(String.format(item, "[{\"url\":\"s\",\"size\":\"small\"}]")));
+        assertEquals("s", s.getMediumCoverUrl());
+        s.apply(new JSONObject(String.format(item, "[]")));
+        assertNull(s.getMediumCoverUrl());
+    }
+
+    @Test public void smallCoverPrefersSmallThenDefault() throws Exception {
+        String item = "{\"type\":\"queue_changed\",\"upcoming\":[{\"item\":{\"decorations\":"
+                + "{\"visual_identity\":{\"cover\":%s}}}}]}";
+        s.apply(new JSONObject(String.format(item, "[{\"url\":\"l\",\"size\":\"large\"},"
+                + "{\"url\":\"d\",\"size\":\"default\"}]")));
+        assertEquals("d", s.getQueue().get(0).smallCoverUrl);
+        s.apply(new JSONObject(String.format(item, "[{\"url\":\"l\",\"size\":\"large\"}]")));
+        assertEquals("l", s.getQueue().get(0).smallCoverUrl);
     }
 
     @Test public void missingMetadataIsTolerated() throws Exception {

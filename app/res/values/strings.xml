@@ -1,4 +1,59 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">ST15i Player</string>
+
+    <!-- service status (status line and notification) -->
+    <string name="notify_no_key">API キーを設定してください</string>
+    <string name="status_starting_service">起動中…</string>
+    <string name="status_wait_wifi">Wi-Fi を待っています</string>
+    <string name="status_starting">Soloist を起動中…</string>
+    <string name="status_updating">Soloist を更新中…</string>
+    <string name="status_restart_in">%d 秒後に再起動します</string>
+    <string name="status_stopped">停止: %s</string>
+    <string name="status_downloading">Soloist をダウンロード中… %d%%</string>
+    <string name="status_extracting">Soloist を展開中…</string>
+    <string name="status_connecting">Soloist に接続中…</string>
+    <string name="status_start_failed">起動失敗: %s</string>
+    <string name="status_login_error">ログインエラー: %s</string>
+    <string name="error_no_key">API キーがありません</string>
+    <string name="error_bad_key">API キーが不正です: %s</string>
+
+    <!-- player -->
+    <string name="no_track">再生中の曲はありません</string>
+    <string name="settings">設定</string>
+    <string name="queue">キュー</string>
+    <string name="queue_title">次に再生</string>
+    <string name="queue_empty">キューは空です</string>
+    <string name="close">閉じる</string>
+    <string name="prev">前の曲</string>
+    <string name="play_pause">再生/一時停止</string>
+    <string name="next">次の曲</string>
+    <string name="shuffle">シャッフル</string>
+    <string name="repeat">リピート</string>
+    <string name="volume">音量</string>
+    <string name="artwork">アートワーク</string>
+
+    <!-- setup -->
+    <string name="setup_title">ST15i Player の設定</string>
+    <string name="setup_key_label">Spotify API キー</string>
+    <string name="setup_key_hint">API キーを貼り付け</string>
+    <string name="setup_show_key">キーを表示</string>
+    <string name="setup_name_label">デバイス名（Spotify に表示）</string>
+    <string name="setup_save">保存して開始</string>
+    <string name="setup_save_edit">保存</string>
+    <string name="setup_need_key">API キーを入力してください</string>
+    <string name="setup_installing">ランタイムを準備中…</string>
+    <string name="setup_downloading">Soloist をダウンロード中… %d%%</string>
+    <string name="setup_extracting">Soloist を展開中…</string>
+    <string name="setup_failed">失敗しました: %s</string>
+    <string name="setup_retry">再試行</string>
+    <string name="setup_save_failed">設定を保存できませんでした</string>
+
+    <!-- debug (debuggable builds only) -->
+    <string name="debug_title">デバッグ</string>
+    <string name="debug_show_log">ログを表示</string>
+    <string name="debug_restart">Soloist を再起動</string>
+    <string name="debug_restart_trace">音声トレース付きで再起動</string>
+    <string name="debug_kill">Soloist を強制終了（クラッシュ試験）</string>
+    <string name="debug_stop_service">サービスを停止</string>
 </resources>

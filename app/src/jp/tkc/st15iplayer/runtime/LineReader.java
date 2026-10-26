@@ -19,7 +19,7 @@ import java.nio.charset.Charset;
  *
  * Pure Java (host tests). Not thread-safe.
  */
-final class LineReader {
+public final class LineReader {
     static final String TRUNCATED = " [truncated]";
     /** Default bytes kept past maxBytes for the filter. */
     static final int DEFAULT_SLACK = 1024;
@@ -40,7 +40,7 @@ final class LineReader {
     private boolean eof;
     private final ByteArrayOutputStream line = new ByteArrayOutputStream();
 
-    LineReader(InputStream in, int maxBytes) {
+    public LineReader(InputStream in, int maxBytes) {
         this(in, maxBytes, DEFAULT_SLACK, null);
     }
 
@@ -53,7 +53,7 @@ final class LineReader {
     }
 
     /** The next line, or null at end of stream. */
-    String readLine() throws IOException {
+    public String readLine() throws IOException {
         line.reset();
         boolean overflow = false; // more than keepBytes: the tail was skipped
         boolean any = false;

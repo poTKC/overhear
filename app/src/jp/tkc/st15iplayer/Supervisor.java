@@ -21,8 +21,13 @@ import java.util.regex.Pattern;
  * - Nothing starts while Wi-Fi is down. When Wi-Fi comes back a running
  *   Soloist is restarted (its zeroconf binds to the interfaces at start and
  *   resolv.conf may have changed); a pending backoff is cut short.
- * - A start that fails for good (no API key, ...) gives up until begin()
- *   or restart().
+ * - Giving up (FAILED) is terminal until the user acts (begin() or
+ *   restart()), with one exception: the non-fatal give-ups (MAX_SHORT_RUNS
+ *   short runs or start failures in a row) try again on their own after
+ *   RETRY_COOLDOWN_MS or when Wi-Fi comes up again (a new network may be
+ *   all it took). Fatal ones (a start that fails for good, e.g. no API key;
+ *   short runs after Soloist reported a login/key error; the refresh cap)
+ *   wait for the user.
  * - Effects.setActive reports whether Soloist is wanted right now (starting,
  *   running, restarting or backing off, with Wi-Fi up): the service holds
  *   its wake lock exactly then.
@@ -36,8 +41,10 @@ final class Supervisor {
     static final int MAX_SHORT_RUNS = 10;
     static final int MAX_REFRESHES = 3;
     static final long REFRESH_WINDOW_MS = 24L * 3600 * 1000;
-    static final String KEEPS_FAILING = "Soloist keeps failing to start \u2014 see log";
-    static final String KEEPS_EXITING = "Soloist keeps exiting — check the API key / see log";
+    /** How long a non-fatal give-up waits before trying again by itself. */
+    static final long RETRY_COOLDOWN_MS = 30L * 60 * 1000;
+    static final String KEEPS_FAILING = "Soloist \u306e\u8d77\u52d5\u306b\u5931\u6557\u3057\u7d9a\u3051\u3066\u3044\u307e\u3059";
+    static final String KEEPS_EXITING = "Soloist \u304c\u7d42\u4e86\u3057\u7d9a\u3051\u3066\u3044\u307e\u3059";
 
     /** Soloist error events worth showing: login and key problems, not its startup noise. */
     private static final Pattern AUTH_ERROR = Pattern.compile(
@@ -80,8 +87,11 @@ final class Supervisor {
 
         void cancelTimer();
 
-        /** Gave up; tell the user why. */
-        void failed(String reason);
+        /**
+         * Gave up; tell the user why. With autoRetry a schedule() for the
+         * cooldown follows; else only the user can retry.
+         */
+        void failed(String reason, boolean autoRetry);
 
         /** Soloist is wanted now (hold the wake lock) or not. */
         void setActive(boolean active);
@@ -107,6 +117,10 @@ final class Supervisor {
     private boolean latched;
     private boolean latchedExpired;
     private boolean latchedRequested;
+    /** FAILED will try again by itself (timer or Wi-Fi). */
+    private boolean retryable;
+    /** The current run reported a login or key error. */
+    private boolean authFailed;
 
     Supervisor(Effects fx) {
         this.fx = fx;
@@ -129,6 +143,16 @@ final class Supervisor {
         return state;
     }
 
+    /** FAILED, and it will try again by itself after the cooldown or on Wi-Fi. */
+    boolean willRetry() {
+        return state == State.FAILED && retryable;
+    }
+
+    /** Soloist reported a login or API key error during the current run. */
+    void onAuthError() {
+        authFailed = true;
+    }
+
     boolean isWifiUp() {
         return wifiUp;
     }
@@ -140,6 +164,11 @@ final class Supervisor {
             // Already going: a fresher Wi-Fi reading is a Wi-Fi transition.
             onWifi(wifiUp);
             return;
+        }
+        if (retryable) {
+            // The user did not wait for the cooldown.
+            retryable = false;
+            fx.cancelTimer();
         }
         this.wifiUp = wifiUp;
         failures = 0;
@@ -186,12 +215,12 @@ final class Supervisor {
         latched = false;
         if (!retry) {
             restartAfterStart = false;
-            giveUp(reason);
+            giveUp(reason, false);
             return;
         }
         if (++startFailures >= MAX_SHORT_RUNS) {
             restartAfterStart = false;
-            giveUp(KEEPS_FAILING);
+            giveUp(KEEPS_FAILING, true);
             return;
         }
         if (restartAfterStart) {
@@ -230,7 +259,8 @@ final class Supervisor {
         if (ran < SHORT_RUN_MS) shortRuns++;
         else shortRuns = 0;
         if (shortRuns >= MAX_SHORT_RUNS) {
-            giveUp(KEEPS_EXITING);
+            // Exiting after a login error: retrying will not fix the key.
+            giveUp(KEEPS_EXITING, !authFailed);
             return;
         }
         if (!expired) {
@@ -242,7 +272,7 @@ final class Supervisor {
             if (t != 0 && now - t < REFRESH_WINDOW_MS) recent++;
         }
         if (recent >= MAX_REFRESHES) {
-            giveUp("Soloist build expired and " + MAX_REFRESHES + " re-downloads in a day did not help");
+            giveUp("Soloist \u306e\u671f\u9650\u5207\u308c\u304c\u518d\u30c0\u30a6\u30f3\u30ed\u30fc\u30c9\u3067\u76f4\u308a\u307e\u305b\u3093", false);
             return;
         }
         System.arraycopy(refreshTimes, 1, refreshTimes, 0, MAX_REFRESHES - 1);
@@ -253,6 +283,12 @@ final class Supervisor {
 
     void onTimer() {
         if (state == State.BACKOFF) tryStart(pendingRefresh);
+        else if (willRetry()) retryAfterGivingUp();
+    }
+
+    private void retryAfterGivingUp() {
+        retryable = false;
+        begin(wifiUp);
     }
 
     void onWifi(boolean up) {
@@ -268,6 +304,9 @@ final class Supervisor {
             return;
         }
         switch (state) {
+            case FAILED:
+                if (retryable) begin(wifiUp); // cancels the cooldown
+                break;
             case WAIT_WIFI:
                 tryStart(pendingRefresh);
                 break;
@@ -332,6 +371,7 @@ final class Supervisor {
         gen++;
         exitSeen = false;
         latched = false;
+        authFailed = false;
         setState(State.STARTING);
         fx.start(gen, refresh);
     }
@@ -346,9 +386,11 @@ final class Supervisor {
         fx.schedule(backoffMs(failures++));
     }
 
-    private void giveUp(String reason) {
+    private void giveUp(String reason, boolean autoRetry) {
+        retryable = autoRetry;
         setState(State.FAILED);
-        fx.failed(reason);
+        fx.failed(reason, autoRetry);
+        if (autoRetry) fx.schedule(RETRY_COOLDOWN_MS);
     }
 
     private void setState(State s) {

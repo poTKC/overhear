@@ -1,0 +1,269 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Portrait 320x480 mdpi: everything fits without scrolling, the artwork in the middle. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#ff101010">
+
+    <LinearLayout
+        android:id="@+id/player"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:paddingLeft="8dp"
+        android:paddingRight="4dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="36dp"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/status"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:background="?android:attr/selectableItemBackground"
+                android:ellipsize="end"
+                android:gravity="center_vertical"
+                android:maxLines="2"
+                android:textColor="#ff33b5e5"
+                android:textSize="12sp" />
+
+            <ImageButton
+                android:id="@+id/settings"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="?android:attr/selectableItemBackground"
+                android:contentDescription="@string/settings"
+                android:scaleType="centerInside"
+                android:src="@android:drawable/ic_menu_preferences" />
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+        <ImageView
+            android:id="@+id/artwork"
+            android:layout_width="240dp"
+            android:layout_height="240dp"
+            android:layout_gravity="center_horizontal"
+            android:contentDescription="@string/artwork"
+            android:scaleType="centerCrop"
+            android:src="@drawable/art_placeholder" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+        <TextView
+            android:id="@+id/title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="marquee"
+            android:gravity="center_horizontal"
+            android:marqueeRepeatLimit="marquee_forever"
+            android:paddingLeft="4dp"
+            android:paddingRight="4dp"
+            android:singleLine="true"
+            android:textColor="#ffffffff"
+            android:textSize="18sp" />
+
+        <TextView
+            android:id="@+id/subtitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:gravity="center_horizontal"
+            android:paddingLeft="4dp"
+            android:paddingRight="4dp"
+            android:singleLine="true"
+            android:textColor="#ffaaaaaa"
+            android:textSize="13sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="30dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/elapsed"
+                android:layout_width="38dp"
+                android:layout_height="wrap_content"
+                android:gravity="right"
+                android:textColor="#ffaaaaaa"
+                android:textSize="11sp" />
+
+            <SeekBar
+                android:id="@+id/seek"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:paddingLeft="12dp"
+                android:paddingRight="12dp" />
+
+            <TextView
+                android:id="@+id/duration"
+                android:layout_width="38dp"
+                android:layout_height="wrap_content"
+                android:gravity="left"
+                android:textColor="#ffaaaaaa"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <ImageButton
+                android:id="@+id/shuffle"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="2"
+                android:background="?android:attr/selectableItemBackground"
+                android:contentDescription="@string/shuffle"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_shuffle" />
+
+            <ImageButton
+                android:id="@+id/prev"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="3"
+                android:background="?android:attr/selectableItemBackground"
+                android:contentDescription="@string/prev"
+                android:scaleType="centerInside"
+                android:src="@android:drawable/ic_media_previous" />
+
+            <ImageButton
+                android:id="@+id/play_pause"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="3"
+                android:background="?android:attr/selectableItemBackground"
+                android:contentDescription="@string/play_pause"
+                android:scaleType="centerInside"
+                android:src="@android:drawable/ic_media_play" />
+
+            <ImageButton
+                android:id="@+id/next"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="3"
+                android:background="?android:attr/selectableItemBackground"
+                android:contentDescription="@string/next"
+                android:scaleType="centerInside"
+                android:src="@android:drawable/ic_media_next" />
+
+            <ImageButton
+                android:id="@+id/repeat"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="2"
+                android:background="?android:attr/selectableItemBackground"
+                android:contentDescription="@string/repeat"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_repeat" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:alpha="0.7"
+                android:contentDescription="@string/volume"
+                android:scaleType="centerInside"
+                android:src="@android:drawable/ic_lock_silent_mode_off" />
+
+            <SeekBar
+                android:id="@+id/volume"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:max="100"
+                android:paddingLeft="12dp"
+                android:paddingRight="12dp" />
+
+            <ImageButton
+                android:id="@+id/queue_button"
+                android:layout_width="44dp"
+                android:layout_height="match_parent"
+                android:background="?android:attr/selectableItemBackground"
+                android:contentDescription="@string/queue"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_queue" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- The queue: slides up over the player. -->
+    <LinearLayout
+        android:id="@+id/queue_panel"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_marginTop="36dp"
+        android:background="@drawable/queue_panel_bg"
+        android:clickable="true"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/queue_header"
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingLeft="12dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:drawableTop="@drawable/queue_handle"
+                android:drawablePadding="4dp"
+                android:gravity="left"
+                android:text="@string/queue_title"
+                android:textColor="#ffffffff"
+                android:textSize="16sp" />
+
+            <ImageButton
+                android:id="@+id/queue_close"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="?android:attr/selectableItemBackground"
+                android:contentDescription="@string/close"
+                android:scaleType="centerInside"
+                android:src="@android:drawable/ic_menu_close_clear_cancel" />
+        </LinearLayout>
+
+        <ListView
+            android:id="@+id/queue_list"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:divider="#22ffffff"
+            android:dividerHeight="1px"
+            android:fadingEdge="vertical" />
+
+        <TextView
+            android:id="@+id/queue_empty"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:text="@string/queue_empty"
+            android:textColor="#ffaaaaaa"
+            android:textSize="14sp"
+            android:visibility="gone" />
+    </LinearLayout>
+</FrameLayout>

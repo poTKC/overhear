@@ -16,6 +16,7 @@ import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
+import android.os.Binder;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
@@ -28,6 +29,7 @@ import android.view.KeyEvent;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import jp.tkc.st15iplayer.audio.AudioSink;
 import jp.tkc.st15iplayer.runtime.ProgressListener;
@@ -77,8 +79,8 @@ public final class PlayerService extends Service {
     private static PlayerService current;
     /** The previous instance's Soloist, which may still be shutting down. */
     private static volatile SoloistProcess previousSoloist;
-    /** Serialises installs and downloads across service instances. */
-    private static final Object INSTALL_LOCK = new Object();
+    /** Serialises installs and downloads across service instances and SetupActivity. */
+    static final Object INSTALL_LOCK = new Object();
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private HandlerThread workerThread;
@@ -109,11 +111,21 @@ public final class PlayerService extends Service {
     private volatile boolean traceAudio;
     /** The Wi-Fi network last seen up ("" when down): a change means a new network. */
     private String wifiKey = "";
-    private String status = "Starting";
+    private String status = "";
     private String lastNotified;
     private String lastMetadata;
     private int lastPlayState = -1;
     private PlayerState state = new PlayerState();
+    private boolean connected;
+    private final IBinder binder = new LocalBinder();
+    private final CopyOnWriteArrayList<Runnable> uiListeners = new CopyOnWriteArrayList<Runnable>();
+
+    /** For activities in this process: bind with flags 0 (binding never starts or keeps us). */
+    final class LocalBinder extends Binder {
+        PlayerService service() {
+            return PlayerService.this;
+        }
+    }
 
     /** Starts the service (and Soloist) if it is not running. */
     public static void start(Context c) {
@@ -137,6 +149,7 @@ public final class PlayerService extends Service {
         super.onCreate();
         current = this;
         prefs = new Prefs(this);
+        status = getString(R.string.status_starting_service);
         audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
         notifications = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         connectivity = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
@@ -230,10 +243,7 @@ public final class PlayerService extends Service {
         } else if (ACTION_RESTART_SOLOIST.equals(action)) {
             traceAudio = intent.getBooleanExtra(EXTRA_TRACE_AUDIO, false);
             Log.i(TAG, "restart requested" + (traceAudio ? " with audio trace" : ""));
-            // A retry after giving up wants the keys and Wi-Fi locks back.
-            acquireWifiLocks();
-            registerMedia();
-            supervisor.restart();
+            retry();
         }
         return START_STICKY;
     }
@@ -244,7 +254,7 @@ public final class PlayerService extends Service {
             Notification n = new Notification.Builder(this)
                     .setSmallIcon(android.R.drawable.stat_notify_error)
                     .setContentTitle(getString(R.string.app_name))
-                    .setContentText("Set the Spotify API key to start")
+                    .setContentText(getString(R.string.notify_no_key))
                     .setContentIntent(activityIntent())
                     .setAutoCancel(true)
                     .build();
@@ -258,7 +268,7 @@ public final class PlayerService extends Service {
         acquireWifiLocks();
         registerMedia();
         supervisor.begin(isWifiUp());
-        if (supervisor.state() == Supervisor.State.WAIT_WIFI) setStatus("Waiting for Wi-Fi");
+        if (supervisor.state() == Supervisor.State.WAIT_WIFI) setStatus(getString(R.string.status_wait_wifi));
     }
 
     @Override
@@ -266,6 +276,7 @@ public final class PlayerService extends Service {
         Log.i(TAG, "destroyed");
         destroyed = true;
         current = null;
+        uiListeners.clear();
         supervisor.shutdown();
         installer.cancelDownload(); // sticky: a queued start fails at once
         soloist.release();
@@ -288,7 +299,60 @@ public final class PlayerService extends Service {
 
     @Override
     public IBinder onBind(Intent intent) {
-        return null;
+        return binder;
+    }
+
+    // --- for the player screen (main thread) ---
+
+    /** Runs (on the main thread) whenever the state, connection or status changes. */
+    void addUiListener(Runnable r) {
+        uiListeners.addIfAbsent(r);
+    }
+
+    void removeUiListener(Runnable r) {
+        uiListeners.remove(r);
+    }
+
+    private void notifyUi() {
+        for (Runnable r : uiListeners) r.run();
+    }
+
+    PlayerState getPlayerState() {
+        return state;
+    }
+
+    boolean isClientConnected() {
+        return connected;
+    }
+
+    Supervisor.State getSupervisorState() {
+        return supervisor.state();
+    }
+
+    String getStatus() {
+        return status;
+    }
+
+    /** The last login/key error from Soloist, until a login is reported; or null. */
+    String getAuthError() {
+        return authError;
+    }
+
+    /** Commands for the player screen; dropped while disconnected. */
+    SoloistClient client() {
+        return client;
+    }
+
+    /** Pause while playing or buffering, else play. */
+    void togglePlayPause() {
+        playPause();
+    }
+
+    /** The user asked to try again (status line), or settings changed. */
+    void retry() {
+        acquireWifiLocks();
+        registerMedia();
+        supervisor.restart();
     }
 
     // --- Supervisor effects ---
@@ -303,7 +367,11 @@ public final class PlayerService extends Service {
         @Override public void start(final int gen, final boolean refresh) {
             runGen = gen;
             authError = null;
-            setStatus(refresh ? "Updating Soloist" : "Starting Soloist");
+            // A retry after giving up (by the user or the cooldown) wants
+            // the keys and Wi-Fi locks back; no-ops otherwise.
+            acquireWifiLocks();
+            registerMedia();
+            setStatus(getString(refresh ? R.string.status_updating : R.string.status_starting));
             final boolean trace = traceAudio;
             worker.post(new Runnable() {
                 @Override public void run() {
@@ -334,7 +402,9 @@ public final class PlayerService extends Service {
 
         @Override public void schedule(long delayMs) {
             Log.i(TAG, "restarting Soloist in " + delayMs / 1000 + " s");
-            setStatus("Restarting in " + delayMs / 1000 + " s");
+            if (supervisor.state() == Supervisor.State.BACKOFF) {
+                setStatus(getString(R.string.status_restart_in, delayMs / 1000));
+            }
             main.removeCallbacks(timer);
             main.postDelayed(timer, delayMs);
         }
@@ -343,9 +413,9 @@ public final class PlayerService extends Service {
             main.removeCallbacks(timer);
         }
 
-        @Override public void failed(String reason) {
-            Log.w(TAG, "giving up: " + reason);
-            setStatus("Stopped: " + reason);
+        @Override public void failed(String reason, boolean autoRetry) {
+            Log.w(TAG, "giving up: " + reason + (autoRetry ? " (will retry)" : ""));
+            setStatus(getString(R.string.status_stopped, reason));
             // Let other players have the media keys while we cannot play,
             // and stop holding Wi-Fi in high-performance mode for nothing.
             unregisterMedia();
@@ -361,7 +431,7 @@ public final class PlayerService extends Service {
         try {
             boolean previousRunning = waitForPreviousSoloist();
             if (!prefs.hasApiKey()) {
-                error = "no API key";
+                error = getString(R.string.error_no_key);
                 retry = false;
             } else {
                 RuntimeInstaller.Result r;
@@ -371,11 +441,11 @@ public final class PlayerService extends Service {
                     installer.ensureBundle();
                     ProgressListener progress = new ProgressListener() {
                         @Override public void onProgress(int percent) {
-                            postStatus("Downloading Soloist " + percent + "%");
+                            postStatus(getString(R.string.status_downloading, percent));
                         }
 
                         @Override public void onExtracting() {
-                            postStatus("Extracting Soloist");
+                            postStatus(getString(R.string.status_extracting));
                         }
                     };
                     r = installer.ensureSoloist(refresh, progress);
@@ -398,7 +468,7 @@ public final class PlayerService extends Service {
         } catch (IOException e) {
             error = e.getMessage();
         } catch (IllegalArgumentException e) {
-            error = "bad API key: " + e.getMessage();
+            error = getString(R.string.error_bad_key, e.getMessage());
             retry = false;
         } catch (RuntimeException e) {
             // IllegalStateException: released (we are being destroyed) or still running.
@@ -411,11 +481,11 @@ public final class PlayerService extends Service {
             @Override public void run() {
                 if (destroyed) return;
                 if (err == null) {
-                    setStatus("Soloist started, connecting");
+                    setStatus(getString(R.string.status_connecting));
                     supervisor.onStarted(gen, now);
                 } else {
                     Log.w(TAG, "start failed: " + err);
-                    setStatus("Start failed: " + err);
+                    setStatus(getString(R.string.status_start_failed, err));
                     supervisor.onStartFailed(gen, err, again);
                 }
             }
@@ -437,7 +507,7 @@ public final class PlayerService extends Service {
         if (destroyed) return;
         if (!requested) Log.w(TAG, "Soloist exited with " + code + (expired ? " (expired)" : ""));
         supervisor.onExit(gen, code, expired, requested, SystemClock.elapsedRealtime());
-        if (supervisor.state() == Supervisor.State.WAIT_WIFI) setStatus("Waiting for Wi-Fi");
+        if (supervisor.state() == Supervisor.State.WAIT_WIFI) setStatus(getString(R.string.status_wait_wifi));
     }
 
     // --- Wi-Fi ---
@@ -466,7 +536,7 @@ public final class PlayerService extends Service {
                 multicastLock.acquire();
             }
             supervisor.onWifi(!key.isEmpty());
-            if (supervisor.state() == Supervisor.State.WAIT_WIFI) setStatus("Waiting for Wi-Fi");
+            if (supervisor.state() == Supervisor.State.WAIT_WIFI) setStatus(getString(R.string.status_wait_wifi));
         }
     };
 
@@ -577,10 +647,12 @@ public final class PlayerService extends Service {
             }
             updateNotification();
             updateRemoteControl();
+            notifyUi();
         }
 
-        @Override public void onConnected(boolean connected) {
-            if (connected) {
+        @Override public void onConnected(boolean c) {
+            connected = c;
+            if (c) {
                 // A login error stays shown until a state reports a login.
                 if (authError == null) setReady();
                 if (sink.isFocusMuted()) {
@@ -592,13 +664,15 @@ public final class PlayerService extends Service {
                 updateNotification();
                 updateRemoteControl();
             }
+            notifyUi();
         }
 
         @Override public void onError(String message) {
             Log.w(TAG, "Soloist: " + message);
             if (Supervisor.isAuthError(message)) {
                 authError = message;
-                setStatus("Soloist: " + message);
+                supervisor.onAuthError();
+                setStatus(getString(R.string.status_login_error, message));
             }
         }
     };
@@ -606,7 +680,7 @@ public final class PlayerService extends Service {
     // --- notification and remote control ---
 
     private void setReady() {
-        setStatus("Ready: select \"" + prefs.getDeviceName() + "\" in Spotify");
+        setStatus(PlayerText.selectDevice(prefs.getDeviceName()));
     }
 
     private void postStatus(final String s) {
@@ -620,6 +694,7 @@ public final class PlayerService extends Service {
     private void setStatus(String s) {
         status = s;
         updateNotification();
+        notifyUi();
     }
 
     private boolean isPlaying() {
