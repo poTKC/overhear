@@ -30,6 +30,8 @@ SVGS = {
     "Media/skip-back-fill.svg": "bf02c933bce295539b75acda83d6aa417a021ae4c9081a8a5b245b3e2c501ee3",
     "Media/skip-forward-fill.svg": "196ebc286a2002f8725348b4b2615a0a485e1ca7ac2150ff39e0df6d8d0a4b3c",
     "Media/play-fill.svg": "ac35d2ee814f73004c748273aabbddb57d0e5c1eead3788b889276781876a7c5",
+    "Media/play-circle-fill.svg": "860a6067f00458e482c8dc9319df1927650511cbbc7b07ee38bbb3f0ea38cee8",
+    "Media/pause-circle-fill.svg": "b01472826d300ac4e18ca240ab7ed7d34bbb31cf283c4e464b675ac8381f1992",
     "Media/pause-fill.svg": "82bfb45bf5b77f055ce984fca319d551c4319036520fd8a0719f41e656431953",
     "Media/play-list-2-line.svg": "ed697dce9bbbde15715cc0b385926ca40731958e12bcceac67b8b950fe44493b",
     "System/settings-3-line.svg": "f2e1fd30e6eadb8d5636f5037cf477f38ef81b235757d3ed290b92b2c002fec1",
@@ -40,7 +42,6 @@ SVGS = {
 DENSITIES = {"mdpi": 1.0, "hdpi": 1.5, "xhdpi": 2.0}
 
 WHITE = "#ffffff"
-BLACK = "#000000"
 GREY = "#b3b3b3"  # inactive toggles, small buttons
 GREEN = "#1db954"  # active toggles
 NOTE_GREY = "#7a7a7a"
@@ -86,6 +87,19 @@ def plain(density, f, name, svg_name, color, dp, glyph_dp):
     out(density, name, img)
 
 
+def circle(density, f, name, svg_name, dp, alpha=1.0):
+    """The circle glyph filling a dp square: its circle spans 20 of 24 units,
+    so it is drawn at dp * 24 / 20 and the transparent margin cropped. White,
+    so the knocked-out triangle or bars show the background."""
+    c, g = round(dp * f), round(dp * f * 24 / 20)
+    img = Image.new("RGBA", (c, c), (0, 0, 0, 0))
+    img.alpha_composite(glyph(svg_name, WHITE, g), (0, 0), ((g - c) // 2, (g - c) // 2))
+    if alpha < 1.0:
+        a = img.getchannel("A").point(lambda v: round(v * alpha))
+        img.putalpha(a)
+    out(density, name, img)
+
+
 TOGGLE_GLYPH_DP = 24
 
 
@@ -117,8 +131,11 @@ def placeholder(density, f):
 def main():
     for density, f in DENSITIES.items():
         # player: canvas dp (as the buttons expect), glyph dp
-        plain(density, f, "ic_play", "Media/play-fill.svg", BLACK, 36, 28)
-        plain(density, f, "ic_pause", "Media/pause-fill.svg", BLACK, 36, 28)
+        # play/pause: Remix's circle glyphs filling the 60 dp button; 70 % while pressed
+        circle(density, f, "ic_play_circle", "Media/play-circle-fill.svg", 60)
+        circle(density, f, "ic_play_circle_pressed", "Media/play-circle-fill.svg", 60, 0.7)
+        circle(density, f, "ic_pause_circle", "Media/pause-circle-fill.svg", 60)
+        circle(density, f, "ic_pause_circle_pressed", "Media/pause-circle-fill.svg", 60, 0.7)
         plain(density, f, "ic_prev", "Media/skip-back-fill.svg", WHITE, 36, 28)
         plain(density, f, "ic_next", "Media/skip-forward-fill.svg", WHITE, 36, 28)
         toggle(density, f, "ic_shuffle_off", "Media/shuffle-line.svg", False)
@@ -137,10 +154,11 @@ def main():
         plain(density, f, "ic_n_next", "Media/skip-forward-fill.svg", WHITE, 28, 24)
         plain(density, f, "ic_n_close", "System/close-line.svg", WHITE, 24, 20)
         plain(density, f, "ic_stat_music", "Media/music-2-fill.svg", WHITE, 24, 18)
-    for old in ("ic_repeat", "ic_repeat_one", "ic_shuffle"):
-        p = os.path.join("app", "res", "drawable-mdpi", old + ".png")
-        if os.path.exists(p):
-            os.remove(p)
+    for density in DENSITIES:
+        for old in ("ic_repeat", "ic_repeat_one", "ic_shuffle", "ic_play", "ic_pause"):
+            p = os.path.join("app", "res", "drawable-" + density, old + ".png")
+            if os.path.exists(p):
+                os.remove(p)
 
 
 if __name__ == "__main__":

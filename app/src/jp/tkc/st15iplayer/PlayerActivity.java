@@ -483,7 +483,7 @@ public class PlayerActivity extends Activity {
         boolean enabled = PlayerText.controlsEnabled(connected, state);
         PlayerState.Status ps = state.getStatus();
         boolean playing = ps == PlayerState.Status.PLAYING || ps == PlayerState.Status.BUFFERING;
-        setImage(playPause, playing ? R.drawable.ic_pause : R.drawable.ic_play);
+        setImage(playPause, playing ? R.drawable.ic_pause_button : R.drawable.ic_play_button);
         setEnabled(playPause, enabled);
         setEnabled(prev, enabled);
         setEnabled(next, enabled);

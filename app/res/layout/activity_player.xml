@@ -168,10 +168,10 @@
                 android:layout_height="60dp"
                 android:layout_marginLeft="10dp"
                 android:layout_marginRight="10dp"
-                android:background="@drawable/play_button_bg"
+                android:background="@null"
                 android:contentDescription="@string/play_pause"
                 android:scaleType="centerInside"
-                android:src="@drawable/ic_play" />
+                android:src="@drawable/ic_play_button" />
 
             <ImageButton
                 android:id="@+id/next"
