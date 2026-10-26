@@ -41,10 +41,19 @@ public class PlayerActivity extends Activity {
     private RuntimeInstaller installer;
     private SoloistProcess soloist;
     private volatile boolean destroyed;
+    // TEMPORARY: without a multicast lock the Wi-Fi driver drops the mDNS
+    // queries Spotify sends, so the phone never sees "ST15i". Task 7's
+    // player service takes this over.
+    private android.net.wifi.WifiManager.MulticastLock multicastLock;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        android.net.wifi.WifiManager wifi =
+                (android.net.wifi.WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
+        multicastLock = wifi.createMulticastLock("st15i-player-mdns");
+        multicastLock.setReferenceCounted(false);
+        multicastLock.acquire();
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         TextView title = new TextView(this);
@@ -231,6 +240,7 @@ public class PlayerActivity extends Activity {
         destroyed = true;
         soloist.stop();
         audioSink.stop();
+        multicastLock.release();
         super.onDestroy();
     }
 }
