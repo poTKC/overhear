@@ -18,6 +18,10 @@
  * glibc's __libc_start_main sets environ = &argv[argc + 1], so the new block
  * is laid out like the kernel's: argv..., NULL, envp..., NULL.
  *
+ * The key stays in the heap for the life of the process, by design: Soloist
+ * keeps using its argv, and heap memory is only readable through
+ * /proc/<pid>/mem, which is limited to the same uid (as is environ).
+ *
  * Nothing is logged and nothing else is hooked.
  */
 #define _GNU_SOURCE 1
@@ -88,8 +92,9 @@ __libc_start_main(main_fn main, int argc, char **argv, void (*init)(void),
     start_fn real = (start_fn)dlsym(RTLD_NEXT, "__libc_start_main");
     if (!real)
         abort();
+    /* Scrub the key even when argv cannot take it. */
     char *key = argkey_take(environ);
-    if (key) {
+    if (key && argc >= 1 && argv && argv[0]) {
         int new_argc;
         char **block = argkey_build(argc, argv, environ, key, &new_argc);
         if (!block)
@@ -97,6 +102,7 @@ __libc_start_main(main_fn main, int argc, char **argv, void (*init)(void),
         environ = &block[new_argc + 1];
         return real(main, new_argc, block, init, fini, rtld_fini, stack_end);
     }
+    free(key);
     return real(main, argc, argv, init, fini, rtld_fini, stack_end);
 }
 #endif
