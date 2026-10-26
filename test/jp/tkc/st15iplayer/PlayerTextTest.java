@@ -20,55 +20,80 @@ public class PlayerTextTest {
         return s;
     }
 
-    @Test public void serviceNotRunningOffersStart() {
-        PlayerText.Status s = PlayerText.status(false, null, false, null, null, false, new PlayerState(), "ST15i");
-        assertEquals(PlayerText.Action.START, s.action);
-        assertTrue(s.text, s.text.contains("タップで開始"));
+    private static PlayerState playing(String status) throws Exception {
+        PlayerState s = state(true, true);
+        s.apply(new JSONObject("{\"type\":\"playback_changed\",\"status\":\"" + status + "\"}"));
+        return s;
     }
 
-    @Test public void failedOffersRetryWithTheReason() {
-        PlayerText.Status s = PlayerText.status(true, Supervisor.State.FAILED, false, "停止: x",
+    private static PlayerText.Status running(PlayerText.Phase phase, int value) {
+        return PlayerText.status(true, Supervisor.State.STARTING, false, phase, value, null, false,
+                new PlayerState(), "ST15i");
+    }
+
+    @Test public void serviceNotRunningOffersStart() {
+        PlayerText.Status s = PlayerText.status(false, null, false, null, 0, null, false, new PlayerState(), "ST15i");
+        assertEquals(PlayerText.Action.START, s.action);
+        assertEquals("Stopped \u2014 tap to start", s.text);
+    }
+
+    @Test public void failedOffersRetry() {
+        PlayerText.Status s = PlayerText.status(true, Supervisor.State.FAILED, false, PlayerText.Phase.STOPPED, 0,
                 null, false, new PlayerState(), "ST15i");
         assertEquals(PlayerText.Action.RETRY, s.action);
-        assertEquals("停止: x — タップで再試行", s.text);
+        assertEquals("Failed \u2014 tap to retry", s.text);
     }
 
     @Test public void failedWinsOverAStaleConnection() throws Exception {
-        PlayerText.Status s = PlayerText.status(true, Supervisor.State.FAILED, false, "x", null, true,
-                state(true, true), "ST15i");
+        PlayerText.Status s = PlayerText.status(true, Supervisor.State.FAILED, false, PlayerText.Phase.STOPPED, 0,
+                null, true, state(true, true), "ST15i");
         assertEquals(PlayerText.Action.RETRY, s.action);
     }
 
     @Test public void authErrorOpensSetup() {
-        PlayerText.Status s = PlayerText.status(true, Supervisor.State.RUNNING, false, "y", "login failed",
-                true, new PlayerState(), "ST15i");
+        PlayerText.Status s = PlayerText.status(true, Supervisor.State.RUNNING, false, PlayerText.Phase.LOGIN_ERROR,
+                0, "login failed", true, new PlayerState(), "ST15i");
         assertEquals(PlayerText.Action.SETUP, s.action);
-        assertTrue(s.text, s.text.startsWith("ログインエラー"));
+        assertEquals("Login error \u2014 tap", s.text);
     }
 
     @Test public void connectedButNotActiveAsksToSelectTheDevice() throws Exception {
-        PlayerText.Status s = PlayerText.status(true, Supervisor.State.RUNNING, false, "y", null, true,
-                state(false, false), "ST15i");
+        PlayerText.Status s = PlayerText.status(true, Supervisor.State.RUNNING, false, PlayerText.Phase.READY, 0,
+                null, true, state(false, false), "ST15i");
         assertEquals(PlayerText.Action.NONE, s.action);
-        assertEquals("スマホの Spotify で『ST15i』を選んでください", s.text);
-        // Logged in but another device plays: the same.
-        s = PlayerText.status(true, Supervisor.State.RUNNING, false, "y", null, true, state(true, false), "ST15i");
-        assertTrue(s.text, s.text.contains("『ST15i』"));
+        assertEquals("Select \"ST15i\" in Spotify", s.text);
+        // Logged in but another device plays: the same, with the configured name.
+        s = PlayerText.status(true, Supervisor.State.RUNNING, false, PlayerText.Phase.READY, 0, null, true,
+                state(true, false), "Kitchen");
+        assertEquals("Select \"Kitchen\" in Spotify", s.text);
     }
 
-    @Test public void activeIsConnected() throws Exception {
-        PlayerText.Status s = PlayerText.status(true, Supervisor.State.RUNNING, false, "y", null, true,
-                state(true, true), "ST15i");
-        assertEquals("Spotify 接続中", s.text);
+    @Test public void activeIsConnectedAndSaysWhenPaused() throws Exception {
+        PlayerText.Status s = PlayerText.status(true, Supervisor.State.RUNNING, false, PlayerText.Phase.READY, 0,
+                null, true, playing("playing"), "ST15i");
+        assertEquals("Connected", s.text);
         assertEquals(PlayerText.Action.NONE, s.action);
+        s = PlayerText.status(true, Supervisor.State.RUNNING, false, PlayerText.Phase.READY, 0, null, true,
+                playing("paused"), "ST15i");
+        assertEquals("Connected \u00b7 Paused", s.text);
     }
 
-    @Test public void otherwiseTheServiceStatus() {
-        PlayerText.Status s = PlayerText.status(true, Supervisor.State.STARTING, false,
-                "Soloist をダウンロード中… 62%", null, false,
-                new PlayerState(), "ST15i");
-        assertEquals("Soloist をダウンロード中… 62%", s.text);
-        assertEquals(PlayerText.Action.NONE, s.action);
+    @Test public void otherwiseThePhaseInEnglish() {
+        assertEquals("Starting\u2026", running(PlayerText.Phase.STARTING, 0).text);
+        assertEquals("Starting\u2026", running(PlayerText.Phase.CONNECTING, 0).text);
+        assertEquals("Updating\u2026", running(PlayerText.Phase.UPDATING, 0).text);
+        assertEquals("Downloading 62%", running(PlayerText.Phase.DOWNLOADING, 62).text);
+        assertEquals("Unpacking\u2026", running(PlayerText.Phase.EXTRACTING, 0).text);
+        assertEquals("Restarting in 4 s", running(PlayerText.Phase.RESTARTING, 4).text);
+        assertEquals("Wi-Fi off", running(PlayerText.Phase.WAIT_WIFI, 0).text);
+        assertEquals("Start failed", running(PlayerText.Phase.START_FAILED, 0).text);
+        assertEquals("Reconnecting\u2026", running(PlayerText.Phase.READY, 0).text); // lost the API
+        assertEquals("Starting\u2026", running(null, 0).text);
+        assertEquals(PlayerText.Action.NONE, running(PlayerText.Phase.DOWNLOADING, 62).action);
+    }
+
+    @Test public void theNotificationStillAsksInJapanese() {
+        assertEquals("スマホの Spotify で『ST15i』を選んでください", PlayerText.selectDevice("ST15i"));
     }
 
     @Test public void controlsNeedAConnectedActiveDevice() throws Exception {
@@ -93,12 +118,10 @@ public class PlayerTextTest {
     }
 
     @Test public void aFailureOfTheSettingsOpensSetupNotRetry() throws Exception {
-        PlayerText.Status s = PlayerText.status(true, Supervisor.State.FAILED, true,
-                "\u505c\u6b62: API \u30ad\u30fc\u304c\u3042\u308a\u307e\u305b\u3093", null, false,
-                new PlayerState(), "ST15i");
+        PlayerText.Status s = PlayerText.status(true, Supervisor.State.FAILED, true, PlayerText.Phase.STOPPED, 0,
+                null, false, new PlayerState(), "ST15i");
         assertEquals(PlayerText.Action.SETUP, s.action);
-        assertEquals("\u30ad\u30fc\u3092\u78ba\u8a8d\u3057\u3066\u304f\u3060\u3055\u3044"
-                + " \u2014 \u30bf\u30c3\u30d7\u3067\u8a2d\u5b9a", s.text);
+        assertEquals("Check API key \u2014 tap", s.text);
     }
 
     @Test public void serviceMenuStopsARunningService() {
@@ -113,10 +136,10 @@ public class PlayerTextTest {
 
     @Test public void afterAStopTheStatusLineOffersStartEvenWithStaleState() throws Exception {
         // The service went away: whatever it reported last no longer counts.
-        PlayerText.Status s = PlayerText.status(false, Supervisor.State.FAILED, true, "停止: x", "login failed",
-                true, state(true, true), "ST15i");
+        PlayerText.Status s = PlayerText.status(false, Supervisor.State.FAILED, true, PlayerText.Phase.STOPPED, 0,
+                "login failed", true, state(true, true), "ST15i");
         assertEquals(PlayerText.Action.START, s.action);
-        assertEquals("停止中 — タップで開始", s.text);
+        assertEquals("Stopped \u2014 tap to start", s.text);
         assertEquals(PlayerText.Action.START, PlayerText.serviceMenuAction(false));
     }
 }

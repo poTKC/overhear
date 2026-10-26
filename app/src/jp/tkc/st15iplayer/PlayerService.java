@@ -131,6 +131,9 @@ public final class PlayerService extends Service {
     /** The Wi-Fi network last seen up ("" when down): a change means a new network. */
     private String wifiKey = "";
     private String status = "";
+    /** The on-screen form of status (PlayerText.status), with its number. */
+    private PlayerText.Phase phase = PlayerText.Phase.STARTING;
+    private int phaseValue;
     private String lastNotified;
     private String lastMetadata;
     private int lastPlayState = -1;
@@ -169,6 +172,7 @@ public final class PlayerService extends Service {
         current = this;
         prefs = new Prefs(this);
         status = getString(R.string.status_starting_service);
+        phase = PlayerText.Phase.STARTING;
         audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
         volumeSync = new VolumeSync(audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC), volumeTarget);
         try {
@@ -295,7 +299,7 @@ public final class PlayerService extends Service {
         acquireWifiLocks();
         registerMedia();
         supervisor.begin(isWifiUp());
-        if (supervisor.state() == Supervisor.State.WAIT_WIFI) setStatus(getString(R.string.status_wait_wifi));
+        if (supervisor.state() == Supervisor.State.WAIT_WIFI) setStatus(getString(R.string.status_wait_wifi), PlayerText.Phase.WAIT_WIFI, 0);
     }
 
     @Override
@@ -368,6 +372,14 @@ public final class PlayerService extends Service {
         return status;
     }
 
+    PlayerText.Phase getPhase() {
+        return phase;
+    }
+
+    int getPhaseValue() {
+        return phaseValue;
+    }
+
     /** The last login/key error from Soloist, until a login is reported; or null. */
     String getAuthError() {
         return authError;
@@ -406,7 +418,8 @@ public final class PlayerService extends Service {
             // the keys and Wi-Fi locks back; no-ops otherwise.
             acquireWifiLocks();
             registerMedia();
-            setStatus(getString(refresh ? R.string.status_updating : R.string.status_starting));
+            setStatus(getString(refresh ? R.string.status_updating : R.string.status_starting),
+                    refresh ? PlayerText.Phase.UPDATING : PlayerText.Phase.STARTING, 0);
             final boolean trace = traceAudio;
             worker.post(new Runnable() {
                 @Override public void run() {
@@ -438,7 +451,8 @@ public final class PlayerService extends Service {
         @Override public void schedule(long delayMs) {
             Log.i(TAG, "restarting Soloist in " + delayMs / 1000 + " s");
             if (supervisor.state() == Supervisor.State.BACKOFF) {
-                setStatus(getString(R.string.status_restart_in, delayMs / 1000));
+                setStatus(getString(R.string.status_restart_in, delayMs / 1000), PlayerText.Phase.RESTARTING,
+                        (int) (delayMs / 1000));
             }
             main.removeCallbacks(timer);
             main.postDelayed(timer, delayMs);
@@ -450,7 +464,7 @@ public final class PlayerService extends Service {
 
         @Override public void failed(String reason, boolean autoRetry) {
             Log.w(TAG, "giving up: " + reason + (autoRetry ? " (will retry)" : ""));
-            setStatus(getString(R.string.status_stopped, reason));
+            setStatus(getString(R.string.status_stopped, reason), PlayerText.Phase.STOPPED, 0);
             // Let other players have the media keys while we cannot play,
             // and stop holding Wi-Fi in high-performance mode for nothing.
             unregisterMedia();
@@ -476,11 +490,12 @@ public final class PlayerService extends Service {
                     installer.ensureBundle();
                     ProgressListener progress = new ProgressListener() {
                         @Override public void onProgress(int percent) {
-                            postStatus(getString(R.string.status_downloading, percent));
+                            postStatus(getString(R.string.status_downloading, percent),
+                                    PlayerText.Phase.DOWNLOADING, percent);
                         }
 
                         @Override public void onExtracting() {
-                            postStatus(getString(R.string.status_extracting));
+                            postStatus(getString(R.string.status_extracting), PlayerText.Phase.EXTRACTING, 0);
                         }
                     };
                     r = installer.ensureSoloist(refresh, progress);
@@ -516,11 +531,11 @@ public final class PlayerService extends Service {
             @Override public void run() {
                 if (destroyed) return;
                 if (err == null) {
-                    setStatus(getString(R.string.status_connecting));
+                    setStatus(getString(R.string.status_connecting), PlayerText.Phase.CONNECTING, 0);
                     supervisor.onStarted(gen, now);
                 } else {
                     Log.w(TAG, "start failed: " + err);
-                    setStatus(getString(R.string.status_start_failed, err));
+                    setStatus(getString(R.string.status_start_failed, err), PlayerText.Phase.START_FAILED, 0);
                     supervisor.onStartFailed(gen, err, again);
                 }
             }
@@ -542,7 +557,7 @@ public final class PlayerService extends Service {
         if (destroyed) return;
         if (!requested) Log.w(TAG, "Soloist exited with " + code + (expired ? " (expired)" : ""));
         supervisor.onExit(gen, code, expired, requested, SystemClock.elapsedRealtime());
-        if (supervisor.state() == Supervisor.State.WAIT_WIFI) setStatus(getString(R.string.status_wait_wifi));
+        if (supervisor.state() == Supervisor.State.WAIT_WIFI) setStatus(getString(R.string.status_wait_wifi), PlayerText.Phase.WAIT_WIFI, 0);
     }
 
     // --- Wi-Fi ---
@@ -571,7 +586,7 @@ public final class PlayerService extends Service {
                 multicastLock.acquire();
             }
             supervisor.onWifi(!key.isEmpty());
-            if (supervisor.state() == Supervisor.State.WAIT_WIFI) setStatus(getString(R.string.status_wait_wifi));
+            if (supervisor.state() == Supervisor.State.WAIT_WIFI) setStatus(getString(R.string.status_wait_wifi), PlayerText.Phase.WAIT_WIFI, 0);
         }
     };
 
@@ -799,7 +814,7 @@ public final class PlayerService extends Service {
             if (Supervisor.isAuthError(message)) {
                 authError = message;
                 supervisor.onAuthError();
-                setStatus(getString(R.string.status_login_error, message));
+                setStatus(getString(R.string.status_login_error, message), PlayerText.Phase.LOGIN_ERROR, 0);
             }
         }
     };
@@ -807,19 +822,22 @@ public final class PlayerService extends Service {
     // --- notification and remote control ---
 
     private void setReady() {
-        setStatus(PlayerText.selectDevice(prefs.getDeviceName()));
+        setStatus(PlayerText.selectDevice(prefs.getDeviceName()), PlayerText.Phase.READY, 0);
     }
 
-    private void postStatus(final String s) {
+    private void postStatus(final String s, final PlayerText.Phase p, final int value) {
         main.post(new Runnable() {
             @Override public void run() {
-                if (!destroyed) setStatus(s);
+                if (!destroyed) setStatus(s, p, value);
             }
         });
     }
 
-    private void setStatus(String s) {
+    /** s for the notification (Japanese); p and value for the player's status line. */
+    private void setStatus(String s, PlayerText.Phase p, int value) {
         status = s;
+        phase = p;
+        phaseValue = value;
         updateNotification();
         notifyUi();
     }

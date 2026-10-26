@@ -4,17 +4,22 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ComponentName;
 import android.content.Context;
+import android.content.BroadcastReceiver;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.content.pm.ApplicationInfo;
 import android.graphics.Bitmap;
 import android.graphics.PorterDuff;
+import android.graphics.drawable.GradientDrawable;
 import android.media.AudioManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
+import android.os.BatteryManager;
 import android.os.Looper;
+import android.text.format.DateFormat;
 import android.view.GestureDetector;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
@@ -39,22 +44,25 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Collections;
+import java.util.Date;
 import java.util.List;
 
 import jp.tkc.st15iplayer.soloist.PlayerState;
 import jp.tkc.st15iplayer.soloist.SoloistClient;
 
 /**
- * The player: status line with the queue and settings buttons, artwork in
- * the middle, track text, seek bar and controls, and a queue panel that
- * slides up over it. State comes from PlayerService (bound with flags 0, so
+ * The player: in full screen a top strip with the time and battery, artwork
+ * in the middle (rounded corners), track text, seek bar and controls, and at
+ * the bottom the status line (left; English) with the queue and settings
+ * buttons (right). The queue panel slides up over the player, under the
+ * bottom row. State comes from PlayerService (bound with flags 0, so
  * the screen never starts or keeps the service); commands go through the
  * service's SoloistClient.
  *
  * Full screen (Prefs.isFullscreen, default on): FLAG_FULLSCREEN hides the
  * status bar; set before the first layout and re-read on every resume, so a
- * change in setup applies on return. The layout's weighted spacers absorb
- * the extra height.
+ * change in setup applies on return. The top strip (time, battery) shows
+ * only in full screen; the weighted spacers absorb the difference.
  *
  * There is no volume control on screen: the volume keys adjust the media
  * volume (with the system panel), which PlayerService keeps in step with the
@@ -78,6 +86,12 @@ public class PlayerActivity extends Activity {
     private int thumbPx;
 
     private TextView status;
+    private View topStrip;
+    private TextView clock;
+    private TextView battery;
+    private GradientDrawable batteryDot;
+    private float artRadius;
+    private float thumbRadius;
     private ImageView art;
     private TextView title;
     private TextView subtitle;
@@ -123,9 +137,18 @@ public class PlayerActivity extends Activity {
         float density = getResources().getDisplayMetrics().density;
         artPx = Math.round(240 * density);
         thumbPx = Math.round(40 * density);
+        artRadius = 6 * density;
+        thumbRadius = 3 * density;
         artwork = Artwork.loader(this);
 
         status = (TextView) findViewById(R.id.status);
+        topStrip = findViewById(R.id.top_strip);
+        clock = (TextView) findViewById(R.id.clock);
+        battery = (TextView) findViewById(R.id.battery);
+        batteryDot = new GradientDrawable();
+        batteryDot.setShape(GradientDrawable.OVAL);
+        batteryDot.setColor(StatusStrip.UNKNOWN);
+        findViewById(R.id.battery_dot).setBackground(batteryDot);
         art = (ImageView) findViewById(R.id.artwork);
         title = (TextView) findViewById(R.id.title);
         subtitle = (TextView) findViewById(R.id.subtitle);
@@ -143,6 +166,7 @@ public class PlayerActivity extends Activity {
         queueAdapter = new QueueAdapter();
         queueList.setAdapter(queueAdapter);
         title.setSelected(true); // marquee
+        art.setImageDrawable(RoundedArt.placeholder(getResources(), artRadius));
 
         wireControls();
         wireGestures();
@@ -311,6 +335,13 @@ public class PlayerActivity extends Activity {
         super.onResume();
         applyFullscreen(); // setup may have changed it
         started = true;
+        // Only while resumed: the strip is not seen otherwise.
+        IntentFilter time = new IntentFilter(Intent.ACTION_TIME_TICK);
+        time.addAction(Intent.ACTION_TIME_CHANGED);
+        time.addAction(Intent.ACTION_TIMEZONE_CHANGED);
+        registerReceiver(clockReceiver, time);
+        updateBattery(registerReceiver(batteryReceiver, new IntentFilter(Intent.ACTION_BATTERY_CHANGED)));
+        updateClock();
         // Flags 0: connects when the service runs, never creates or keeps it.
         bound = bindService(new Intent(this, PlayerService.class), connection, 0);
         attach();
@@ -320,6 +351,8 @@ public class PlayerActivity extends Activity {
     @Override
     protected void onPause() {
         started = false;
+        unregisterReceiver(clockReceiver);
+        unregisterReceiver(batteryReceiver);
         main.removeCallbacks(tick);
         detach();
         if (bound) unbindService(connection);
@@ -336,9 +369,50 @@ public class PlayerActivity extends Activity {
     private void applyFullscreen() {
         int full = WindowManager.LayoutParams.FLAG_FULLSCREEN;
         boolean want = prefs.isFullscreen();
+        if (topStrip != null) {
+            boolean strip = StatusStrip.visible(want);
+            topStrip.setVisibility(strip ? View.VISIBLE : View.GONE);
+            // The open queue leaves the strip (time, battery) visible.
+            ViewGroup.MarginLayoutParams lp = (ViewGroup.MarginLayoutParams) queuePanel.getLayoutParams();
+            int top = strip ? topStrip.getLayoutParams().height : 0;
+            if (lp.topMargin != top) {
+                lp.topMargin = top;
+                queuePanel.setLayoutParams(lp);
+            }
+        }
         if (((getWindow().getAttributes().flags & full) != 0) == want) return;
         if (want) getWindow().addFlags(full);
         else getWindow().clearFlags(full);
+    }
+
+    // --- top strip ---
+
+    private final BroadcastReceiver clockReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            updateClock();
+        }
+    };
+
+    private final BroadcastReceiver batteryReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            updateBattery(intent);
+        }
+    };
+
+    private void updateClock() {
+        // getTimeFormat follows the system 12/24 h setting (is24HourFormat).
+        setText(clock, DateFormat.getTimeFormat(this).format(new Date()));
+    }
+
+    /** From the sticky ACTION_BATTERY_CHANGED (null if none yet). */
+    private void updateBattery(Intent i) {
+        if (i == null) return;
+        int pct = StatusStrip.percent(i.getIntExtra(BatteryManager.EXTRA_LEVEL, -1),
+                i.getIntExtra(BatteryManager.EXTRA_SCALE, -1));
+        int st = i.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
+        boolean charging = st == BatteryManager.BATTERY_STATUS_CHARGING;
+        setText(battery, StatusStrip.batteryText(pct));
+        batteryDot.setColor(StatusStrip.batteryColor(pct, charging));
     }
 
     private final ServiceConnection connection = new ServiceConnection() {
@@ -397,9 +471,9 @@ public class PlayerActivity extends Activity {
             connected = false;
         }
         PlayerText.Status st = service == null
-                ? PlayerText.status(false, null, false, null, null, false, state, prefs.getDeviceName())
-                : PlayerText.status(true, service.getSupervisorState(), service.needsSetup(), service.getStatus(),
-                        service.getAuthError(), connected, state, prefs.getDeviceName());
+                ? PlayerText.status(false, null, false, null, 0, null, false, state, prefs.getDeviceName())
+                : PlayerText.status(true, service.getSupervisorState(), service.needsSetup(), service.getPhase(),
+                        service.getPhaseValue(), service.getAuthError(), connected, state, prefs.getDeviceName());
         setText(status, st.text);
         statusAction = st.action;
 
@@ -453,14 +527,14 @@ public class PlayerActivity extends Activity {
         artUrl = u;
         if (url == null) {
             artwork.cancel(art);
-            art.setImageResource(R.drawable.art_placeholder);
+            art.setImageDrawable(RoundedArt.placeholder(getResources(), artRadius));
             return;
         }
         // The old cover stays until the new one is here (or failed).
         artwork.load(art, url, artPx, true, new ArtworkLoader.Callback<Bitmap>() {
             @Override public void onArtwork(String loaded, Bitmap image) {
-                if (image != null) art.setImageBitmap(image);
-                else art.setImageResource(R.drawable.art_placeholder);
+                if (image != null) art.setImageDrawable(new RoundedArt(image, artRadius));
+                else art.setImageDrawable(RoundedArt.placeholder(getResources(), artRadius));
             }
         });
     }
@@ -573,15 +647,17 @@ public class PlayerActivity extends Activity {
             Bitmap hit = url == null ? null : artwork.get(url, thumbPx);
             if (hit != null) {
                 artwork.cancel(thumb);
-                thumb.setImageBitmap(hit);
+                thumb.setImageDrawable(new RoundedArt(hit, thumbRadius));
             } else {
-                thumb.setImageResource(R.drawable.art_placeholder);
+                thumb.setImageDrawable(RoundedArt.placeholder(getResources(), thumbRadius));
                 if (url == null) {
                     artwork.cancel(thumb);
                 } else {
                     artwork.load(thumb, url, thumbPx, false, new ArtworkLoader.Callback<Bitmap>() {
                         @Override public void onArtwork(String loaded, Bitmap image) {
-                            if (image != null && loaded.equals(thumb.getTag())) thumb.setImageBitmap(image);
+                            if (image != null && loaded.equals(thumb.getTag())) {
+                                thumb.setImageDrawable(new RoundedArt(image, thumbRadius));
+                            }
                         }
                     });
                 }

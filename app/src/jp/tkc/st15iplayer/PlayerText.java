@@ -22,21 +22,40 @@ final class PlayerText {
         }
     }
 
-    static final String CONNECTED = "Spotify 接続中";
-    static final String TAP_TO_START = "停止中 — タップで開始";
-    static final String TAP_TO_RETRY = " — タップで再試行";
-    static final String CHECK_KEY = "\u30ad\u30fc\u3092\u78ba\u8a8d\u3057\u3066\u304f\u3060\u3055\u3044"
-            + " \u2014 \u30bf\u30c3\u30d7\u3067\u8a2d\u5b9a";
-    static final String LOGIN_ERROR = "ログインエラー — タップで設定";
+    /** What the service is doing, for the on-screen status (its notification text stays Japanese). */
+    enum Phase {
+        STARTING, UPDATING, DOWNLOADING, EXTRACTING, CONNECTING, WAIT_WIFI, RESTARTING, START_FAILED, STOPPED,
+        LOGIN_ERROR, READY
+    }
+
+    // The on-screen status line, short and in English (bottom-left of the player).
+    static final String CONNECTED = "Connected";
+    static final String PAUSED = " \u00b7 Paused";
+    static final String TAP_TO_START = "Stopped \u2014 tap to start";
+    static final String TAP_TO_RETRY = "Failed \u2014 tap to retry";
+    static final String CHECK_KEY = "Check API key \u2014 tap";
+    static final String LOGIN_ERROR = "Login error \u2014 tap";
+    static final String STARTING = "Starting\u2026";
+    static final String UPDATING = "Updating\u2026";
+    static final String UNPACKING = "Unpacking\u2026";
+    static final String WIFI_OFF = "Wi-Fi off";
+    static final String START_FAILED = "Start failed";
+    static final String RECONNECTING = "Reconnecting\u2026";
+    // The menu stays Japanese, like the rest of the app.
     static final String STOP = "停止";
     static final String START = "開始";
 
     private PlayerText() {}
 
-    /** "スマホの Spotify で『name』を選んでください" */
+    /** For the notification: "スマホの Spotify で『name』を選んでください" */
     static String selectDevice(String name) {
         return "スマホの Spotify で『" + name
                 + "』を選んでください";
+    }
+
+    /** For the screen: Select "name" in Spotify */
+    static String selectDeviceShort(String name) {
+        return "Select \"" + name + "\" in Spotify";
     }
 
     /**
@@ -45,22 +64,52 @@ final class PlayerText {
      * @param serviceUp whether PlayerService runs (when false the rest is ignored)
      * @param state the service's Supervisor state
      * @param needsSetup Supervisor.needsSetup(): FAILED over the key, setup can fix it
-     * @param serviceStatus the service's own status text (starting, downloading, failed ...)
+     * @param phase what the service last reported (starting, downloading ...), or null
+     * @param value the phase's number: download percent, seconds to the restart
      * @param authError the last login/key error from Soloist, or null
      * @param connected whether the service's client is connected to Soloist
      * @param deviceName the configured device name
      */
-    static Status status(boolean serviceUp, Supervisor.State state, boolean needsSetup, String serviceStatus,
+    static Status status(boolean serviceUp, Supervisor.State state, boolean needsSetup, Phase phase, int value,
             String authError, boolean connected, PlayerState ps, String deviceName) {
         if (!serviceUp) return new Status(TAP_TO_START, Action.START);
         if (state == Supervisor.State.FAILED && needsSetup) return new Status(CHECK_KEY, Action.SETUP);
-        if (state == Supervisor.State.FAILED) return new Status(serviceStatus + TAP_TO_RETRY, Action.RETRY);
+        if (state == Supervisor.State.FAILED) return new Status(TAP_TO_RETRY, Action.RETRY);
         if (authError != null) return new Status(LOGIN_ERROR, Action.SETUP);
         if (connected) {
-            if (ps.isLoggedIn() && ps.isActive()) return new Status(CONNECTED, Action.NONE);
-            return new Status(selectDevice(deviceName), Action.NONE);
+            if (ps.isLoggedIn() && ps.isActive()) {
+                boolean paused = ps.getStatus() == PlayerState.Status.PAUSED;
+                return new Status(paused ? CONNECTED + PAUSED : CONNECTED, Action.NONE);
+            }
+            return new Status(selectDeviceShort(deviceName), Action.NONE);
         }
-        return new Status(serviceStatus == null ? "" : serviceStatus, Action.NONE);
+        return new Status(phaseText(phase, value), Action.NONE);
+    }
+
+    private static String phaseText(Phase phase, int value) {
+        if (phase == null) return STARTING;
+        switch (phase) {
+            case UPDATING:
+                return UPDATING;
+            case DOWNLOADING:
+                return "Downloading " + value + "%";
+            case EXTRACTING:
+                return UNPACKING;
+            case WAIT_WIFI:
+                return WIFI_OFF;
+            case RESTARTING:
+                return "Restarting in " + value + " s";
+            case START_FAILED:
+                return START_FAILED;
+            case READY:
+                return RECONNECTING;
+            case LOGIN_ERROR:
+                return LOGIN_ERROR;
+            case STOPPED:
+                return TAP_TO_RETRY;
+            default:
+                return STARTING;
+        }
     }
 
     /**
