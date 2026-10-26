@@ -17,11 +17,18 @@ import org.json.JSONObject;
  * Keeps a WebSocket connection to Soloist's local API, folds its events into
  * a PlayerState and sends playback commands.
  *
- * A connection thread (re)connects every reconnect delay (1 s) while
- * started. On each connection the state starts empty and get_state and
- * get_queue are requested; the queue is requested again whenever the track
- * or context changes. Commands are sent in order on a sender thread, so they
- * may be called from the main thread; they are dropped while disconnected.
+ * While started, a connection thread (re)connects, backing off 1 s, 2 s,
+ * then every 5 s while attempts fail, and starting over at 1 s after a
+ * connection opened. Each connection starts from an empty state (listeners
+ * get it right after onConnected(true)) and requests get_state and
+ * get_queue; the queue is requested again whenever the track or context
+ * changes. Every opened connection is reported closed exactly once, by its
+ * own close or by stop(); callbacks of a connection that is no longer
+ * current are ignored, so stop() then start() never sees stale events.
+ *
+ * Commands are sent in order on a sender thread, so they may be called from
+ * the main thread; they are dropped while disconnected. stop() does not
+ * block or touch the network on the calling thread.
  *
  * Listeners run on the callbacks executor (on Android, MainThreadExecutor)
  * and receive immutable snapshots. Pure Java so it runs in the host tests.
@@ -32,8 +39,13 @@ public final class SoloistClient {
 
         void onConnected(boolean connected);
 
-        /** An error event from Soloist, e.g. a rejected command. */
+        /** An error event from Soloist (e.g. a rejected command) or a failure handling one. */
         void onError(String message);
+    }
+
+    /** Receives connect and disconnect transitions (an android.util.Log adapter on the device). */
+    public interface Logger {
+        void log(String message);
     }
 
     public static final String DEFAULT_HOST = "127.0.0.1";
@@ -51,9 +63,15 @@ public final class SoloistClient {
     private boolean running; // guarded by lock
     private Thread loop; // guarded by lock
     private ExecutorService sender; // guarded by lock
-    private volatile WebSocketClient ws;
+    /** The connection being made or open; null while waiting to retry or stopped. */
+    private Connection current; // guarded by lock
+    /** Failed attempts since the last open, indexes backoffMs. */
+    private int failures; // guarded by lock
     private volatile boolean connected;
-    private volatile long reconnectDelayMs = 1000;
+    private volatile long[] backoffMs = {1000, 2000, 5000};
+    private volatile Logger logger = new Logger() {
+        @Override public void log(String message) {}
+    };
 
     public SoloistClient(Executor callbacks) {
         this(DEFAULT_HOST, DEFAULT_PORT, callbacks);
@@ -69,8 +87,14 @@ public final class SoloistClient {
         this.callbacks = callbacks;
     }
 
-    public void setReconnectDelayMs(long ms) {
-        reconnectDelayMs = ms;
+    /** Delays before successive reconnect attempts; the last one repeats. */
+    public void setBackoffMs(long... delays) {
+        if (delays.length == 0) throw new IllegalArgumentException("no delays");
+        backoffMs = delays.clone();
+    }
+
+    public void setLogger(Logger l) {
+        logger = l;
     }
 
     public void addListener(Listener l) {
@@ -96,6 +120,7 @@ public final class SoloistClient {
         synchronized (lock) {
             if (running) return;
             running = true;
+            failures = 0;
             sender = Executors.newSingleThreadExecutor(new ThreadFactory() {
                 @Override public Thread newThread(Runnable r) {
                     Thread t = new Thread(r, "soloist-send");
@@ -116,6 +141,7 @@ public final class SoloistClient {
     /** Closes the connection and stops reconnecting. Does not block. */
     public void stop() {
         Thread l;
+        final Connection c;
         synchronized (lock) {
             if (!running) return;
             running = false;
@@ -123,10 +149,21 @@ public final class SoloistClient {
             loop = null;
             sender.shutdown();
             sender = null;
+            c = current;
+            current = null; // its callbacks are ignored from now on
+            if (c != null && c.markClosed()) disconnected("stopped");
         }
         l.interrupt();
-        WebSocketClient w = ws;
-        if (w != null) w.close();
+        if (c != null) {
+            // close() writes a close frame: not allowed on Android's main thread.
+            Thread t = new Thread(new Runnable() {
+                @Override public void run() {
+                    c.ws.close();
+                }
+            }, "soloist-stop");
+            t.setDaemon(true);
+            t.start();
+        }
     }
 
     /** False once stop() was called, even if start() made a new loop since. */
@@ -137,58 +174,106 @@ public final class SoloistClient {
     }
 
     private void connectLoop() {
-        while (isCurrentLoop()) {
-            final Object done = new Object();
-            final boolean[] closed = {false};
-            WebSocketClient w = new WebSocketClient(host, port, "/", new WebSocketClient.Listener() {
-                @Override public void onOpen() {
-                    synchronized (lock) {
-                        state = new PlayerState();
-                    }
-                    connected = true;
-                    notifyConnected(true);
-                    command(cmd("get_state"));
-                    refreshQueue();
-                }
-
-                @Override public void onMessage(String text) {
-                    handle(text);
-                }
-
-                @Override public void onClose(int code, String reason) {
-                    connected = false;
-                    notifyConnected(false);
-                    synchronized (done) {
-                        closed[0] = true;
-                        done.notifyAll();
-                    }
-                }
-            });
+        while (true) {
+            Connection c;
             synchronized (lock) {
                 if (!running || loop != Thread.currentThread()) return;
-                ws = w; // published before connect() so stop() can abort it
+                c = new Connection();
+                current = c; // published before connect() so stop() can abort it
             }
             try {
-                w.connect(CONNECT_TIMEOUT_MS);
-                synchronized (done) {
-                    while (!closed[0]) done.wait();
-                }
+                c.ws.connect(CONNECT_TIMEOUT_MS);
+                c.awaitClosed();
             } catch (IOException e) {
                 // Soloist not up (yet); retry below.
             } catch (InterruptedException e) {
-                return; // stop()
+                c.ws.close();
+                return;
             } finally {
-                ws = null;
+                synchronized (lock) {
+                    if (current == c) current = null;
+                }
+                if (!isCurrentLoop()) c.ws.close(); // idempotent
+            }
+            long delay;
+            synchronized (lock) {
+                long[] b = backoffMs;
+                delay = b[Math.min(failures, b.length - 1)];
+                failures++;
             }
             try {
-                Thread.sleep(reconnectDelayMs);
+                Thread.sleep(delay);
             } catch (InterruptedException e) {
                 return;
             }
         }
     }
 
-    private void handle(String text) {
+    /** One connection attempt; its callbacks only act while it is current. */
+    private final class Connection implements WebSocketClient.Listener {
+        final WebSocketClient ws = new WebSocketClient(host, port, "/", this);
+        private boolean opened; // guarded by lock
+        private boolean closedReported; // guarded by lock
+        private boolean ended; // guarded by this
+
+        /** Marks an opened connection closed; true if the caller must report it. */
+        boolean markClosed() { // under lock
+            if (!opened || closedReported) return false;
+            closedReported = true;
+            return true;
+        }
+
+        @Override public void onOpen() {
+            synchronized (lock) {
+                if (current != this) return;
+                opened = true;
+                failures = 0;
+                state = new PlayerState();
+                connected = true;
+                logger.log("connected to " + host + ":" + port);
+                notifyConnected(true);
+                notifyState(state.copy());
+            }
+            command(cmd("get_state"));
+            refreshQueue();
+        }
+
+        @Override public void onMessage(String text) {
+            try {
+                handle(this, text);
+            } catch (RuntimeException e) {
+                notifyError("failed to handle an event: " + e);
+            }
+        }
+
+        @Override public void onClose(int code, String reason) {
+            try {
+                synchronized (lock) {
+                    if (current == this && markClosed()) {
+                        disconnected(code + (reason.isEmpty() ? "" : " " + reason));
+                    }
+                }
+            } finally {
+                // Even if a listener threw, or the connect thread waits forever.
+                synchronized (this) {
+                    ended = true;
+                    notifyAll();
+                }
+            }
+        }
+
+        synchronized void awaitClosed() throws InterruptedException {
+            while (!ended) wait();
+        }
+    }
+
+    private void disconnected(String why) { // under lock
+        connected = false;
+        logger.log("disconnected (" + why + ")");
+        notifyConnected(false);
+    }
+
+    private void handle(Connection c, String text) {
         JSONObject e;
         try {
             e = new JSONObject(text);
@@ -196,17 +281,16 @@ public final class SoloistClient {
             return;
         }
         String type = PlayerState.str(e, "type");
-        if ("error".equals(type)) {
-            notifyError(PlayerState.str(e, "message"));
-            return;
-        }
-        PlayerState snapshot = null;
         synchronized (lock) {
-            if (state.apply(e)) snapshot = state.copy();
+            if (current != c) return;
+            if ("error".equals(type)) notifyError(PlayerState.str(e, "message"));
+            else if (state.apply(e)) notifyState(state.copy());
         }
-        if (snapshot != null) notifyState(snapshot);
         if ("track_changed".equals(type) || "context_changed".equals(type)) refreshQueue();
     }
+
+    // Notifications are posted under lock, so they reach the executor in
+    // order and none from a stale connection can follow a newer one.
 
     private void notifyState(final PlayerState s) {
         for (final Listener l : listeners) {
@@ -317,10 +401,13 @@ public final class SoloistClient {
         try {
             s.execute(new Runnable() {
                 @Override public void run() {
-                    WebSocketClient w = ws;
-                    if (w == null || !w.isOpen()) return;
+                    Connection conn;
+                    synchronized (lock) {
+                        conn = current;
+                    }
+                    if (conn == null || !conn.ws.isOpen()) return;
                     try {
-                        w.send(c.toString());
+                        conn.ws.send(c.toString());
                     } catch (IOException e) {
                         // The reader sees the broken connection and reconnects.
                     }

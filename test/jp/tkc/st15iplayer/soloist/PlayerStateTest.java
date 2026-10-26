@@ -158,7 +158,27 @@ public class PlayerStateTest {
         assertEquals(31787, s.positionAt(s.getPositionTimestampMs() + 5000));
     }
 
+    @Test public void playbackChangedWithoutStatusKeepsIt() throws Exception {
+        s.apply(fixture("playback_state"));
+        assertTrue(s.apply(new JSONObject("{\"type\":\"playback_changed\"}")));
+        assertEquals(PlayerState.Status.PLAYING, s.getStatus());
+    }
+
+    @Test public void extrapolatesOnlyWhilePlaying() throws Exception {
+        s.apply(fixture("playback_state"));
+        long ts = s.getPositionTimestampMs(), p = s.getPositionMs();
+        assertEquals(p + 1000, s.positionAt(ts + 1000));
+        // playback_changed can arrive before the position_sync with speed 0.
+        s.apply(fixture("playback_changed")); // paused
+        assertEquals(p, s.positionAt(ts + 1000));
+        s.apply(new JSONObject("{\"type\":\"playback_changed\",\"status\":\"idle\"}"));
+        assertEquals(p, s.positionAt(ts + 1000));
+        s.apply(new JSONObject("{\"type\":\"playback_changed\",\"status\":\"buffering\"}"));
+        assertEquals(p + 1000, s.positionAt(ts + 1000)); // speed decides while buffering
+    }
+
     @Test public void fractionalSpeed() throws Exception {
+        s.apply(new JSONObject("{\"type\":\"playback_changed\",\"status\":\"playing\"}"));
         s.apply(new JSONObject("{\"type\":\"position_sync\",\"position\":"
                 + "{\"position_ms\":1000,\"timestamp_ms\":5000,\"speed\":1.5}}"));
         assertEquals(2500, s.positionAt(6000));

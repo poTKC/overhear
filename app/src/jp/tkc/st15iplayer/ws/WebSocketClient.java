@@ -9,6 +9,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.nio.charset.Charset;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -25,7 +26,11 @@ import java.util.Locale;
  * read and dropped, pings are answered, fragmented messages are reassembled.
  * The listener's onClose is called exactly once, on the reader thread, after
  * the socket is closed: with the peer's close code, 1006 if the connection
- * dropped, 1002 on a protocol error or 1009 if a message exceeded the limit.
+ * dropped (or a keepalive ping went unanswered), 1002 on a protocol error,
+ * 1009 if a message exceeded the limit or 1011 if the listener threw.
+ *
+ * Keepalive: after a ping interval without traffic the client pings; if the
+ * next interval passes without any traffic either, the connection is dropped.
  * send() and close() may be called from any thread.
  */
 public final class WebSocketClient {
@@ -44,6 +49,8 @@ public final class WebSocketClient {
     public static final int CLOSE_ABNORMAL = 1006;
     public static final int CLOSE_PROTOCOL_ERROR = 1002;
     public static final int CLOSE_TOO_BIG = 1009;
+    public static final int CLOSE_INTERNAL_ERROR = 1011;
+    public static final int DEFAULT_PING_INTERVAL_MS = 45000;
 
     private static final Charset UTF8 = Charset.forName("UTF-8");
     private static final String GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
@@ -55,11 +62,14 @@ public final class WebSocketClient {
     private final int port;
     private final String path;
     private final Listener listener;
-    private final SecureRandom random = new SecureRandom();
+    private static final SecureRandom random = new SecureRandom();
     private final Object writeLock = new Object();
 
     private volatile int maxMessage = DEFAULT_MAX_MESSAGE;
     private volatile long closeTimeoutMs = 1000;
+    private volatile int pingIntervalMs = DEFAULT_PING_INTERVAL_MS;
+    /** A keepalive ping was sent and nothing has been read since; reader thread only. */
+    private boolean pingOutstanding;
 
     private Socket socket; // guarded by writeLock, set once open
     private Socket connecting; // guarded by writeLock, set during connect()
@@ -86,6 +96,11 @@ public final class WebSocketClient {
     /** How long close() waits for the peer's close frame before dropping the socket. */
     public void setCloseTimeoutMs(long ms) {
         closeTimeoutMs = ms;
+    }
+
+    /** Idle time before a keepalive ping; set before connect(). */
+    public void setPingIntervalMs(int ms) {
+        pingIntervalMs = ms;
     }
 
     public boolean isOpen() {
@@ -125,26 +140,29 @@ public final class WebSocketClient {
             o.write(request.getBytes(UTF8));
             o.flush();
             checkResponse(readHeader(i), acceptFor(key));
-            s.setSoTimeout(0);
+            s.setSoTimeout(pingIntervalMs);
+            Thread r = new Thread(new Runnable() {
+                @Override public void run() {
+                    readLoop();
+                }
+            }, "ws-reader");
+            r.setDaemon(true);
             synchronized (writeLock) {
                 // close() sets closeRequested before taking writeLock.
                 if (closeRequested) throw new IOException("closed during connect");
                 socket = s;
                 in = i;
                 out = o;
+                // Before open, so a close() that sees it open always finds the
+                // reader and starts its watchdog.
+                reader = r;
                 open = true;
             }
+            r.start();
         } catch (IOException e) {
             closeQuietly(s);
             throw e;
         }
-        reader = new Thread(new Runnable() {
-            @Override public void run() {
-                readLoop();
-            }
-        }, "ws-reader");
-        reader.setDaemon(true);
-        reader.start();
     }
 
     private static String readHeader(InputStream in) throws IOException {
@@ -287,7 +305,7 @@ public final class WebSocketClient {
         int code = CLOSE_ABNORMAL;
         String reason = "";
         try {
-            listener.onOpen();
+            callListener(null);
             ByteArrayOutputStream message = new ByteArrayOutputStream();
             int messageOp = -1; // opcode of the message being reassembled
             while (true) {
@@ -345,7 +363,7 @@ public final class WebSocketClient {
                     if (messageOp == OP_TEXT) {
                         String text = new String(message.toByteArray(), UTF8);
                         message.reset();
-                        listener.onMessage(text);
+                        callListener(text);
                     }
                     messageOp = -1;
                 }
@@ -365,25 +383,54 @@ public final class WebSocketClient {
         } finally {
             open = false;
             dropSocket();
-            listener.onClose(code, reason);
+            try {
+                listener.onClose(code, reason);
+            } catch (RuntimeException ignored) {
+                // Nothing left to clean up; never let it kill the process.
+            }
         }
     }
 
+    /** onOpen (text null) or onMessage; a throwing listener closes with 1011. */
+    private void callListener(String text) throws ProtocolException {
+        try {
+            if (text == null) listener.onOpen();
+            else listener.onMessage(text);
+        } catch (RuntimeException e) {
+            throw new ProtocolException(CLOSE_INTERNAL_ERROR, "listener failed: " + e);
+        }
+    }
+
+    private final byte[] oneByte = new byte[1]; // reader thread only
+
     private int readByte() throws IOException {
-        int c = in.read();
-        if (c < 0) throw new EOFException();
-        return c;
+        read(oneByte, 0, 1);
+        return oneByte[0] & 0xff;
     }
 
     private byte[] readFully(int n) throws IOException {
         byte[] b = new byte[n];
         int off = 0;
-        while (off < n) {
-            int r = in.read(b, off, n - off);
-            if (r < 0) throw new EOFException();
-            off += r;
-        }
+        while (off < n) off += read(b, off, n - off);
         return b;
+    }
+
+    /** Reads at least one byte, pinging on idle timeouts (see the class comment). */
+    private int read(byte[] b, int off, int len) throws IOException {
+        while (true) {
+            int r;
+            try {
+                r = in.read(b, off, len);
+            } catch (SocketTimeoutException e) {
+                if (pingOutstanding) throw new IOException("keepalive ping unanswered");
+                pingOutstanding = true;
+                sendFrame(OP_PING, new byte[0], true);
+                continue;
+            }
+            if (r < 0) throw new EOFException();
+            pingOutstanding = false;
+            return r;
+        }
     }
 
     private void dropSocket() {

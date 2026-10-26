@@ -68,6 +68,16 @@ public final class TestServer implements Closeable {
         out.flush();
     }
 
+    /** Accepts TCP only and never answers the handshake. */
+    public Socket acceptRaw() throws IOException {
+        Socket s = server.accept();
+        s.setSoTimeout(5000);
+        peer = s;
+        in = new DataInputStream(s.getInputStream());
+        out = s.getOutputStream();
+        return s;
+    }
+
     /** accept() on a new thread, for clients whose connect() blocks the test thread. */
     public Thread acceptAsync(final boolean correctAccept) {
         Thread t = new Thread(new Runnable() {

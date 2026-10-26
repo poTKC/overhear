@@ -33,6 +33,15 @@ for entry in "${JARS[@]}"; do
     cp="$cp${cp:+:}$jar"
 done
 
+# The tests compile app code against json-20240303.jar, which has methods
+# Android 4.3's org.json lacks; build.sh would catch most of them, but not
+# overloads that resolve differently. Reject the known ones in app sources.
+API18_JSON='\.(keySet|toList|toMap|optNumber|optQuery|similar|getNumber|optBigDecimal|optBigInteger|optEnum)\('
+if bad=$(grep -rlE 'import org\.json' app/src | xargs grep -nE "$API18_JSON"); then
+    echo "$bad" >&2
+    die "app sources use org.json methods missing on API 18"
+fi
+
 out=build/test
 rm -rf "$out"
 mkdir -p "$out/classes"

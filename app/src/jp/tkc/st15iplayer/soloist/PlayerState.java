@@ -154,7 +154,7 @@ public final class PlayerState {
         } else if ("track_changed".equals(type)) {
             setTrack(e.optJSONObject("item"));
         } else if ("playback_changed".equals(type)) {
-            status = Status.parse(str(e, "status"));
+            if (e.has("status")) status = Status.parse(str(e, "status"));
         } else if ("volume_changed".equals(type)) {
             volume = e.optInt("volume", volume);
         } else if ("device_changed".equals(type)) {
@@ -176,6 +176,9 @@ public final class PlayerState {
 
     private void setTrack(JSONObject item) {
         Track t = item == null ? NO_TRACK : new Track(item);
+        // The same URI again (e.g. playback_state after track_changed, or a
+        // metadata refresh) keeps the position; skipping back to the start
+        // of the same track comes with its own position_sync.
         if (t.uri == null || !t.uri.equals(track.uri)) {
             // A new track: the old position means nothing until the next sync.
             positionMs = 0;
@@ -219,11 +222,13 @@ public final class PlayerState {
     /**
      * The position at wall-clock time nowMs, advanced from the last sync by
      * speed and clamped to [0, duration] (only below when the duration is
-     * unknown).
+     * unknown). It does not advance while paused or idle, even if the
+     * speed-0 position_sync has not arrived yet.
      */
     public long positionAt(long nowMs) {
         long p = positionMs;
-        if (positionTimestampMs > 0 && speed > 0) {
+        boolean advancing = speed > 0 && status != Status.PAUSED && status != Status.IDLE;
+        if (positionTimestampMs > 0 && advancing) {
             p += (long) ((nowMs - positionTimestampMs) * speed);
         }
         if (p < 0) p = 0;

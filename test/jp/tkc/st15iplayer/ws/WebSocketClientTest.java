@@ -277,6 +277,71 @@ public class WebSocketClientTest {
         assertTrue(nextClose().startsWith("1002"));
     }
 
+    @Test public void throwingListenerClosesWith1011() throws Exception {
+        Thread t = ts.acceptAsync(true);
+        client = new WebSocketClient("127.0.0.1", ts.port(), "/", new WebSocketClient.Listener() {
+            @Override public void onOpen() {}
+            @Override public void onMessage(String text) {
+                if (text.equals("boom")) throw new IllegalStateException("listener bug");
+                messages.add(text);
+            }
+            @Override public void onClose(int code, String reason) { closes.add(code + " " + reason); }
+        });
+        client.connect(3000);
+        t.join();
+        ts.sendText("boom");
+        Frame f = ts.readFrame();
+        assertEquals(8, f.opcode);
+        assertEquals(1011, f.closeCode());
+        assertTrue(nextClose().startsWith("1011"));
+        assertEquals(-1, ts.in.read());
+    }
+
+    @Test public void keepalivePingsAndDropsASilentPeer() throws Exception {
+        Thread t = ts.acceptAsync(true);
+        client = new WebSocketClient("127.0.0.1", ts.port(), "/", listener);
+        client.setPingIntervalMs(300);
+        client.connect(3000);
+        t.join();
+        assertEquals("<open>", nextMessage());
+        // Idle: the client pings; a pong counts as traffic and keeps it open.
+        Frame ping = ts.readFrame();
+        assertEquals(9, ping.opcode);
+        ts.frame(true, 10, ping.payload);
+        assertEquals(9, ts.readFrame().opcode);
+        assertTrue(client.isOpen());
+        assertTrue(closes.isEmpty());
+        // No answer to the second ping: dropped as abnormal.
+        assertEquals("1006 ", nextClose());
+        assertEquals(-1, ts.in.read());
+        assertFalse(client.isOpen());
+    }
+
+    @Test public void closeAbortsAHandshakeThatNeverAnswers() throws Exception {
+        client = new WebSocketClient("127.0.0.1", ts.port(), "/", listener);
+        final BlockingQueue<Object> result = new LinkedBlockingQueue<Object>();
+        Thread t = new Thread(new Runnable() {
+            @Override public void run() {
+                try {
+                    client.connect(10000);
+                    result.add("connected");
+                } catch (Exception e) {
+                    result.add(e);
+                }
+            }
+        });
+        t.start();
+        ts.acceptRaw();
+        TestServer.readLine(ts.in); // the request has arrived; no reply
+        long start = System.nanoTime();
+        client.close();
+        Object r = result.poll(2, TimeUnit.SECONDS);
+        assertTrue("connect() did not give up: " + r, r instanceof IOException);
+        assertTrue(System.nanoTime() - start < TimeUnit.SECONDS.toNanos(2));
+        assertFalse(client.isOpen());
+        assertNull(closes.poll(200, TimeUnit.MILLISECONDS));
+    }
+
     @Test public void concurrentSendsDoNotInterleave() throws Exception {
         open();
         final int threads = 4, each = 50;
