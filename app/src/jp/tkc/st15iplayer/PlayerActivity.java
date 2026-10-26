@@ -12,6 +12,7 @@ import android.content.ServiceConnection;
 import android.content.pm.ApplicationInfo;
 import android.graphics.Bitmap;
 import android.graphics.PorterDuff;
+import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.LayerDrawable;
@@ -45,8 +46,8 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Calendar;
 import java.util.Collections;
-import java.util.Date;
 import java.util.List;
 
 import jp.tkc.st15iplayer.soloist.PlayerState;
@@ -79,6 +80,8 @@ public class PlayerActivity extends Activity {
     private static final int QUEUE_SHOWN = 10;
     /** The played part of the seek bar while it is dragged (white otherwise). */
     private static final int SEEK_DRAG_COLOR = 0xff1db954;
+    /** Varela Round's digits (renamed subset, tools/make_fonts.py), loaded once. */
+    private static Typeface digits;
     private static final int MENU_SETTINGS = 1;
     private static final int MENU_SERVICE = 2;
 
@@ -157,6 +160,14 @@ public class PlayerActivity extends Activity {
         subtitle = (TextView) findViewById(R.id.subtitle);
         elapsed = (TextView) findViewById(R.id.elapsed);
         duration = (TextView) findViewById(R.id.duration);
+        // Clock, battery number and seek times: digits and ':' only (StatusStrip.DIGITS_FONT_CHARS).
+        Typeface d = digitsTypeface(this);
+        if (d != null) {
+            clock.setTypeface(d);
+            battery.setTypeface(d);
+            elapsed.setTypeface(d);
+            duration.setTypeface(d);
+        }
         seek = (SeekBar) findViewById(R.id.seek);
         shuffle = (ImageButton) findViewById(R.id.shuffle);
         prev = (ImageButton) findViewById(R.id.prev);
@@ -405,8 +416,22 @@ public class PlayerActivity extends Activity {
     };
 
     private void updateClock() {
-        // getTimeFormat follows the system 12/24 h setting (is24HourFormat).
-        setText(clock, DateFormat.getTimeFormat(this).format(new Date()));
+        // The system 12/24 h setting, but no AM/PM: the digits font has no letters.
+        Calendar now = Calendar.getInstance();
+        setText(clock, StatusStrip.clockText(now.get(Calendar.HOUR_OF_DAY), now.get(Calendar.MINUTE),
+                DateFormat.is24HourFormat(this)));
+    }
+
+    /** The digits typeface from assets, or null if it cannot be read (the default font then). */
+    private static Typeface digitsTypeface(Context c) {
+        if (digits == null) {
+            try {
+                digits = Typeface.createFromAsset(c.getAssets(), "fonts/st15i-digits.ttf");
+            } catch (RuntimeException e) {
+                android.util.Log.w("ST15iPlayer", "digits font: " + e);
+            }
+        }
+        return digits;
     }
 
     /** From the sticky ACTION_BATTERY_CHANGED (null if none yet). */

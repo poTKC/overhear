@@ -44,7 +44,7 @@ native/     fakepulse と libargkey（C、zig cc）
 helper/     st15i-fetch（Go）
 runtime/    同梱ランタイムの作成（glibc の取得とパッチ、CA バンドル、ライセンス文）
 test/       JVM 上の単体テスト
-tools/      raw2png.py（スクリーンショット変換）、make_icons.py（Remix Icon からアイコンの PNG を生成）など
+tools/      raw2png.py（スクリーンショット変換）、make_icons.py（Remix Icon からアイコンの PNG を生成）、make_fonts.py（数字フォントの切り出し）など
 ```
 
 ## 必要なもの
@@ -103,7 +103,8 @@ adb install -r build/st15i-player.apk
 - **再生画面:** 左下のステータス行（短い英語）をタップすると、状態に応じて開始・再試行・設定を開きます
   （例: `Stopped — tap to start`、`Failed — tap to retry`、`Check API key — tap`）。
   右下のボタンでキュー（次に再生）と設定を開きます。キューはアートワークを上にフリックしても開きます。
-  全画面表示のときは、上端に時刻と電池残量（色付きの点と %、充電中は水色）を小さく表示します。
+  全画面表示のときは、上端に時刻と電池残量（色付きの点と数字、充電中は水色）を小さく表示します。
+  12 時間制の設定でも午前/午後は付けません。
 - **音量:** ST15i の音量キーで端末のメディア音量を変えます。スマホの Spotify で ST15i の音量を変えると、
   ST15i のメディア音量も変わります（両方向に連動。サービスが動いている間だけ）。画面に音量バーはありません。
   起動時は ST15i のメディア音量を Spotify 側へ反映します。

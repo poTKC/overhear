@@ -30,12 +30,13 @@
                 android:layout_weight="1"
                 android:singleLine="true"
                 android:textColor="#ff8a8a8a"
-                android:textSize="12sp" />
+                android:includeFontPadding="false"
+                android:textSize="14sp" />
 
             <View
                 android:id="@+id/battery_dot"
-                android:layout_width="7dp"
-                android:layout_height="7dp"
+                android:layout_width="8dp"
+                android:layout_height="8dp"
                 android:layout_marginRight="5dp" />
 
             <TextView
@@ -44,7 +45,8 @@
                 android:layout_height="wrap_content"
                 android:singleLine="true"
                 android:textColor="#ff8a8a8a"
-                android:textSize="12sp" />
+                android:includeFontPadding="false"
+                android:textSize="14sp" />
         </LinearLayout>
 
         <View
@@ -298,11 +300,11 @@
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
-            android:background="?android:attr/selectableItemBackground"
+            android:background="@android:color/transparent"
             android:ellipsize="end"
             android:gravity="center_vertical"
             android:singleLine="true"
-            android:textColor="#ff5fa8c8"
+            android:textColor="#ffb3b3b3"
             android:textSize="12sp" />
 
         <ImageButton

@@ -33,6 +33,8 @@ mkdir -p build/gen build/classes build/dex
 
 link_opts=()
 [ -d build/assets ] && link_opts=(-A build/assets)
+# The app's own committed assets (fonts/st15i-digits.ttf from tools/make_fonts.py).
+[ -d app/assets ] && link_opts+=(-A app/assets)
 [ "${DEBUGGABLE:-0}" = 1 ] && link_opts+=(--debug-mode)
 "$BT/aapt2" link -I "$JAR" --manifest app/AndroidManifest.xml \
     --min-sdk-version 16 --target-sdk-version 18 \

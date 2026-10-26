@@ -1,11 +1,12 @@
 # Third-party notices
 
 ST15i Player ships the third-party components below inside its APK
-(`assets/runtime/`, and the icons in `res/`). This file is also packaged as
+(`assets/runtime/`, the icons in `res/` and a font in `assets/fonts/`). This file is also packaged as
 `assets/licenses/THIRD_PARTY_NOTICES.txt` and shown in the app
 (設定画面の「ライセンス」). In that packaged copy, `runtime/build.sh` appends the
 full licence texts: LGPL-2.1-or-later, GPL-3.0-or-later, GCC-exception-3.1,
-MPL-2.0 and Apache-2.0 from SPDX license-list-data v3.27.0 (pinned by sha256), and Debian's
+MPL-2.0, Apache-2.0 and OFL-1.1 from SPDX license-list-data v3.27.0 (pinned by
+sha256), and Debian's
 copyright file for libc6. The BSD-3-Clause text for Go is reproduced below.
 In this repository copy, each entry gives the SPDX id and links to the text.
 
@@ -132,6 +133,25 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
   <https://unpkg.com/remixicon@4.5.0/> (each SVG is checked by sha256 in
   `tools/make_icons.py`).
 - Licence text: <https://spdx.org/licenses/Apache-2.0.html>
+
+## Varela Round (font, as "ST15i Digits")
+
+- `assets/fonts/st15i-digits.ttf` shows the player's clock, battery number
+  and seek times. It is a subset of Varela Round Regular, made by
+  `tools/make_fonts.py`: only the glyphs for `0`-`9`, `:` and space are
+  kept, layout features are dropped, and the font is renamed "ST15i Digits"
+  in its name table (copyright, licence and designer entries kept).
+- Copyright 2023 The Varela Round Project Authors
+  (https://github.com/alefalefalef/Varela-Round-Hebrew/), with Reserved Font
+  Names 'Varela' and 'Varela Round'.
+- Licence: SIL Open Font License, Version 1.1 (SPDX `OFL-1.1`). Under the OFL
+  the subset is a Modified Version, which may not use the Reserved Font
+  Names; hence the new name. It is not sold on its own.
+- Source: <https://github.com/google/fonts/tree/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/varelaround>
+  (`VarelaRound-Regular.ttf`, sha256
+  `e1e47eb66dbc2ddc106661338e712d9176c9e83c669a82fde155324823d03aa2`,
+  checked by `tools/make_fonts.py`).
+- Licence text: <https://openfontlicense.org/>, <https://spdx.org/licenses/OFL-1.1.html>
 
 ## Zig toolchain runtime
 

@@ -213,11 +213,17 @@ SoloistClient は切断時に 1s、2s、5s（以降 5s）の間隔で再接続�
   （一時停止中は `Connected · Paused`）、`Select "<デバイス名>" in Spotify`、`Starting…`、`Updating…`、`Downloading 62%`、
   `Unpacking…`、`Restarting in 4 s`、`Wi-Fi off`、`Start failed`、`Reconnecting…`。サービスは通知用の日本語の文言と一緒に
   状態（PlayerText.Phase と数値）を持ち、画面は PlayerText がそれを英語に変える（純 Java でホストテストするため、文言はリソースではなく
-  PlayerText の定数）。通知とメニューは日本語のまま。
+  PlayerText の定数）。通知とメニューは日本語のまま。文字は灰色（#B3B3B3）で、押下時のハイライトは付けない（背景は透明。
+  タップと、デバッグビルドの長押しはそのまま）。
 - 再生画面の配置（320×480、スクロールなし、全画面でもそうでなくても）: 全画面のときだけ上部 20dp に時刻（左、
-  `DateFormat.getTimeFormat` で 12/24 時間はシステム設定どおり、`TIME_TICK`・`TIME_CHANGED`・`TIMEZONE_CHANGED` で更新）と
-  電池（右、色付きの点と %。50% 以上は緑、20〜49% は琥珀、20% 未満は赤、充電中は水色。sticky の `ACTION_BATTERY_CHANGED`）を
-  12sp の灰色で出す（受信は onResume〜onPause の間だけ。規則は純 Java の StatusStrip）。アートワークは 240dp、角は 6dp の丸め
+  `StatusStrip.clockText` が `H:mm`、12 時間制（`DateFormat.is24HourFormat` が偽）なら AM/PM なしの `h:mm`。
+  システムの書式はこの端末では「午前/午後」を付けるが、数字フォントに文字がないため。`TIME_TICK`・`TIME_CHANGED`・`TIMEZONE_CHANGED`
+  で更新）と電池（右、8dp の色付きの点と数字だけ。50% 以上は緑、20〜49% は琥珀、20% 未満は赤、充電中は水色。sticky の
+  `ACTION_BATTERY_CHANGED`）を 14sp の灰色で出す（`includeFontPadding` なしで 20dp に収める。受信は onResume〜onPause の間だけ。
+  規則は純 Java の StatusStrip）。時刻・電池の数字とシークバーの時間は Varela Round（SIL OFL 1.1）を数字・`:`・空白だけに
+  切り出したフォント（`tools/make_fonts.py`、google/fonts の固定したコミットから取得して sha256 を確認、`assets/fonts/st15i-digits.ttf`、
+  `Typeface.createFromAsset` で一度だけ読む）。Varela Round は予約フォント名を持ち、OFL では切り出しも改変版にあたるので、
+  名前表の名前を「ST15i Digits」に変えている（著作権・ライセンスの記載は残す）。アートワークは 240dp、角は 6dp の丸め
   （BitmapShader と drawRoundRect の自前 Drawable RoundedArt。ハードウェアアクセラレーションでも効く。プレースホルダーも同じ、
   キューのサムネイルは 3dp）。その下に曲名・アーティスト、シークバー、操作ボタンの行（両端にシャッフルとリピート、⏮ ⏭ は 56dp、
   ⏯ は 60dp の白い円で強調）、最下段 36dp にステータス行とキュー・設定のボタン（36dp、小さいアイコン）。

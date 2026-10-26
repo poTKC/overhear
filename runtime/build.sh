@@ -55,6 +55,7 @@ SPDX_TEXTS=(
     "GCC-exception-3.1 7103d4f7f7e2f8ce10d282a05e0689637f8d6d9ef7b399d808d1da313e69b960"
     "MPL-2.0 66a3107d5ad6a058aab753eaac2047ccb2ed0e39465dd0fe5844da3e300d5172"
     "Apache-2.0 074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff"
+    "OFL-1.1 8eea8287e5876b539670cadb82e99f9a7afddec6f6730811be1daf25d2e9bcfd"
 )
 LICENSES_OUT=build/assets/licenses
 

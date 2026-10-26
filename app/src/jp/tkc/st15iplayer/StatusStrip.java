@@ -2,9 +2,9 @@ package jp.tkc.st15iplayer;
 
 /**
  * The player's top strip in full-screen mode (the status bar is hidden):
- * the time on the left, a battery dot and percent on the right. The time is
- * formatted by the activity (system 12/24 h setting); this holds the battery
- * rules. Pure Java (host tests).
+ * the time on the left, a battery dot and number on the right, both in the
+ * Varela Round digits subset (assets/fonts, tools/make_fonts.py). Pure Java
+ * (host tests).
  */
 final class StatusStrip {
     /** 50 % or more. */
@@ -17,7 +17,22 @@ final class StatusStrip {
     static final int CHARGING = 0xff4fc3f7;
     static final int UNKNOWN = 0xff666666;
 
+    /**
+     * The characters in assets/fonts/VarelaRound-digits.ttf (tools/make_fonts.py
+     * subsets to the same set): clock, battery and seek times only use these.
+     */
+    static final String DIGITS_FONT_CHARS = "0123456789: ";
+
     private StatusStrip() {}
+
+    /**
+     * H:mm, or h:mm in 12-hour mode (system setting), without AM/PM: the
+     * locale's marker (午前/午後 here) is not in the digits font.
+     */
+    static String clockText(int hour, int minute, boolean is24) {
+        int h = is24 ? hour : (hour % 12 == 0 ? 12 : hour % 12);
+        return h + ":" + (minute < 10 ? "0" : "") + minute;
+    }
 
     /** Shown only in full screen: otherwise the real status bar is visible. */
     static boolean visible(boolean fullscreen) {
@@ -31,7 +46,7 @@ final class StatusStrip {
     }
 
     static String batteryText(int percent) {
-        return percent < 0 ? "" : percent + "%";
+        return percent < 0 ? "" : String.valueOf(percent);
     }
 
     static int batteryColor(int percent, boolean charging) {
