@@ -4,7 +4,7 @@ app/res/drawable-{mdpi,hdpi,xhdpi}/art_shadow.9.png (committed).
 
 API 18 has no elevation, and Paint.setShadowLayer needs a software layer
 (slow on the ST15i), so the shadow is pre-rendered: a rounded rectangle
-(RADIUS_DP corners, like RoundedArt) OFFSET_DP below the art, Gaussian
+(RADIUS_DP corners, like RoundedArt) OFFSET_DP below the art (0: centred), Gaussian
 blurred with SIGMA_DP, at most ALPHA black. The image is the art box plus
 EXTENT_DP of blur around the shadow (3 sigma, so nothing visible is cut
 off): SIDE_DP left and right, TOP_DP above and BOTTOM_DP below the art.
@@ -28,10 +28,10 @@ RES = os.path.join("app", "res")
 DENSITIES = {"mdpi": 1.0, "hdpi": 1.5, "xhdpi": 2.0}
 
 RADIUS_DP = 6       # the artwork's corner radius (PlayerActivity.artRadius)
-OFFSET_DP = 4       # straight down
+OFFSET_DP = 0       # none: an even halo, like Spotify's (it was 4dp down at first)
 SIGMA_DP = 4        # Gaussian sigma: the blur fades out over about 12dp
 EXTENT_DP = 12      # 3 sigma of blur kept around the shadow
-ALPHA = 0.40        # black at its strongest
+ALPHA = 0.22        # black at its strongest (it was 0.40 at first)
 BOX_DP = 40         # the art box inside the 9-patch (stretched to 240dp)
 
 SIDE_DP = EXTENT_DP

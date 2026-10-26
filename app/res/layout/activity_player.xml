@@ -59,8 +59,9 @@
             android:layout_weight="1" />
 
         <!-- The artwork (240dp, as before) with a soft drop shadow
-             (tools/make_shadow.py): the shadow view reaches 12dp past the
-             sides, 8dp above and 16dp below through negative margins, so the
+             (tools/make_shadow.py): the shadow view reaches 12dp past every
+             side through negative margins (one per side: a negative
+             layout_margin counts as unset), so the
              art keeps its size and place; clipChildren="false" here and on
              the parents lets it draw into the spacing around the art. -->
         <FrameLayout
@@ -72,10 +73,10 @@
             <View
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:layout_marginBottom="-16dp"
+                android:layout_marginBottom="-12dp"
                 android:layout_marginLeft="-12dp"
                 android:layout_marginRight="-12dp"
-                android:layout_marginTop="-8dp"
+                android:layout_marginTop="-12dp"
                 android:background="@drawable/art_shadow" />
 
             <ImageView
