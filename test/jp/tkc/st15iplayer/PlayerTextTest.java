@@ -96,6 +96,40 @@ public class PlayerTextTest {
         assertEquals("スマホの Spotify で『ST15i』を選んでください", PlayerText.selectDevice("ST15i"));
     }
 
+    private static PlayerState withActions(boolean active, String... actions) throws Exception {
+        PlayerState s = state(true, active);
+        JSONObject e = new JSONObject("{\"type\":\"playback_state\",\"status\":\"playing\",\"is_active\":"
+                + active + ",\"available_actions\":{}}");
+        for (String a : actions) e.getJSONObject("available_actions").put(a, new JSONObject());
+        s.apply(e);
+        return s;
+    }
+
+    @Test public void shuffleAndRepeatNeedTheirActions() throws Exception {
+        PlayerState all = withActions(true, "pause", "shuffle", "set_repeat");
+        assertTrue(PlayerText.shuffleEnabled(true, all));
+        assertTrue(PlayerText.repeatEnabled(true, all));
+        PlayerState radio = withActions(true, "pause", "seek", "skip_next", "skip_prev", "add_to_queue");
+        assertFalse(PlayerText.shuffleEnabled(true, radio));
+        assertFalse(PlayerText.repeatEnabled(true, radio));
+        PlayerState onlyShuffle = withActions(true, "shuffle");
+        assertTrue(PlayerText.shuffleEnabled(true, onlyShuffle));
+        assertFalse(PlayerText.repeatEnabled(true, onlyShuffle));
+    }
+
+    @Test public void shuffleAndRepeatAlsoNeedTheControls() throws Exception {
+        PlayerState all = withActions(true, "shuffle", "set_repeat");
+        assertFalse(PlayerText.shuffleEnabled(false, all)); // not connected
+        assertFalse(PlayerText.repeatEnabled(false, all));
+        PlayerState inactive = withActions(false, "shuffle", "set_repeat");
+        assertFalse(PlayerText.shuffleEnabled(true, inactive)); // another device plays
+    }
+
+    @Test public void withoutAnActionListShuffleAndRepeatFollowTheControls() throws Exception {
+        assertTrue(PlayerText.shuffleEnabled(true, state(true, true)));
+        assertTrue(PlayerText.repeatEnabled(true, state(true, true)));
+    }
+
     @Test public void repeatPicksTheDrawableLevel() {
         assertEquals(0, PlayerText.repeatLevel(PlayerState.Repeat.OFF)); // grey, no dot
         assertEquals(1, PlayerText.repeatLevel(PlayerState.Repeat.CONTEXT)); // green, dot

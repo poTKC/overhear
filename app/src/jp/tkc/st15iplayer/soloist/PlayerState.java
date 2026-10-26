@@ -2,7 +2,10 @@ package jp.tkc.st15iplayer.soloist;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -120,6 +123,8 @@ public final class PlayerState {
     private boolean shuffle;
     private Repeat repeat = Repeat.OFF;
     private List<QueueItem> queue = Collections.emptyList();
+    /** playback_state's available_actions (immutable), or null until one has been seen. */
+    private Set<String> actions;
 
     public PlayerState copy() {
         PlayerState c = new PlayerState();
@@ -137,6 +142,7 @@ public final class PlayerState {
         c.shuffle = shuffle;
         c.repeat = repeat;
         c.queue = queue;
+        c.actions = actions;
         return c;
     }
 
@@ -158,6 +164,7 @@ public final class PlayerState {
             volume = e.optInt("volume", volume);
             active = e.optBoolean("is_active", active);
             setOptions(e.optJSONObject("options"));
+            setActions(e.optJSONObject("available_actions"));
         } else if ("track_changed".equals(type)) {
             setTrack(e.optJSONObject("item"));
         } else if ("playback_changed".equals(type)) {
@@ -206,6 +213,19 @@ public final class PlayerState {
         positionTimestampMs = p.optLong("timestamp_ms", 0);
         speed = p.optDouble("speed", 0);
         if (Double.isNaN(speed) || speed < 0) speed = 0;
+    }
+
+    /**
+     * Only playback_state carries available_actions, as the whole list (e.g.
+     * "pause", "seek", "skip_next", "shuffle", "set_repeat"); an event without
+     * it keeps the last one.
+     */
+    private void setActions(JSONObject a) {
+        if (a == null) return;
+        Set<String> set = new HashSet<String>();
+        Iterator<?> it = a.keys();
+        while (it.hasNext()) set.add(String.valueOf(it.next()));
+        actions = Collections.unmodifiableSet(set);
     }
 
     private void setOptions(JSONObject o) {
@@ -282,6 +302,23 @@ public final class PlayerState {
 
     /** 0..100, or -1 if unknown. */
     public int getVolume() { return volume; }
+
+    /**
+     * Soloist lists "shuffle" in available_actions where set_shuffle works
+     * (not on radio and some other contexts, where it is ignored). True if no
+     * list has been seen.
+     */
+    public boolean canShuffle() {
+        return actions == null || actions.contains("shuffle");
+    }
+
+    /**
+     * Likewise "set_repeat": Soloist 1.3.x has one action for both repeat
+     * modes, so there is no context-only or track-only case to cycle around.
+     */
+    public boolean canRepeat() {
+        return actions == null || actions.contains("set_repeat");
+    }
 
     public boolean isShuffle() { return shuffle; }
 

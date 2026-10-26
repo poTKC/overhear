@@ -1,0 +1,35 @@
+{
+  "type": "playback_state",
+  "status": "playing",
+  "item": {
+    "uri": "",
+    "entity_type": "",
+    "decorations": {}
+  },
+  "context": {
+    "uri": "spotify:album:5JnGvbE42HzaqM6DT7u1SN",
+    "entity_type": "album",
+    "decorations": {}
+  },
+  "position": {
+    "position_ms": 7898,
+    "timestamp_ms": 1793029417134,
+    "speed": 1
+  },
+  "volume": 47,
+  "is_active": true,
+  "options": {
+    "shuffle": false,
+    "repeat": "off",
+    "playback_speed": 1,
+    "modes": {
+      "context_enhancement": "NONE"
+    }
+  },
+  "available_actions": {
+    "add_to_queue": {},
+    "pause": {},
+    "set_repeat": {},
+    "shuffle": {}
+  }
+}

@@ -125,6 +125,16 @@ final class PlayerText {
         return serviceUp ? STOP : START;
     }
 
+    /** Shuffle: the controls work and Soloist allows it here (available_actions). */
+    static boolean shuffleEnabled(boolean connected, PlayerState ps) {
+        return controlsEnabled(connected, ps) && ps.canShuffle();
+    }
+
+    /** Repeat: the controls work and Soloist allows it here (available_actions). */
+    static boolean repeatEnabled(boolean connected, PlayerState ps) {
+        return controlsEnabled(connected, ps) && ps.canRepeat();
+    }
+
     /** The repeat button's level in ic_repeat_levels: off, repeat (context), repeat one (track). */
     static int repeatLevel(PlayerState.Repeat r) {
         if (r == PlayerState.Repeat.TRACK) return 2;

@@ -82,6 +82,43 @@ public class PlayerStateTest {
         assertEquals(p, s.positionAt(s.getPositionTimestampMs() + 60000));
     }
 
+    @Test public void availableActionsGateShuffleAndRepeat() {
+        // Never reported: allowed (older Soloist builds, or before the first playback_state).
+        assertTrue(s.canShuffle());
+        assertTrue(s.canRepeat());
+        // Captured on the device: an album where Soloist lists "shuffle" and "set_repeat".
+        s.apply(fixture("playback_state_shuffle_allowed"));
+        assertTrue(s.canShuffle());
+        assertTrue(s.canRepeat());
+        // Captured on the device: a context without them (Soloist ignored set_shuffle there).
+        s.apply(fixture("playback_state_restricted"));
+        assertFalse(s.canShuffle());
+        assertFalse(s.canRepeat());
+    }
+
+    @Test public void availableActionsSurvivePartialEventsAndCopies() {
+        s.apply(fixture("playback_state_restricted"));
+        s.apply(fixture("playback_changed"));
+        s.apply(fixture("position_sync"));
+        s.apply(fixture("options_changed_context"));
+        assertFalse(s.canShuffle());
+        PlayerState c = s.copy();
+        assertFalse(c.canShuffle());
+        assertFalse(c.canRepeat());
+        // The next full playback_state replaces the list.
+        s.apply(fixture("playback_state_shuffle_allowed"));
+        assertTrue(s.canShuffle());
+        assertFalse(c.canShuffle());
+    }
+
+    @Test public void aPlaybackStateWithoutTheFieldKeepsTheLastList() {
+        s.apply(fixture("playback_state_restricted"));
+        JSONObject e = fixture("playback_state_shuffle_allowed");
+        e.remove("available_actions");
+        s.apply(e);
+        assertFalse(s.canShuffle());
+    }
+
     @Test public void trackChangedWithSeveralArtists() {
         s.apply(fixture("playback_state"));
         assertTrue(s.apply(fixture("track_changed")));

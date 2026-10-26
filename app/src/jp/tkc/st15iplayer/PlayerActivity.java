@@ -487,8 +487,10 @@ public class PlayerActivity extends Activity {
         setEnabled(playPause, enabled);
         setEnabled(prev, enabled);
         setEnabled(next, enabled);
-        setEnabled(shuffle, enabled);
-        setEnabled(repeat, enabled);
+        // Faded and untappable where Soloist does not allow them (radio ...);
+        // an option that is on stays green, just faded.
+        setEnabled(shuffle, PlayerText.shuffleEnabled(connected, state));
+        setEnabled(repeat, PlayerText.repeatEnabled(connected, state));
         shuffle.setActivated(state.isShuffle()); // ic_shuffle_state: green with a dot
         repeat.setImageLevel(PlayerText.repeatLevel(state.getRepeat())); // ic_repeat_levels
         seek.setEnabled(enabled && state.getDurationMs() > 0);
