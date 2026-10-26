@@ -7,8 +7,9 @@
 //	st15i-fetch [--ca FILE] [--dns a,b] get URL OUT
 //	st15i-fetch [--ca FILE] [--dns a,b] extract URL DIR
 //
-// stdout carries "progress N" lines (0-100, only when the size is known) and a
-// final "done". Errors go to stderr with exit status 1.
+// stdout carries "progress N" lines (0-100, only when the size is known),
+// "extracting" once an archive is downloaded, and a final "done". Errors go to
+// stderr with exit status 1. SIGINT/SIGTERM abort cleanly (exit 1).
 package main
 
 import (
@@ -23,23 +24,27 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"time"
 )
 
 const (
-	userAgent      = "st15i-player/1"
-	connectTimeout = 15 * time.Second
-	idleTimeout    = 60 * time.Second
-	progressEvery  = 100 * time.Millisecond
+	userAgent          = "st15i-player/1"
+	connectTimeout     = 15 * time.Second
+	defaultIdleTimeout = 60 * time.Second
+	progressEvery      = 100 * time.Millisecond
 )
 
 // Used when neither --dns nor ST15I_DNS is given and the system has no
 // /etc/resolv.conf (Android), where Go would otherwise query 127.0.0.1:53.
-var fallbackDNS = []string{"8.8.8.8", "1.1.1.1"}
+const fallbackDNS = "8.8.8.8,1.1.1.1"
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
@@ -49,7 +54,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("st15i-fetch", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	caFile := fs.String("ca", "", "PEM bundle of trusted roots (default: system roots)")
-	dns := fs.String("dns", "", "comma-separated DNS servers, host or host:port (default: $ST15I_DNS)")
+	dns := fs.String("dns", "", "comma-separated DNS server IPs, optionally ip:port (default: $ST15I_DNS)")
 	fs.Usage = func() {
 		fmt.Fprintln(stderr, "usage: st15i-fetch [--ca FILE] [--dns a,b] get URL OUT | extract URL DIR")
 		fs.PrintDefaults()
@@ -62,21 +67,35 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fs.Usage()
 		return 1
 	}
+	fail := func(err error) int {
+		fmt.Fprintln(stderr, "st15i-fetch:", err)
+		return 1
+	}
 
-	client, err := newClient(*caFile, dnsServers(*dns))
+	_, statErr := os.Stat("/etc/resolv.conf")
+	servers, err := dnsServers(*dns, os.Getenv("ST15I_DNS"), statErr == nil)
 	if err != nil {
-		fmt.Fprintln(stderr, "st15i-fetch:", err)
-		return 1
+		return fail(err)
 	}
-	f := &fetcher{client: client, progress: func(p int) { fmt.Fprintf(stdout, "progress %d\n", p) }}
+	client, err := newClient(*caFile, servers)
+	if err != nil {
+		return fail(err)
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	f := &fetcher{
+		client:   client,
+		progress: func(p int) { fmt.Fprintf(stdout, "progress %d\n", p) },
+		status:   func(s string) { fmt.Fprintln(stdout, s) },
+	}
 	if rest[0] == "get" {
-		err = f.fetch(rest[1], rest[2])
+		err = f.fetch(ctx, rest[1], rest[2])
 	} else {
-		err = f.fetchExtract(rest[1], rest[2])
+		err = f.fetchExtract(ctx, rest[1], rest[2])
 	}
 	if err != nil {
-		fmt.Fprintln(stderr, "st15i-fetch:", err)
-		return 1
+		return fail(err)
 	}
 	fmt.Fprintln(stdout, "done")
 	return 0
@@ -84,33 +103,44 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 // dnsServers picks the resolver list: --dns, then $ST15I_DNS, then a public
 // fallback when the system has no resolv.conf. nil means the Go default.
-func dnsServers(flagValue string) []string {
-	if s := parseDNS(flagValue); len(s) > 0 {
-		return s
+func dnsServers(flagValue, env string, haveResolvConf bool) ([]string, error) {
+	for _, s := range []string{flagValue, env} {
+		if strings.TrimSpace(s) != "" {
+			return parseDNS(s)
+		}
 	}
-	if s := parseDNS(os.Getenv("ST15I_DNS")); len(s) > 0 {
-		return s
+	if !haveResolvConf {
+		return parseDNS(fallbackDNS)
 	}
-	if _, err := os.Stat("/etc/resolv.conf"); err != nil {
-		return parseDNS(strings.Join(fallbackDNS, ","))
-	}
-	return nil
+	return nil, nil
 }
 
-// parseDNS turns "a,b:5353" into dialable host:port addresses.
-func parseDNS(s string) []string {
+// parseDNS turns "ip,ip:port" into dialable ip:port addresses. Only literal
+// IPs are accepted: resolving a DNS server's name would need DNS.
+func parseDNS(s string) ([]string, error) {
 	var out []string
 	for _, item := range strings.Split(s, ",") {
 		item = strings.TrimSpace(item)
 		if item == "" {
 			continue
 		}
-		if _, _, err := net.SplitHostPort(item); err != nil {
-			item = net.JoinHostPort(strings.Trim(item, "[]"), "53")
+		host, port := item, "53"
+		if h, p, err := net.SplitHostPort(item); err == nil {
+			host, port = h, p
 		}
-		out = append(out, item)
+		ip, err := netip.ParseAddr(strings.Trim(host, "[]"))
+		if err != nil {
+			return nil, fmt.Errorf("DNS server %q is not an IP address", item)
+		}
+		if n, err := strconv.ParseUint(port, 10, 16); err != nil || n == 0 {
+			return nil, fmt.Errorf("DNS server %q has an invalid port", item)
+		}
+		out = append(out, net.JoinHostPort(ip.String(), port))
 	}
-	return out
+	if len(out) == 0 {
+		return nil, fmt.Errorf("no DNS servers in %q", s)
+	}
+	return out, nil
 }
 
 func newClient(caFile string, dns []string) (*http.Client, error) {
@@ -144,42 +174,66 @@ func newClient(caFile string, dns []string) (*http.Client, error) {
 		DialContext:           dialer.DialContext,
 		TLSClientConfig:       tlsConf,
 		TLSHandshakeTimeout:   connectTimeout,
-		ResponseHeaderTimeout: idleTimeout,
+		ResponseHeaderTimeout: defaultIdleTimeout,
 		ForceAttemptHTTP2:     true,
 	}
 	return &http.Client{Transport: transport}, nil
 }
 
 type fetcher struct {
-	client   *http.Client
-	progress func(pct int) // may be nil
+	client      *http.Client
+	progress    func(pct int)    // may be nil
+	status      func(msg string) // may be nil
+	idleTimeout time.Duration    // 0 means defaultIdleTimeout
 }
 
-// fetch downloads url to out via out.part and an atomic rename.
-func (f *fetcher) fetch(url, out string) error {
-	part := out + ".part"
-	if err := f.download(url, part); err != nil {
-		os.Remove(part)
+// fetch downloads url to out through a unique temp file in out's directory
+// and an atomic rename, so concurrent runs never see partial files.
+func (f *fetcher) fetch(ctx context.Context, url, out string) error {
+	tmp, err := os.CreateTemp(filepath.Dir(out), "."+filepath.Base(out)+".*.part")
+	if err != nil {
 		return err
 	}
-	if err := os.Rename(part, out); err != nil {
-		os.Remove(part)
+	defer os.Remove(tmp.Name()) // no-op after the rename
+	if err := f.downloadTo(ctx, url, tmp); err != nil {
 		return err
 	}
-	return nil
+	if err := os.Chmod(tmp.Name(), 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), out)
 }
 
-// fetchExtract downloads a .tar.gz and atomically replaces dir with its contents.
-func (f *fetcher) fetchExtract(url, dir string) error {
+// fetchExtract downloads a .tar.gz and atomically replaces dir with its
+// contents. Extracts into the same parent are serialized with a lock on the
+// parent directory, which also makes cleaning up after killed runs safe.
+func (f *fetcher) fetchExtract(ctx context.Context, url, dir string) error {
 	dir = filepath.Clean(dir)
 	parent, base := filepath.Dir(dir), filepath.Base(dir)
 	if err := os.MkdirAll(parent, 0o755); err != nil {
 		return err
 	}
-	part := filepath.Join(parent, "."+base+".tgz.part")
-	defer os.Remove(part)
-	if err := f.download(url, part); err != nil {
+	unlock, err := lockDir(parent)
+	if err != nil {
 		return err
+	}
+	defer unlock()
+
+	old := filepath.Join(parent, "."+base+".old")
+	if err := recoverInterrupted(parent, base, dir, old); err != nil {
+		return err
+	}
+
+	part, err := os.CreateTemp(parent, "."+base+".*.tgz.part")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(part.Name())
+	if err := f.downloadTo(ctx, url, part); err != nil {
+		return err
+	}
+	if f.status != nil {
+		f.status("extracting")
 	}
 
 	tmp, err := os.MkdirTemp(parent, "."+base+".new-")
@@ -190,12 +244,10 @@ func (f *fetcher) fetchExtract(url, dir string) error {
 	if err := os.Chmod(tmp, 0o755); err != nil {
 		return err
 	}
-	if err := extractTarGz(part, tmp); err != nil {
+	if err := extractTarGz(ctx, part.Name(), tmp); err != nil {
 		return fmt.Errorf("extract: %w", err)
 	}
 
-	old := filepath.Join(parent, "."+base+".old")
-	os.RemoveAll(old)
 	if _, err := os.Lstat(dir); err == nil {
 		if err := os.Rename(dir, old); err != nil {
 			return err
@@ -205,60 +257,121 @@ func (f *fetcher) fetchExtract(url, dir string) error {
 		os.Rename(old, dir) // best effort restore
 		return err
 	}
+	syncDir(parent)
 	os.RemoveAll(old)
 	return nil
 }
 
-// download streams url into path, reporting progress.
-func (f *fetcher) download(url, path string) error {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+// recoverInterrupted repairs what a killed extract may leave behind: a swap
+// stopped between its two renames (dir missing, .old present), work dirs and
+// partial downloads. The caller holds the parent lock.
+func recoverInterrupted(parent, base, dir, old string) error {
+	if _, err := os.Lstat(dir); os.IsNotExist(err) {
+		if _, err := os.Lstat(old); err == nil {
+			if err := os.Rename(old, dir); err != nil {
+				return fmt.Errorf("restore %s: %w", old, err)
+			}
+		}
+	}
+	os.RemoveAll(old)
+	for _, pattern := range []string{"." + base + ".new-*", "." + base + ".*tgz.part"} {
+		stale, _ := filepath.Glob(filepath.Join(parent, globEscape(pattern)))
+		for _, p := range stale {
+			os.RemoveAll(p)
+		}
+	}
+	return nil
+}
+
+// globEscape escapes glob metacharacters except the '*' wildcards we add.
+func globEscape(pattern string) string {
+	r := strings.NewReplacer(`\`, `\\`, `?`, `\?`, `[`, `\[`)
+	return r.Replace(pattern)
+}
+
+func lockDir(dir string) (func(), error) {
+	d, err := os.Open(dir)
+	if err != nil {
+		return nil, err
+	}
+	if err := syscall.Flock(int(d.Fd()), syscall.LOCK_EX); err != nil {
+		d.Close()
+		return nil, fmt.Errorf("lock %s: %w", dir, err)
+	}
+	return func() { d.Close() }, nil // closing releases the lock
+}
+
+func syncDir(dir string) {
+	if d, err := os.Open(dir); err == nil {
+		d.Sync()
+		d.Close()
+	}
+}
+
+// downloadTo streams url into out (which it closes), reporting progress and
+// syncing the data to disk.
+func (f *fetcher) downloadTo(ctx context.Context, url string, out *os.File) (err error) {
+	defer func() {
+		if cerr := out.Close(); err == nil {
+			err = cerr
+		}
+	}()
+	idle := f.idleTimeout
+	if idle == 0 {
+		idle = defaultIdleTimeout
+	}
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	errIdle := fmt.Errorf("no data for %v", idle)
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("User-Agent", userAgent)
+	timer := time.AfterFunc(idle, func() { cancel(errIdle) })
+	defer timer.Stop()
 	resp, err := f.client.Do(req)
 	if err != nil {
-		return err
+		return withCause(ctx, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("GET %s: %s", url, resp.Status)
 	}
 
-	out, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
-	if err != nil {
-		return err
-	}
-	body := &idleReader{r: resp.Body, timer: time.AfterFunc(idleTimeout, cancel)}
-	defer body.timer.Stop()
+	body := &idleReader{r: resp.Body, timer: timer, idle: idle}
 	pw := &progressWriter{total: resp.ContentLength, report: f.progress, last: -1}
 	pw.emit(true)
-	_, err = io.Copy(io.MultiWriter(out, pw), body)
-	if err != nil && ctx.Err() != nil {
-		err = fmt.Errorf("no data for %v: %w", idleTimeout, err)
+	if _, err := io.Copy(io.MultiWriter(out, pw), body); err != nil {
+		return withCause(ctx, err)
 	}
-	if cerr := out.Close(); err == nil {
-		err = cerr
-	}
-	if err != nil {
+	if err := out.Sync(); err != nil {
 		return err
 	}
 	pw.emit(true)
 	return nil
 }
 
+// withCause explains a transfer error caused by the idle timer or a signal.
+func withCause(ctx context.Context, err error) error {
+	if cause := context.Cause(ctx); cause != nil {
+		return fmt.Errorf("%w: %v", cause, err)
+	}
+	return err
+}
+
 // idleReader pushes back the idle deadline on every successful read.
 type idleReader struct {
 	r     io.Reader
 	timer *time.Timer
+	idle  time.Duration
 }
 
 func (r *idleReader) Read(p []byte) (int, error) {
 	n, err := r.r.Read(p)
 	if n > 0 {
-		r.timer.Reset(idleTimeout)
+		r.timer.Reset(r.idle)
 	}
 	return n, err
 }
@@ -293,9 +406,22 @@ func (w *progressWriter) emit(force bool) {
 	w.report(pct)
 }
 
+// ctxReader stops a long copy once ctx is cancelled.
+type ctxReader struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (r ctxReader) Read(p []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return r.r.Read(p)
+}
+
 // extractTarGz unpacks archive into root, keeping permission bits and
 // refusing any entry or link target that would land outside root.
-func extractTarGz(archive, root string) error {
+func extractTarGz(ctx context.Context, archive, root string) error {
 	file, err := os.Open(archive)
 	if err != nil {
 		return err
@@ -306,14 +432,23 @@ func extractTarGz(archive, root string) error {
 		return err
 	}
 	defer gz.Close()
-	tr := tar.NewReader(gz)
+	tr := tar.NewReader(ctxReader{ctx, gz})
 	for {
 		h, err := tr.Next()
 		if errors.Is(err, io.EOF) {
+			syncDir(root)
 			return nil
 		}
 		if err != nil {
 			return err
+		}
+		switch h.Typeflag {
+		case tar.TypeReg, tar.TypeRegA, tar.TypeDir, tar.TypeSymlink, tar.TypeLink:
+		case tar.TypeXHeader, tar.TypeXGlobalHeader:
+			continue // metadata only
+		default:
+			// Devices, fifos and sparse files have no place in a runtime bundle.
+			return fmt.Errorf("%s: unsupported entry type %q", h.Name, h.Typeflag)
 		}
 		rel, err := safeRel(h.Name)
 		if err != nil {
@@ -338,13 +473,16 @@ func extractTarGz(archive, root string) error {
 			if err := os.Chmod(target, mode|0o700); err != nil {
 				return err
 			}
-		case tar.TypeReg:
+		case tar.TypeReg, tar.TypeRegA:
 			removeNonDir(target)
 			out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 			if err != nil {
 				return err
 			}
 			_, err = io.Copy(out, tr)
+			if err == nil {
+				err = out.Sync()
+			}
 			if cerr := out.Close(); err == nil {
 				err = cerr
 			}
@@ -380,8 +518,6 @@ func extractTarGz(archive, root string) error {
 			if err := os.Link(filepath.Join(root, linkRel), target); err != nil {
 				return err
 			}
-		default:
-			// Devices, fifos and pax metadata have no place in a runtime bundle.
 		}
 	}
 }

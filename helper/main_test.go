@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/pem"
 	"io"
 	"net/http"
@@ -11,7 +12,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 type entry struct {
@@ -52,6 +55,15 @@ func serve(t *testing.T, routes map[string][]byte) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case "/stall":
+			w.Header().Set("Content-Length", "1000")
+			w.Write([]byte("start"))
+			w.(http.Flusher).Flush()
+			select {
+			case <-r.Context().Done():
+			case <-time.After(10 * time.Second):
+			}
+			return
 		case "/truncated":
 			w.Header().Set("Content-Length", "1000")
 			w.Write([]byte("short"))
@@ -93,7 +105,7 @@ func TestFetchWritesAtomically(t *testing.T) {
 	out := filepath.Join(dir, "out.bin")
 	var progress []int
 	f := &fetcher{client: srv.Client(), progress: func(p int) { progress = append(progress, p) }}
-	if err := f.fetch(srv.URL+"/f", out); err != nil {
+	if err := f.fetch(t.Context(), srv.URL+"/f", out); err != nil {
 		t.Fatal(err)
 	}
 	b, err := os.ReadFile(out)
@@ -112,7 +124,7 @@ func TestFetchFailureKeepsExistingFile(t *testing.T) {
 	out := filepath.Join(dir, "out.bin")
 	os.WriteFile(out, []byte("old"), 0o644)
 	f := &fetcher{client: srv.Client()}
-	if err := f.fetch(srv.URL+"/truncated", out); err == nil {
+	if err := f.fetch(t.Context(), srv.URL+"/truncated", out); err == nil {
 		t.Fatal("truncated body: expected error")
 	}
 	b, _ := os.ReadFile(out)
@@ -127,7 +139,7 @@ func TestNon200IsError(t *testing.T) {
 	dir := t.TempDir()
 	out := filepath.Join(dir, "out.bin")
 	f := &fetcher{client: srv.Client()}
-	err := f.fetch(srv.URL+"/missing", out)
+	err := f.fetch(t.Context(), srv.URL+"/missing", out)
 	if err == nil || !strings.Contains(err.Error(), "404") {
 		t.Fatalf("err = %v, want 404 error", err)
 	}
@@ -135,7 +147,7 @@ func TestNon200IsError(t *testing.T) {
 		t.Errorf("output exists after failed fetch")
 	}
 	noLeftovers(t, dir)
-	if err := f.fetchExtract(srv.URL+"/missing", filepath.Join(dir, "x")); err == nil {
+	if err := f.fetchExtract(t.Context(), srv.URL+"/missing", filepath.Join(dir, "x")); err == nil {
 		t.Fatal("extract of 404: expected error")
 	}
 	noLeftovers(t, dir)
@@ -157,7 +169,7 @@ func TestFetchExtractKeepsExecBits(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "stale"), []byte("x"), 0o644)
 
 	f := &fetcher{client: srv.Client()}
-	if err := f.fetchExtract(srv.URL+"/a.tgz", dir); err != nil {
+	if err := f.fetchExtract(t.Context(), srv.URL+"/a.tgz", dir); err != nil {
 		t.Fatal(err)
 	}
 	st, err := os.Stat(filepath.Join(dir, "bin/tool"))
@@ -214,7 +226,7 @@ func TestExtractRejectsEscapes(t *testing.T) {
 			// A file outside DIR that an escaping link could reach.
 			os.WriteFile(filepath.Join(parent, "secret"), []byte("s"), 0o644)
 			f := &fetcher{client: srv.Client()}
-			if err := f.fetchExtract(srv.URL+"/a.tgz", filepath.Join(parent, "pkg")); err == nil {
+			if err := f.fetchExtract(t.Context(), srv.URL+"/a.tgz", filepath.Join(parent, "pkg")); err == nil {
 				t.Fatal("expected error")
 			}
 			noLeftovers(t, parent, "secret")
@@ -260,10 +272,160 @@ func TestCAFlagLoadsPEMBundle(t *testing.T) {
 }
 
 func TestParseDNS(t *testing.T) {
-	got := parseDNS("8.8.8.8, 1.1.1.1:5353,,2001:4860:4860::8888")
-	want := []string{"8.8.8.8:53", "1.1.1.1:5353", "[2001:4860:4860::8888]:53"}
-	if strings.Join(got, " ") != strings.Join(want, " ") {
-		t.Errorf("parseDNS = %v, want %v", got, want)
+	got, err := parseDNS("8.8.8.8, 1.1.1.1:5353,,2001:4860:4860::8888,[::1]:53")
+	want := []string{"8.8.8.8:53", "1.1.1.1:5353", "[2001:4860:4860::8888]:53", "[::1]:53"}
+	if err != nil || strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Errorf("parseDNS = %v, %v, want %v", got, err, want)
+	}
+	for _, bad := range []string{"dns.google", "8.8.8.8:domain", "8.8.8.8:99999", "1.2.3"} {
+		if _, err := parseDNS(bad); err == nil {
+			t.Errorf("parseDNS(%q): expected error", bad)
+		}
+	}
+}
+
+func TestDNSServersPrecedence(t *testing.T) {
+	cases := []struct {
+		flag, env  string
+		resolvConf bool
+		want       string
+	}{
+		{"9.9.9.9", "1.0.0.1", false, "9.9.9.9:53"},
+		{"", "1.0.0.1", false, "1.0.0.1:53"},
+		{"", "", false, "8.8.8.8:53 1.1.1.1:53"},
+		{"", "", true, ""},
+	}
+	for _, c := range cases {
+		got, err := dnsServers(c.flag, c.env, c.resolvConf)
+		if err != nil || strings.Join(got, " ") != c.want {
+			t.Errorf("dnsServers(%q, %q, %v) = %v, %v; want %q", c.flag, c.env, c.resolvConf, got, err, c.want)
+		}
+	}
+	if _, err := dnsServers("example.com", "", false); err == nil {
+		t.Error("hostname DNS server: expected error")
+	}
+	if code := run([]string{"--dns", "nope", "get", "https://x/", filepath.Join(t.TempDir(), "o")}, io.Discard, io.Discard); code == 0 {
+		t.Error("run with invalid --dns: expected failure")
+	}
+}
+
+func TestStalledServerTimesOut(t *testing.T) {
+	srv := serve(t, nil)
+	dir := t.TempDir()
+	f := &fetcher{client: srv.Client(), idleTimeout: 200 * time.Millisecond}
+	start := time.Now()
+	err := f.fetch(t.Context(), srv.URL+"/stall", filepath.Join(dir, "out"))
+	if err == nil || !strings.Contains(err.Error(), "no data") {
+		t.Fatalf("err = %v, want idle timeout", err)
+	}
+	if d := time.Since(start); d > 5*time.Second {
+		t.Errorf("took %v", d)
+	}
+	noLeftovers(t, dir)
+}
+
+func TestCancelCleansUp(t *testing.T) {
+	srv := serve(t, nil)
+	dir := t.TempDir()
+	f := &fetcher{client: srv.Client()}
+	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+	defer cancel()
+	if err := f.fetch(ctx, srv.URL+"/stall", filepath.Join(dir, "out")); err == nil {
+		t.Fatal("expected error after cancel")
+	}
+	ctx2, cancel2 := context.WithTimeout(t.Context(), 200*time.Millisecond)
+	defer cancel2()
+	if err := f.fetchExtract(ctx2, srv.URL+"/stall", filepath.Join(dir, "pkg")); err == nil {
+		t.Fatal("expected error after cancel")
+	}
+	noLeftovers(t, dir)
+}
+
+func TestConcurrentGetsSameOutput(t *testing.T) {
+	body := bytes.Repeat([]byte("0123456789abcdef"), 1<<16) // 1 MiB
+	srv := serve(t, map[string][]byte{"/big": body})
+	dir := t.TempDir()
+	out := filepath.Join(dir, "out")
+	f := &fetcher{client: srv.Client()}
+	var wg sync.WaitGroup
+	errs := make([]error, 4)
+	for i := range errs {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errs[i] = f.fetch(t.Context(), srv.URL+"/big", out)
+		}()
+	}
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			t.Errorf("fetch %d: %v", i, err)
+		}
+	}
+	b, _ := os.ReadFile(out)
+	if !bytes.Equal(b, body) {
+		t.Errorf("result corrupted: %d bytes", len(b))
+	}
+	noLeftovers(t, dir, "out")
+}
+
+func TestExtractCleansStaleWork(t *testing.T) {
+	tgz := makeTarGz(t, []entry{{name: "f", body: "new", mode: 0o644, typ: tar.TypeReg}})
+	srv := serve(t, map[string][]byte{"/a.tgz": tgz})
+	parent := t.TempDir()
+	os.MkdirAll(filepath.Join(parent, ".pkg.new-123/sub"), 0o755)
+	os.WriteFile(filepath.Join(parent, ".pkg.tgz.part"), []byte("x"), 0o644)
+	os.WriteFile(filepath.Join(parent, ".pkg.456.tgz.part"), []byte("x"), 0o644)
+	os.MkdirAll(filepath.Join(parent, ".other.new-1"), 0o755) // not ours
+	f := &fetcher{client: srv.Client()}
+	if err := f.fetchExtract(t.Context(), srv.URL+"/a.tgz", filepath.Join(parent, "pkg")); err != nil {
+		t.Fatal(err)
+	}
+	noLeftovers(t, parent, "pkg", ".other.new-1")
+}
+
+func TestExtractRestoresOld(t *testing.T) {
+	srv := serve(t, nil)
+	parent := t.TempDir()
+	os.MkdirAll(filepath.Join(parent, ".pkg.old"), 0o755)
+	os.WriteFile(filepath.Join(parent, ".pkg.old/soloist"), []byte("prev"), 0o755)
+	f := &fetcher{client: srv.Client()}
+	// The download fails, but the interrupted swap is repaired first.
+	if err := f.fetchExtract(t.Context(), srv.URL+"/missing", filepath.Join(parent, "pkg")); err == nil {
+		t.Fatal("expected 404 error")
+	}
+	b, err := os.ReadFile(filepath.Join(parent, "pkg/soloist"))
+	if err != nil || string(b) != "prev" {
+		t.Fatalf("pkg not restored: %q, %v", b, err)
+	}
+	noLeftovers(t, parent, "pkg")
+}
+
+func TestExtractRejectsSpecialFiles(t *testing.T) {
+	for name, typ := range map[string]byte{"fifo": tar.TypeFifo, "char": tar.TypeChar, "block": tar.TypeBlock} {
+		t.Run(name, func(t *testing.T) {
+			srv := serve(t, map[string][]byte{"/a.tgz": makeTarGz(t, []entry{{name: "x", mode: 0o644, typ: typ}})})
+			parent := t.TempDir()
+			f := &fetcher{client: srv.Client()}
+			if err := f.fetchExtract(t.Context(), srv.URL+"/a.tgz", filepath.Join(parent, "pkg")); err == nil {
+				t.Fatal("expected error")
+			}
+			noLeftovers(t, parent)
+		})
+	}
+}
+
+func TestExtractPrintsExtracting(t *testing.T) {
+	tgz := makeTarGz(t, []entry{{name: "f", body: "x", mode: 0o644, typ: tar.TypeReg}})
+	srv := serve(t, map[string][]byte{"/a.tgz": tgz})
+	ca := filepath.Join(t.TempDir(), "ca.pem")
+	os.WriteFile(ca, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw}), 0o644)
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"--ca", ca, "extract", srv.URL + "/a.tgz", filepath.Join(t.TempDir(), "pkg")}, &stdout, &stderr); code != 0 {
+		t.Fatalf("exit %d: %s", code, stderr.String())
+	}
+	if !strings.HasSuffix(stdout.String(), "progress 100\nextracting\ndone\n") {
+		t.Errorf("stdout = %q", stdout.String())
 	}
 }
 
