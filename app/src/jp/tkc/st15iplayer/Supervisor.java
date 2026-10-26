@@ -121,6 +121,8 @@ final class Supervisor {
     private boolean retryable;
     /** The current run reported a login or key error. */
     private boolean authFailed;
+    /** FAILED because of the settings (key): the user should open setup. */
+    private boolean settingsFault;
 
     Supervisor(Effects fx) {
         this.fx = fx;
@@ -146,6 +148,15 @@ final class Supervisor {
     /** FAILED, and it will try again by itself after the cooldown or on Wi-Fi. */
     boolean willRetry() {
         return state == State.FAILED && retryable;
+    }
+
+    /**
+     * FAILED because of the settings: a start that cannot work (no or bad
+     * API key: onStartFailed with retry = false) or Soloist exiting over
+     * and over after a login error. Retrying will not help; setup might.
+     */
+    boolean needsSetup() {
+        return state == State.FAILED && settingsFault;
     }
 
     /** Soloist reported a login or API key error during the current run. */
@@ -215,12 +226,12 @@ final class Supervisor {
         latched = false;
         if (!retry) {
             restartAfterStart = false;
-            giveUp(reason, false);
+            giveUp(reason, false, true);
             return;
         }
         if (++startFailures >= MAX_SHORT_RUNS) {
             restartAfterStart = false;
-            giveUp(KEEPS_FAILING, true);
+            giveUp(KEEPS_FAILING, true, false);
             return;
         }
         if (restartAfterStart) {
@@ -260,7 +271,7 @@ final class Supervisor {
         else shortRuns = 0;
         if (shortRuns >= MAX_SHORT_RUNS) {
             // Exiting after a login error: retrying will not fix the key.
-            giveUp(KEEPS_EXITING, !authFailed);
+            giveUp(KEEPS_EXITING, !authFailed, authFailed);
             return;
         }
         if (!expired) {
@@ -272,7 +283,7 @@ final class Supervisor {
             if (t != 0 && now - t < REFRESH_WINDOW_MS) recent++;
         }
         if (recent >= MAX_REFRESHES) {
-            giveUp("Soloist \u306e\u671f\u9650\u5207\u308c\u304c\u518d\u30c0\u30a6\u30f3\u30ed\u30fc\u30c9\u3067\u76f4\u308a\u307e\u305b\u3093", false);
+            giveUp("Soloist \u306e\u671f\u9650\u5207\u308c\u304c\u518d\u30c0\u30a6\u30f3\u30ed\u30fc\u30c9\u3067\u76f4\u308a\u307e\u305b\u3093", false, false);
             return;
         }
         System.arraycopy(refreshTimes, 1, refreshTimes, 0, MAX_REFRESHES - 1);
@@ -386,8 +397,9 @@ final class Supervisor {
         fx.schedule(backoffMs(failures++));
     }
 
-    private void giveUp(String reason, boolean autoRetry) {
+    private void giveUp(String reason, boolean autoRetry, boolean settings) {
         retryable = autoRetry;
+        settingsFault = settings;
         setState(State.FAILED);
         fx.failed(reason, autoRetry);
         if (autoRetry) fx.schedule(RETRY_COOLDOWN_MS);

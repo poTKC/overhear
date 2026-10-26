@@ -37,6 +37,9 @@
     <string name="setup_title">ST15i Player の設定</string>
     <string name="setup_key_label">Spotify API キー</string>
     <string name="setup_key_hint">API キーを貼り付け</string>
+    <string name="setup_key_saved_hint">保存済み（変更する場合のみ入力）</string>
+    <string name="setup_cancel">キャンセル</string>
+    <string name="setup_cancelled">キャンセルしました</string>
     <string name="setup_show_key">キーを表示</string>
     <string name="setup_name_label">デバイス名（Spotify に表示）</string>
     <string name="setup_save">保存して開始</string>

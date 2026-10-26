@@ -146,4 +146,43 @@ public class SoloistCommandTest {
         assertEquals("/f/runtime/ld-linux-armhf.so.3", cmd("ST15i", false).loaderPath());
         assertEquals(cmd("ST15i", false).loaderPath(), cmd("ST15i", false).command().get(0));
     }
+
+    // --- the debug log (SoloistProcess.getLog, shown by the player's debug dialog) ---
+
+    private static List<String> logOf(String output) throws Exception {
+        LogRing ring = new LogRing(200);
+        LineReader r = SoloistCommand.logReader(
+                new java.io.ByteArrayInputStream(output.getBytes("UTF-8")), KEY);
+        String line;
+        while ((line = r.readLine()) != null) ring.add(line);
+        return ring.lines();
+    }
+
+    private static void assertNoKey(List<String> lines) {
+        for (String l : lines) {
+            assertFalse(l, l.contains(KEY));
+            // Not even a piece of it.
+            for (int i = 0; i + 8 <= KEY.length(); i++) assertFalse(l, l.contains(KEY.substring(i, i + 8)));
+        }
+    }
+
+    @Test public void theDebugLogIsRedacted() throws Exception {
+        StringBuilder out = new StringBuilder();
+        out.append("\u001b[32mINFO\u001b[0m starting with key ").append(KEY).append('\n');
+        out.append("argv: soloist -k ").append(KEY).append(" -n ST15i\n");
+        out.append("api_key=").append(KEY).append('\n');
+        // The key straddling the line cap.
+        StringBuilder longLine = new StringBuilder();
+        while (longLine.length() < SoloistCommand.LOG_LINE_BYTES - KEY.length() / 2) longLine.append('x');
+        out.append(longLine).append(KEY).append(" tail\n");
+        // The key starting just past the cap.
+        StringBuilder past = new StringBuilder();
+        while (past.length() < SoloistCommand.LOG_LINE_BYTES + 3) past.append('y');
+        out.append(past).append(KEY).append('\n');
+        List<String> lines = logOf(out.toString());
+        assertEquals(5, lines.size());
+        assertNoKey(lines);
+        assertTrue(lines.get(0), lines.get(0).startsWith("INFO starting with key <redacted>"));
+        assertEquals("argv: soloist -k <redacted> -n ST15i", lines.get(1));
+    }
 }

@@ -47,6 +47,18 @@ public final class Prefs {
         prefs.edit().putString(DEVICE_NAME, name == null ? DEFAULT_DEVICE_NAME : name.trim()).commit();
     }
 
+    /**
+     * Stores the device name and, unless key is null or blank, the trimmed
+     * key, in one commit. Returns whether it was written.
+     */
+    public boolean save(String key, String deviceName) {
+        SharedPreferences.Editor e = prefs.edit();
+        String k = key == null ? "" : key.trim();
+        if (!k.isEmpty()) e.putString(API_KEY, k);
+        e.putString(DEVICE_NAME, deviceName == null ? DEFAULT_DEVICE_NAME : deviceName.trim());
+        return e.commit();
+    }
+
     public boolean isAutoStart() {
         return prefs.getBoolean(AUTO_START, true);
     }

@@ -655,4 +655,47 @@ public class SupervisorTest {
         assertEquals("[cancel, start]", take());
         assertFalse(s.willRetry());
     }
+
+    // --- which give-ups need the settings ---
+
+    @Test public void aStartThatCannotWorkNeedsSetup() {
+        s.begin(true);
+        startFailed("no API key", false);
+        assertTrue(s.needsSetup());
+        s.restart();
+        assertFalse(s.needsSetup());
+    }
+
+    @Test public void shortRunsAfterALoginErrorNeedSetup() {
+        s.begin(true);
+        long t = 0;
+        for (int i = 0; i < Supervisor.MAX_SHORT_RUNS; i++) {
+            started(t);
+            s.onAuthError();
+            exit(1, false, false, t + 2000);
+            if (i < Supervisor.MAX_SHORT_RUNS - 1) s.onTimer();
+            t += 100000;
+        }
+        assertTrue(s.needsSetup());
+    }
+
+    @Test public void otherGiveUpsDoNotNeedSetup() {
+        giveUpOnStartFailures();
+        assertFalse(s.needsSetup());
+        s.restart();
+        // The refresh cap: fatal, but not the settings' fault.
+        running(0);
+        Supervisor r = s;
+        long t = 0;
+        for (int i = 0; i < 4 && r.state() != Supervisor.State.FAILED; i++) {
+            t += 120000;
+            exit(10, true, false, t);
+            if (r.state() == Supervisor.State.FAILED) break;
+            r.onTimer();
+            started(t + 1000);
+        }
+        assertEquals(Supervisor.State.FAILED, r.state());
+        assertFalse(r.needsSetup());
+        assertFalse(new Supervisor(fx).needsSetup()); // idle
+    }
 }

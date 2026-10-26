@@ -18,3 +18,4 @@ app/src/jp/tkc/st15iplayer/Supervisor.java
 app/src/jp/tkc/st15iplayer/PlayerText.java
 app/src/jp/tkc/st15iplayer/VolumeControl.java
 app/src/jp/tkc/st15iplayer/ArtworkLoader.java
+app/src/jp/tkc/st15iplayer/SeekHold.java

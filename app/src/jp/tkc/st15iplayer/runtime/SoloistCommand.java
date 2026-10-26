@@ -1,6 +1,7 @@
 package jp.tkc.st15iplayer.runtime;
 
 import java.io.File;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +33,8 @@ public final class SoloistCommand {
     static final String ARGKEY = "libargkey.so";
     static final String CACERT = "cacert.pem";
     private static final String REDACTED = "<redacted>";
+    /** Soloist output lines are cut to this (after redaction). */
+    static final int LOG_LINE_BYTES = 4096;
     /** "-k <token>": the key as Soloist's argv would show it. */
     private static final Pattern DASH_K = Pattern.compile("(^|\\s)-k\\s+\\S+");
     /**
@@ -153,6 +156,19 @@ public final class SoloistCommand {
         if (out.contains("-k")) out = DASH_K.matcher(out).replaceAll("$1-k " + REDACTED);
         out = API_KEY_VALUE.matcher(out).replaceAll("$1" + REDACTED);
         return out;
+    }
+
+    /**
+     * Reads Soloist's output for its log ring (the debug screen) and logcat:
+     * each line is sanitized (secret redacted) before it is cut to
+     * LOG_LINE_BYTES, so no fragment of the key survives the cut.
+     */
+    static LineReader logReader(InputStream in, final String secret) {
+        return new LineReader(in, LOG_LINE_BYTES, LineReader.DEFAULT_SLACK, new LineReader.Filter() {
+            @Override public String apply(String raw) {
+                return sanitize(raw, secret);
+            }
+        });
     }
 
     /** Lines worth sending to logcat: error-level lines and failure messages. */

@@ -19,6 +19,7 @@ import org.junit.Test;
 public class ArtworkLoaderTest {
     private File dir;
     private final List<Runnable> background = new ArrayList<Runnable>();
+    private final List<Runnable> urgent = new ArrayList<Runnable>();
     private final List<String> fetched = new ArrayList<String>();
     private final List<String> got = new ArrayList<String>();
     private final List<String> failUrls = new ArrayList<String>();
@@ -26,6 +27,9 @@ public class ArtworkLoaderTest {
 
     private final Executor bg = new Executor() {
         @Override public void execute(Runnable r) { background.add(r); }
+    };
+    private final Executor urgentBg = new Executor() {
+        @Override public void execute(Runnable r) { urgent.add(r); }
     };
     private final Executor direct = new Executor() {
         @Override public void execute(Runnable r) { r.run(); }
@@ -71,7 +75,7 @@ public class ArtworkLoaderTest {
     @Before public void setUp() throws IOException {
         dir = File.createTempFile("art", "");
         assertTrue(dir.delete());
-        loader = new ArtworkLoader<String>(dir, 1000, 60000, fetcher, decoder, bg, direct);
+        loader = new ArtworkLoader<String>(dir, 1000, 60000, fetcher, decoder, bg, urgentBg, direct);
     }
 
     @After public void tearDown() {
@@ -94,7 +98,7 @@ public class ArtworkLoaderTest {
     }
 
     @Test public void loadsThroughDiskAndMemory() {
-        loader.load("view", "u1", 240, cb("view"));
+        loader.load("view", "u1", 240, false, cb("view"));
         assertTrue(got.isEmpty());
         runBackground();
         assertEquals("[view=u1]", got.toString());
@@ -103,18 +107,18 @@ public class ArtworkLoaderTest {
         assertEquals("img(" + ArtworkLoader.key("u1").substring(0, 6) + "@240)", loader.get("u1", 240));
         assertNull(loader.get("u1", 48)); // another size is another entry
         // A memory hit calls back at once.
-        loader.load("view", "u1", 240, cb("again"));
+        loader.load("view", "u1", 240, false, cb("again"));
         assertEquals("[view=u1, again=u1]", got.toString());
         // Another size decodes from disk without fetching.
-        loader.load("thumb", "u1", 48, cb("thumb"));
+        loader.load("thumb", "u1", 48, false, cb("thumb"));
         runBackground();
         assertEquals("[u1]", fetched.toString());
         assertEquals("[view=u1, again=u1, thumb=u1]", got.toString());
     }
 
     @Test public void deduplicatesRequestsInFlight() {
-        loader.load("a", "u1", 240, cb("a"));
-        loader.load("b", "u1", 240, cb("b"));
+        loader.load("a", "u1", 240, false, cb("a"));
+        loader.load("b", "u1", 240, false, cb("b"));
         assertEquals(1, background.size());
         runBackground();
         assertEquals("[u1]", fetched.toString());
@@ -122,18 +126,109 @@ public class ArtworkLoaderTest {
     }
 
     @Test public void aNewerRequestForTheSameTargetWins() {
-        loader.load("view", "old", 240, cb("view"));
-        loader.load("view", "new", 240, cb("view"));
+        loader.load("view", "old", 240, false, cb("view"));
+        loader.load("view", "new", 240, false, cb("view"));
         // The new one finishes first, then the old one: the old must not replace it.
         Runnable oldJob = background.remove(0);
         background.remove(0).run();
         oldJob.run();
         assertEquals("[view=new]", got.toString());
-        assertTrue(loader.get("old", 240) != null); // still cached for later
+        assertEquals("[new]", fetched.toString()); // nobody wanted "old" any more: skipped
+    }
+
+    private ArtworkLoader<String> throwingLoader(final Error error) {
+        ArtworkLoader.Decoder<String> d = new ArtworkLoader.Decoder<String>() {
+            @Override public String decode(File f, int size) throws IOException {
+                throw error;
+            }
+        };
+        return new ArtworkLoader<String>(dir, 1000, 0, fetcher, d, bg, urgentBg, direct);
+    }
+
+    @Test public void outOfMemoryIsAFailureNotAWedgedJob() {
+        loader = throwingLoader(new OutOfMemoryError("bitmap"));
+        loader.load("view", "u1", 240, false, cb("view"));
+        runBackground();
+        assertEquals("[view=null:u1]", got.toString());
+        loader.load("view", "u1", 240, false, cb("view")); // not stuck in flight
+        assertEquals(1, background.size());
+    }
+
+    @Test public void anyErrorStillFinishesTheJob() {
+        loader = throwingLoader(new StackOverflowError());
+        loader.load("view", "u1", 240, false, cb("view"));
+        try {
+            runBackground();
+        } catch (StackOverflowError expected) {
+            // rethrown to the executor after the job was finished
+        }
+        assertEquals("[view=null:u1]", got.toString());
+        loader.load("view", "u1", 240, false, cb("view"));
+        assertEquals(1, background.size());
+    }
+
+    @Test public void aCancelledJobDoesNotFetch() {
+        loader.load("view", "u1", 240, false, cb("view"));
+        loader.cancel("view");
+        runBackground();
+        assertTrue(fetched.isEmpty());
+        assertTrue(got.isEmpty());
+        // Not remembered as a failure: asking again fetches.
+        loader.load("view", "u1", 240, false, cb("view"));
+        runBackground();
+        assertEquals("[u1]", fetched.toString());
+        assertEquals("[view=u1]", got.toString());
+    }
+
+    @Test public void cancelAllDropsEverything() {
+        loader.load("a", "u1", 240, false, cb("a"));
+        loader.load("b", "u2", 48, false, cb("b"));
+        loader.cancelAll();
+        runBackground();
+        assertTrue(fetched.isEmpty());
+        assertTrue(got.isEmpty());
+    }
+
+    @Test public void reRequestAfterCancelWhileInFlightIsAnsweredOnce() {
+        loader.load("view", "u1", 240, false, cb("first"));
+        loader.cancel("view");
+        loader.load("view", "u1", 240, false, cb("second"));
+        assertEquals(1, background.size()); // shares the job in flight
+        runBackground();
+        assertEquals("[u1]", fetched.toString());
+        assertEquals("[second=u1]", got.toString());
+    }
+
+    @Test public void reRequestAfterTheJobDecidedToSkipStillLoads() {
+        final List<Runnable> mainQueue = new ArrayList<Runnable>();
+        Executor queued = new Executor() {
+            @Override public void execute(Runnable r) { mainQueue.add(r); }
+        };
+        loader = new ArtworkLoader<String>(dir, 1000, 60000, fetcher, decoder, bg, urgentBg, queued);
+        loader.load("view", "u1", 240, false, cb("view"));
+        loader.cancel("view");
+        background.remove(0).run(); // nobody wants u1: skips, posts that to main
+        assertTrue(fetched.isEmpty());
+        loader.load("view", "u1", 240, false, cb("view")); // before the skip reaches main
+        assertTrue(background.isEmpty()); // joined the job in flight
+        while (!mainQueue.isEmpty()) mainQueue.remove(0).run(); // the skip: starts it again
+        runBackground();
+        while (!mainQueue.isEmpty()) mainQueue.remove(0).run();
+        assertEquals("[u1]", fetched.toString());
+        assertEquals("[view=u1]", got.toString());
+    }
+
+    @Test public void urgentRequestsUseTheirOwnExecutor() {
+        loader.load("art", "u1", 240, true, cb("art"));
+        loader.load("thumb", "u2", 48, false, cb("thumb"));
+        assertEquals(1, urgent.size());
+        assertEquals(1, background.size());
+        urgent.remove(0).run();
+        assertEquals("[art=u1]", got.toString());
     }
 
     @Test public void cancelDropsTheCallback() {
-        loader.load("view", "u1", 240, cb("view"));
+        loader.load("view", "u1", 240, false, cb("view"));
         loader.cancel("view");
         runBackground();
         assertTrue(got.isEmpty());
@@ -141,21 +236,21 @@ public class ArtworkLoaderTest {
 
     @Test public void failuresAreReportedAndNotRetriedAtOnce() {
         failUrls.add("bad");
-        loader.load("view", "bad", 240, cb("view"));
+        loader.load("view", "bad", 240, false, cb("view"));
         runBackground();
         assertEquals("[view=null:bad]", got.toString());
-        loader.load("view", "bad", 240, cb("view"));
+        loader.load("view", "bad", 240, false, cb("view"));
         assertTrue(background.isEmpty());
         assertEquals("[view=null:bad, view=null:bad]", got.toString());
         assertEquals("[bad]", fetched.toString());
     }
 
     @Test public void failuresAreRetriedAfterTheBackoff() {
-        loader = new ArtworkLoader<String>(dir, 1000, 0, fetcher, decoder, bg, direct);
+        loader = new ArtworkLoader<String>(dir, 1000, 0, fetcher, decoder, bg, urgentBg, direct);
         failUrls.add("bad");
-        loader.load("view", "bad", 240, cb("view"));
+        loader.load("view", "bad", 240, false, cb("view"));
         runBackground();
-        loader.load("view", "bad", 240, cb("view"));
+        loader.load("view", "bad", 240, false, cb("view"));
         runBackground();
         assertEquals("[bad, bad]", fetched.toString());
     }
@@ -166,8 +261,8 @@ public class ArtworkLoaderTest {
                 throw new IOException("not an image");
             }
         };
-        loader = new ArtworkLoader<String>(dir, 1000, 60000, fetcher, broken, bg, direct);
-        loader.load("view", "u1", 240, cb("view"));
+        loader = new ArtworkLoader<String>(dir, 1000, 60000, fetcher, broken, bg, urgentBg, direct);
+        loader.load("view", "u1", 240, false, cb("view"));
         runBackground();
         assertEquals("[view=null:u1]", got.toString());
         assertFalse(new File(dir, ArtworkLoader.key("u1") + ".jpg").exists());
@@ -175,7 +270,7 @@ public class ArtworkLoaderTest {
 
     @Test public void memoryKeepsTheTwentyMostRecent() {
         for (int i = 0; i < ArtworkLoader.MEMORY_ENTRIES + 1; i++) {
-            loader.load("v", "u" + i, 48, cb("v"));
+            loader.load("v", "u" + i, 48, false, cb("v"));
             runBackground();
             if (i == 5) loader.get("u0", 48); // touch: u0 is now recent
         }

@@ -8,10 +8,15 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 
 /**
@@ -23,12 +28,15 @@ import java.util.concurrent.Executor;
  *
  * Every request names a target (e.g. an ImageView); only the latest request
  * of a target is answered, so an old cover that finishes late never replaces
- * a newer one. Requests for the same image in flight share one job, and a
- * failed URL is not tried again for failureRetryMs.
+ * a newer one. Requests for the same image in flight share one job; a job
+ * whose image nobody wants any more (cancelled or superseded before it
+ * started) skips its fetch; a failed URL is not tried again for
+ * failureRetryMs. Urgent requests (the main cover) run on their own
+ * executor so they never queue behind thumbnails.
  *
  * load, cancel and get run on the main thread, and callbacks arrive there
  * (through the main executor); fetches and decodes run on the background
- * executor.
+ * executors. Every job reports back, even if it throws an Error.
  */
 final class ArtworkLoader<B> {
     static final int MEMORY_ENTRIES = 20;
@@ -51,12 +59,13 @@ final class ArtworkLoader<B> {
         void onArtwork(String url, B image);
     }
 
-    private static final class Waiter<B> {
-        final Object target;
+    /** A target's latest request. */
+    private static final class Request<B> {
+        final String key;
         final Callback<B> callback;
 
-        Waiter(Object target, Callback<B> callback) {
-            this.target = target;
+        Request(String key, Callback<B> callback) {
+            this.key = key;
             this.callback = callback;
         }
     }
@@ -67,26 +76,31 @@ final class ArtworkLoader<B> {
     private final Fetcher fetcher;
     private final Decoder<B> decoder;
     private final Executor background;
+    private final Executor urgentBackground;
     private final Executor main;
     private final Map<String, B> memory = new LinkedHashMap<String, B>(32, 0.75f, true) {
         @Override protected boolean removeEldestEntry(Map.Entry<String, B> eldest) {
             return size() > MEMORY_ENTRIES;
         }
     };
-    /** The memory key each target waits for. */
-    private final Map<Object, String> targets = new HashMap<Object, String>();
-    private final Map<String, List<Waiter<B>>> inFlight = new HashMap<String, List<Waiter<B>>>();
+    /** Each target's latest request (main thread). */
+    private final Map<Object, Request<B>> targets = new HashMap<Object, Request<B>>();
+    /** Memory keys with a job queued or running (main thread). */
+    private final Set<String> inFlight = new HashSet<String>();
+    /** Memory keys some target waits for; read by jobs as they start. */
+    private final Set<String> wanted = Collections.newSetFromMap(new ConcurrentHashMap<String, Boolean>());
     /** url -> when it last failed (nanoTime ms). */
     private final Map<String, Long> failures = new HashMap<String, Long>();
 
     ArtworkLoader(File dir, long maxDiskBytes, long failureRetryMs, Fetcher fetcher, Decoder<B> decoder,
-            Executor background, Executor main) {
+            Executor background, Executor urgentBackground, Executor main) {
         this.dir = dir;
         this.maxDiskBytes = maxDiskBytes;
         this.failureRetryMs = failureRetryMs;
         this.fetcher = fetcher;
         this.decoder = decoder;
         this.background = background;
+        this.urgentBackground = urgentBackground;
         this.main = main;
     }
 
@@ -98,67 +112,98 @@ final class ArtworkLoader<B> {
     /**
      * Loads url for target at sizePx; callback gets it unless target is
      * cancelled or asks for something else first. A memory hit (or a recent
-     * failure) calls back before returning.
+     * failure) calls back before returning. urgent: the job skips the queue
+     * of non-urgent ones.
      */
-    void load(Object target, final String url, final int sizePx, Callback<B> callback) {
-        final String key = memoryKey(url, sizePx);
+    void load(Object target, String url, int sizePx, boolean urgent, Callback<B> callback) {
+        String key = memoryKey(url, sizePx);
         B hit = memory.get(key);
         if (hit != null) {
-            targets.remove(target);
+            forget(target);
             callback.onArtwork(url, hit);
             return;
         }
         Long failedAt = failures.get(url);
         if (failedAt != null && nowMs() - failedAt < failureRetryMs) {
-            targets.remove(target);
+            forget(target);
             callback.onArtwork(url, null);
             return;
         }
-        targets.put(target, key);
-        List<Waiter<B>> waiters = inFlight.get(key);
-        if (waiters != null) {
-            waiters.add(new Waiter<B>(target, callback));
-            return;
-        }
-        waiters = new ArrayList<Waiter<B>>();
-        waiters.add(new Waiter<B>(target, callback));
-        inFlight.put(key, waiters);
-        background.execute(new Runnable() {
-            @Override public void run() {
-                final B image = fetchAndDecode(url, sizePx);
-                main.execute(new Runnable() {
-                    @Override public void run() {
-                        finished(key, url, image);
-                    }
-                });
-            }
-        });
+        targets.put(target, new Request<B>(key, callback));
+        updateWanted();
+        if (inFlight.add(key)) submit(key, url, sizePx, urgent);
     }
 
     /** Forgets target's pending request: its callback will not run. */
     void cancel(Object target) {
-        targets.remove(target);
+        forget(target);
     }
 
-    /** Forgets every pending request (the screen is going away). Jobs finish into the caches. */
+    /**
+     * Forgets every pending request (the screen is going away); jobs that
+     * have not started yet skip their fetch.
+     */
     void cancelAll() {
         targets.clear();
+        wanted.clear();
     }
 
-    private void finished(String key, String url, B image) {
-        List<Waiter<B>> waiters = inFlight.remove(key);
+    private void forget(Object target) {
+        if (targets.remove(target) != null) updateWanted();
+    }
+
+    private void updateWanted() {
+        Set<String> now = new HashSet<String>();
+        for (Request<B> r : targets.values()) now.add(r.key);
+        wanted.retainAll(now);
+        wanted.addAll(now);
+    }
+
+    private void submit(final String key, final String url, final int sizePx, final boolean urgent) {
+        (urgent ? urgentBackground : background).execute(new Runnable() {
+            @Override public void run() {
+                boolean skipped = !wanted.contains(key);
+                B image = null;
+                try {
+                    if (!skipped) image = fetchAndDecode(url, sizePx);
+                } finally {
+                    // Also after an Error: a job left in flight would wedge this key.
+                    final B result = image;
+                    final boolean skip = skipped;
+                    main.execute(new Runnable() {
+                        @Override public void run() {
+                            finished(key, url, sizePx, urgent, result, skip);
+                        }
+                    });
+                }
+            }
+        });
+    }
+
+    private void finished(String key, String url, int sizePx, boolean urgent, B image, boolean skipped) {
+        if (skipped) {
+            // Somebody may have asked again after the job decided to skip.
+            if (wanted.contains(key)) submit(key, url, sizePx, urgent);
+            else inFlight.remove(key);
+            return;
+        }
+        inFlight.remove(key);
         if (image != null) {
             memory.put(key, image);
             failures.remove(url);
         } else {
             failures.put(url, nowMs());
         }
-        if (waiters == null) return;
-        for (Waiter<B> w : waiters) {
-            if (!key.equals(targets.get(w.target))) continue; // cancelled or superseded
-            targets.remove(w.target);
-            w.callback.onArtwork(url, image);
+        List<Callback<B>> callbacks = new ArrayList<Callback<B>>();
+        Iterator<Map.Entry<Object, Request<B>>> it = targets.entrySet().iterator();
+        while (it.hasNext()) {
+            Request<B> r = it.next().getValue();
+            if (!r.key.equals(key)) continue; // cancelled or superseded targets are not here
+            callbacks.add(r.callback);
+            it.remove();
         }
+        updateWanted();
+        for (Callback<B> c : callbacks) c.onArtwork(url, image);
     }
 
     /** Background: from disk, else fetched first; null on failure. */
@@ -179,6 +224,9 @@ final class ArtworkLoader<B> {
             f.delete(); // a broken file must not stick
             return null;
         } catch (RuntimeException e) {
+            return null;
+        } catch (OutOfMemoryError e) {
+            f.delete(); // too big to decode here: do not keep it
             return null;
         }
     }

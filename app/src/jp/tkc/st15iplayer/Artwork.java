@@ -17,6 +17,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import jp.tkc.st15iplayer.runtime.Dns;
 import jp.tkc.st15iplayer.runtime.LineReader;
@@ -26,8 +27,9 @@ import jp.tkc.st15iplayer.soloist.MainThreadExecutor;
 /**
  * The app's one ArtworkLoader: covers are fetched with st15i-fetch (Android
  * 4.3's own TLS cannot reach i.scdn.co reliably) into cacheDir/art and
- * decoded as RGB_565 bitmaps scaled to the view size. At most two fetches
- * run at once, each killed after FETCH_TIMEOUT_MS.
+ * decoded as RGB_565 bitmaps scaled to the view size. The main cover has a
+ * thread of its own; thumbnails share two. Each fetch is killed after
+ * FETCH_TIMEOUT_MS.
  */
 final class Artwork {
     private static final String TAG = "ST15iArtwork";
@@ -47,7 +49,7 @@ final class Artwork {
         final Context app = context.getApplicationContext();
         final RuntimeInstaller installer = new RuntimeInstaller(app);
         ThreadFactory low = new ThreadFactory() {
-            private int n;
+            private final AtomicInteger n = new AtomicInteger();
 
             @Override public Thread newThread(final Runnable r) {
                 Thread t = new Thread(new Runnable() {
@@ -55,7 +57,7 @@ final class Artwork {
                         Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND);
                         r.run();
                     }
-                }, "artwork-" + (++n));
+                }, "artwork-" + n.incrementAndGet());
                 t.setDaemon(true);
                 return t;
             }
@@ -63,6 +65,9 @@ final class Artwork {
         ThreadPoolExecutor pool = new ThreadPoolExecutor(2, 2, 30, TimeUnit.SECONDS,
                 new LinkedBlockingQueue<Runnable>(), low);
         pool.allowCoreThreadTimeOut(true);
+        ThreadPoolExecutor urgent = new ThreadPoolExecutor(1, 1, 30, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<Runnable>(), low);
+        urgent.allowCoreThreadTimeOut(true);
         watchdog = Executors.newSingleThreadScheduledExecutor(low);
 
         ArtworkLoader.Fetcher fetcher = new ArtworkLoader.Fetcher() {
@@ -76,7 +81,7 @@ final class Artwork {
             }
         };
         loader = new ArtworkLoader<Bitmap>(new File(app.getCacheDir(), "art"), DISK_MAX_BYTES,
-                FAILURE_RETRY_MS, fetcher, decoder, pool, new MainThreadExecutor());
+                FAILURE_RETRY_MS, fetcher, decoder, pool, urgent, new MainThreadExecutor());
         return loader;
     }
 
@@ -130,28 +135,32 @@ final class Artwork {
         }
     }
 
-    /** Decodes file as RGB_565, scaled so its smaller side is about sizePx. */
+    /**
+     * Decodes file as RGB_565, sampled, then scaled so its smaller side is
+     * sizePx (the sampled intermediate is recycled at once). The bitmap has
+     * no density, so views draw it at its pixel size.
+     */
     static Bitmap decodeScaled(File file, int sizePx) throws IOException {
         BitmapFactory.Options o = new BitmapFactory.Options();
         o.inJustDecodeBounds = true;
         BitmapFactory.decodeFile(file.getPath(), o);
         if (o.outWidth <= 0 || o.outHeight <= 0) throw new IOException("not an image");
-        int sample = ArtworkLoader.sampleSize(o.outWidth, o.outHeight, sizePx);
         BitmapFactory.Options d = new BitmapFactory.Options();
-        d.inSampleSize = sample;
+        d.inSampleSize = ArtworkLoader.sampleSize(o.outWidth, o.outHeight, sizePx);
         d.inPreferredConfig = Bitmap.Config.RGB_565;
         d.inDither = true;
-        int side = Math.min(o.outWidth, o.outHeight) / sample;
-        if (side > sizePx) {
-            // BitmapFactory scales by inTargetDensity / inDensity after sampling.
-            d.inScaled = true;
-            d.inDensity = side;
-            d.inTargetDensity = sizePx;
-        } else {
-            d.inScaled = false;
-        }
+        d.inScaled = false;
         Bitmap b = BitmapFactory.decodeFile(file.getPath(), d);
         if (b == null) throw new IOException("cannot decode");
+        int side = Math.min(b.getWidth(), b.getHeight());
+        if (side > sizePx) {
+            int w = Math.max(1, Math.round(b.getWidth() * (float) sizePx / side));
+            int h = Math.max(1, Math.round(b.getHeight() * (float) sizePx / side));
+            Bitmap scaled = Bitmap.createScaledBitmap(b, w, h, true);
+            if (scaled != b) b.recycle();
+            b = scaled;
+        }
+        b.setDensity(Bitmap.DENSITY_NONE);
         return b;
     }
 }

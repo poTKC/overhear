@@ -1,12 +1,14 @@
 package jp.tkc.st15iplayer;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.InputType;
 import android.view.View;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.CompoundButton;
@@ -21,9 +23,14 @@ import jp.tkc.st15iplayer.runtime.RuntimeInstaller;
 
 /**
  * The API key and device name. Saving installs the runtime and downloads
- * Soloist (with progress) when the service is not running yet, then starts
- * the service and opens the player; from the player (EXTRA_EDIT) a change
- * restarts Soloist through the running service and returns.
+ * Soloist (with progress, cancellable) when the service is not running yet,
+ * then starts the service and opens the player; from the player
+ * (EXTRA_EDIT) a change restarts Soloist through the running service and
+ * returns.
+ *
+ * The stored key is never put into the field (nor saved instance state or
+ * screenshots: FLAG_SECURE): the field stays empty with a hint, and only a
+ * newly typed key replaces it.
  */
 public class SetupActivity extends Activity {
     /** Opened from the player's settings: return there when done. */
@@ -35,15 +42,21 @@ public class SetupActivity extends Activity {
     private EditText name;
     private CheckBox showKey;
     private Button save;
+    private Button cancel;
     private ProgressBar progress;
     private TextView message;
     private boolean edit;
-    private boolean working;
     private boolean destroyed;
+    /** The running install's installer (for cancel), or null. Main thread. */
+    private RuntimeInstaller installing;
+    /** Bumped per install and cancel: results of older attempts are ignored. */
+    private volatile int attempt;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // The key is a secret: no screenshots, no recents thumbnail.
+        getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
         setContentView(R.layout.activity_setup);
         prefs = new Prefs(this);
         edit = getIntent().getBooleanExtra(EXTRA_EDIT, false);
@@ -51,14 +64,13 @@ public class SetupActivity extends Activity {
         name = (EditText) findViewById(R.id.device_name);
         showKey = (CheckBox) findViewById(R.id.show_key);
         save = (Button) findViewById(R.id.save);
+        cancel = (Button) findViewById(R.id.cancel);
         progress = (ProgressBar) findViewById(R.id.progress);
         message = (TextView) findViewById(R.id.message);
 
         if (edit) save.setText(R.string.setup_save_edit);
-        if (savedInstanceState == null) {
-            key.setText(prefs.getApiKey());
-            name.setText(prefs.getDeviceName());
-        }
+        if (prefs.hasApiKey()) key.setHint(R.string.setup_key_saved_hint);
+        if (savedInstanceState == null) name.setText(prefs.getDeviceName());
         showKey.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override public void onCheckedChanged(CompoundButton b, boolean checked) {
                 int sel = key.getSelectionEnd();
@@ -73,6 +85,11 @@ public class SetupActivity extends Activity {
                 onSave();
             }
         });
+        cancel.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                cancelInstall();
+            }
+        });
     }
 
     @Override
@@ -83,26 +100,31 @@ public class SetupActivity extends Activity {
 
     @Override
     public void onBackPressed() {
-        if (working) return; // let the download finish (or fail) first
+        if (installing != null) {
+            cancelInstall();
+            return;
+        }
         super.onBackPressed();
     }
 
     private void onSave() {
-        if (working) return;
-        String k = key.getText().toString().trim();
+        if (installing != null) return;
+        String typed = key.getText().toString().trim();
         String n = name.getText().toString().trim();
-        if (k.isEmpty()) {
+        if (typed.isEmpty() && !prefs.hasApiKey()) {
             message.setText(R.string.setup_need_key);
             key.requestFocus();
             return;
         }
         if (n.isEmpty()) n = Prefs.DEFAULT_DEVICE_NAME;
-        final boolean changed = !k.equals(prefs.getApiKey()) || !n.equals(prefs.getDeviceName());
-        if (!prefs.setApiKey(k)) {
+        boolean changed = (!typed.isEmpty() && !typed.equals(prefs.getApiKey()))
+                || !n.equals(prefs.getDeviceName());
+        if (!prefs.save(typed, n)) {
             message.setText(R.string.setup_save_failed);
             return;
         }
-        prefs.setDeviceName(n);
+        key.setText("");
+        key.setHint(R.string.setup_key_saved_hint);
 
         PlayerService running = PlayerService.current();
         if (running != null) {
@@ -118,21 +140,21 @@ public class SetupActivity extends Activity {
 
     /** ensureBundle, then ensureSoloist with progress, on a worker thread; then done(). */
     private void install() {
-        working = true;
-        save.setEnabled(false);
-        progress.setVisibility(View.VISIBLE);
-        progress.setIndeterminate(true);
+        final Context app = getApplicationContext();
+        final RuntimeInstaller installer = new RuntimeInstaller(app);
+        final int my = ++attempt;
+        installing = installer;
+        setWorking(true);
         message.setText(R.string.setup_installing);
         new Thread(new Runnable() {
             @Override public void run() {
                 String error;
-                RuntimeInstaller installer = new RuntimeInstaller(SetupActivity.this);
                 try {
                     synchronized (PlayerService.INSTALL_LOCK) {
                         installer.ensureBundle();
                         RuntimeInstaller.Result r = installer.ensureSoloist(false, new ProgressListener() {
                             @Override public void onProgress(final int percent) {
-                                post(new Runnable() {
+                                post(my, new Runnable() {
                                     @Override public void run() {
                                         progress.setIndeterminate(false);
                                         progress.setProgress(percent);
@@ -142,7 +164,7 @@ public class SetupActivity extends Activity {
                             }
 
                             @Override public void onExtracting() {
-                                post(new Runnable() {
+                                post(my, new Runnable() {
                                     @Override public void run() {
                                         progress.setIndeterminate(true);
                                         message.setText(R.string.setup_extracting);
@@ -156,18 +178,17 @@ public class SetupActivity extends Activity {
                     error = e.getMessage();
                 }
                 final String err = error;
-                // Start even if the screen went away meanwhile.
-                if (err == null) PlayerService.start(getApplicationContext());
-                post(new Runnable() {
+                // Even if the screen went away meanwhile, but not after a cancel.
+                if (err == null && my == attempt) PlayerService.start(app);
+                post(my, new Runnable() {
                     @Override public void run() {
-                        working = false;
-                        progress.setVisibility(View.GONE);
+                        installing = null;
+                        setWorking(false);
                         if (err == null) {
                             done();
                         } else {
                             message.setText(getString(R.string.setup_failed, err));
                             save.setText(R.string.setup_retry);
-                            save.setEnabled(true);
                         }
                     }
                 });
@@ -175,10 +196,32 @@ public class SetupActivity extends Activity {
         }, "setup-install").start();
     }
 
-    private void post(final Runnable r) {
+    private void cancelInstall() {
+        RuntimeInstaller i = installing;
+        if (i == null) return;
+        i.cancelDownload(); // the worker's result is ignored (attempt changes)
+        installing = null;
+        attempt++;
+        setWorking(false);
+        message.setText(R.string.setup_cancelled);
+        save.setText(R.string.setup_retry);
+    }
+
+    private void setWorking(boolean working) {
+        save.setEnabled(!working);
+        key.setEnabled(!working);
+        name.setEnabled(!working);
+        showKey.setEnabled(!working);
+        cancel.setVisibility(working ? View.VISIBLE : View.GONE);
+        progress.setVisibility(working ? View.VISIBLE : View.GONE);
+        progress.setIndeterminate(true);
+    }
+
+    /** Runs r on the main thread unless the screen is gone or attempt my was cancelled. */
+    private void post(final int my, final Runnable r) {
         main.post(new Runnable() {
             @Override public void run() {
-                if (!destroyed) r.run();
+                if (!destroyed && my == attempt) r.run();
             }
         });
     }

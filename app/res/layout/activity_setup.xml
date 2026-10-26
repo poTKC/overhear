@@ -33,6 +33,7 @@
             android:hint="@string/setup_key_hint"
             android:imeOptions="actionNext|flagNoExtractUi"
             android:inputType="textPassword|textNoSuggestions"
+            android:saveEnabled="false"
             android:singleLine="true"
             android:textSize="14sp" />
 
@@ -40,6 +41,7 @@
             android:id="@+id/show_key"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:saveEnabled="false"
             android:text="@string/setup_show_key"
             android:textSize="13sp" />
 
@@ -67,6 +69,13 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
             android:text="@string/setup_save" />
+
+        <Button
+            android:id="@+id/cancel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/setup_cancel"
+            android:visibility="gone" />
 
         <ProgressBar
             android:id="@+id/progress"

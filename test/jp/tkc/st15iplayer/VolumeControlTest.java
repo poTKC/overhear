@@ -54,4 +54,40 @@ public class VolumeControlTest {
         v.step(-5, 100000);
         assertEquals(0, v.display(100000));
     }
+
+    @Test public void stepWithAnUnknownServerVolumeDoesNothing() {
+        assertEquals(-1, v.step(5, 0));
+        assertEquals(-1, v.step(-5, 0));
+        assertEquals(-1, v.flush(0));
+        assertEquals(-1, v.display(0));
+    }
+
+    @Test public void clampsAtZeroAndHundred() {
+        v.change(150, 0);
+        assertEquals(100, v.flush(0));
+        v.change(-20, 1000);
+        assertEquals(0, v.flush(1000));
+        v.onServer(0);
+        v.step(-5, 5000);
+        assertEquals(0, v.flush(5000));
+        v.onServer(100);
+        v.step(5, 10000);
+        assertEquals(100, v.flush(10000));
+    }
+
+    @Test public void flushWithNothingPendingSendsNothing() {
+        assertEquals(-1, v.flush(0));
+        v.change(30, 0);
+        assertEquals(30, v.flush(0));
+        assertEquals(-1, v.flush(1000));
+    }
+
+    @Test public void displayFollowsTheServerOnceTheHoldExpires() {
+        v.onServer(20);
+        v.change(80, 1000);
+        v.flush(1000);
+        assertEquals(80, v.display(1000 + VolumeControl.HOLD_MS - 1));
+        v.onServer(78);
+        assertEquals(78, v.display(1000 + VolumeControl.HOLD_MS));
+    }
 }

@@ -42,7 +42,6 @@ import java.util.regex.Pattern;
 public final class SoloistProcess {
     public static final int LOG_LINES = 200;
     private static final String TAG = "ST15iSoloist";
-    private static final int MAX_LINE_BYTES = 4096;
     /** At most this many log lines per LOGCAT_WINDOW_MS reach logcat. */
     private static final int LOGCAT_BURST = 10;
     private static final long LOGCAT_WINDOW_MS = 60000;
@@ -94,12 +93,7 @@ public final class SoloistProcess {
             InputStream in = process.getInputStream();
             try {
                 // Redacts before the line is cut, so no key fragment survives.
-                LineReader r = new LineReader(in, MAX_LINE_BYTES, LineReader.DEFAULT_SLACK,
-                        new LineReader.Filter() {
-                            @Override public String apply(String raw) {
-                                return SoloistCommand.sanitize(raw, secret);
-                            }
-                        });
+                LineReader r = SoloistCommand.logReader(in, secret);
                 String line;
                 while ((line = r.readLine()) != null) {
                     log.add(line);

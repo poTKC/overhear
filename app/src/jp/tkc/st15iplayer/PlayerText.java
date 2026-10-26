@@ -25,6 +25,8 @@ final class PlayerText {
     static final String CONNECTED = "Spotify 接続中";
     static final String TAP_TO_START = "停止中 — タップで開始";
     static final String TAP_TO_RETRY = " — タップで再試行";
+    static final String CHECK_KEY = "\u30ad\u30fc\u3092\u78ba\u8a8d\u3057\u3066\u304f\u3060\u3055\u3044"
+            + " \u2014 \u30bf\u30c3\u30d7\u3067\u8a2d\u5b9a";
     static final String LOGIN_ERROR = "ログインエラー — タップで設定";
 
     private PlayerText() {}
@@ -40,14 +42,16 @@ final class PlayerText {
      *
      * @param serviceUp whether PlayerService runs (when false the rest is ignored)
      * @param state the service's Supervisor state
+     * @param needsSetup Supervisor.needsSetup(): FAILED over the key, setup can fix it
      * @param serviceStatus the service's own status text (starting, downloading, failed ...)
      * @param authError the last login/key error from Soloist, or null
      * @param connected whether the service's client is connected to Soloist
      * @param deviceName the configured device name
      */
-    static Status status(boolean serviceUp, Supervisor.State state, String serviceStatus,
+    static Status status(boolean serviceUp, Supervisor.State state, boolean needsSetup, String serviceStatus,
             String authError, boolean connected, PlayerState ps, String deviceName) {
         if (!serviceUp) return new Status(TAP_TO_START, Action.START);
+        if (state == Supervisor.State.FAILED && needsSetup) return new Status(CHECK_KEY, Action.SETUP);
         if (state == Supervisor.State.FAILED) return new Status(serviceStatus + TAP_TO_RETRY, Action.RETRY);
         if (authError != null) return new Status(LOGIN_ERROR, Action.SETUP);
         if (connected) {

@@ -52,8 +52,6 @@ import jp.tkc.st15iplayer.soloist.SoloistClient;
  */
 public class PlayerActivity extends Activity {
     private static final long TICK_MS = 500;
-    /** A seek's target is shown until Soloist reports a newer position, at most this long. */
-    private static final long SEEK_HOLD_MS = 3000;
     private static final int VOLUME_STEP = 5;
     private static final int QUEUE_SHOWN = 10;
     private static final int ON_COLOR = 0xff33b5e5;
@@ -94,9 +92,7 @@ public class PlayerActivity extends Activity {
     /** The cover URL asked for the artwork view ("" = none). */
     private String artUrl;
     private boolean seeking;
-    private long seekTarget = -1;
-    private long seekAt;
-    private long seekStateTs;
+    private final SeekHold seekHold = new SeekHold();
     private boolean queueOpen;
     private boolean volumeKeyDown;
 
@@ -215,9 +211,7 @@ public class PlayerActivity extends Activity {
                 SoloistClient c = client();
                 if (c == null) return;
                 c.seek(bar.getProgress());
-                seekTarget = bar.getProgress();
-                seekAt = System.currentTimeMillis();
-                seekStateTs = state.getPositionTimestampMs();
+                seekHold.seeked(bar.getProgress(), System.currentTimeMillis(), state.getPositionTimestampMs());
             }
         });
         volumeBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
@@ -393,8 +387,8 @@ public class PlayerActivity extends Activity {
             connected = false;
         }
         PlayerText.Status st = service == null
-                ? PlayerText.status(false, null, null, null, false, state, prefs.getDeviceName())
-                : PlayerText.status(true, service.getSupervisorState(), service.getStatus(),
+                ? PlayerText.status(false, null, false, null, null, false, state, prefs.getDeviceName())
+                : PlayerText.status(true, service.getSupervisorState(), service.needsSetup(), service.getStatus(),
                         service.getAuthError(), connected, state, prefs.getDeviceName());
         setText(status, st.text);
         statusAction = st.action;
@@ -442,17 +436,7 @@ public class PlayerActivity extends Activity {
             setText(elapsed, "");
             return;
         }
-        long now = System.currentTimeMillis();
-        long pos;
-        if (seekTarget >= 0 && now - seekAt < SEEK_HOLD_MS && state.getPositionTimestampMs() == seekStateTs) {
-            PlayerState.Status ps = state.getStatus();
-            boolean advancing = ps == PlayerState.Status.PLAYING;
-            pos = seekTarget + (advancing ? now - seekAt : 0);
-            if (dur > 0) pos = Math.min(pos, dur);
-        } else {
-            seekTarget = -1;
-            pos = state.positionAt(now);
-        }
+        long pos = seekHold.position(state, System.currentTimeMillis());
         seek.setProgress((int) pos);
         setText(elapsed, PlayerText.time(pos));
     }
@@ -472,7 +456,7 @@ public class PlayerActivity extends Activity {
             return;
         }
         // The old cover stays until the new one is here (or failed).
-        artwork.load(art, url, artPx, new ArtworkLoader.Callback<Bitmap>() {
+        artwork.load(art, url, artPx, true, new ArtworkLoader.Callback<Bitmap>() {
             @Override public void onArtwork(String loaded, Bitmap image) {
                 if (image != null) art.setImageBitmap(image);
                 else art.setImageResource(R.drawable.art_placeholder);
@@ -490,7 +474,10 @@ public class PlayerActivity extends Activity {
         v.setAlpha(enabled ? 1f : 0.35f);
     }
 
+    /** Tints b when on; the state is kept in its tag so unchanged renders do nothing. */
     private static void setToggle(ImageButton b, boolean on) {
+        if (Boolean.valueOf(on).equals(b.getTag())) return;
+        b.setTag(on);
         if (on) b.setColorFilter(ON_COLOR, PorterDuff.Mode.SRC_IN);
         else b.clearColorFilter();
     }
@@ -499,9 +486,10 @@ public class PlayerActivity extends Activity {
 
     private final Runnable sendVolume = new Runnable() {
         @Override public void run() {
-            int v = volume.flush(SystemClock.uptimeMillis());
             SoloistClient c = client();
-            if (v >= 0 && c != null) c.setVolume(v);
+            if (c == null) return; // keep it pending: nothing could send it
+            int v = volume.flush(SystemClock.uptimeMillis());
+            if (v >= 0) c.setVolume(v);
         }
     };
 
@@ -548,7 +536,8 @@ public class PlayerActivity extends Activity {
     private void openQueue() {
         if (queueOpen) return;
         queueOpen = true;
-        if (connected && service != null) service.client().refreshQueue();
+        SoloistClient c = client();
+        if (c != null) c.refreshQueue();
         queuePanel.setVisibility(View.VISIBLE);
         queuePanel.post(new Runnable() {
             @Override public void run() {
@@ -621,7 +610,7 @@ public class PlayerActivity extends Activity {
                 if (url == null) {
                     artwork.cancel(thumb);
                 } else {
-                    artwork.load(thumb, url, thumbPx, new ArtworkLoader.Callback<Bitmap>() {
+                    artwork.load(thumb, url, thumbPx, false, new ArtworkLoader.Callback<Bitmap>() {
                         @Override public void onArtwork(String loaded, Bitmap image) {
                             if (image != null && loaded.equals(thumb.getTag())) thumb.setImageBitmap(image);
                         }

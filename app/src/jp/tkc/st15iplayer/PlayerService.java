@@ -329,6 +329,11 @@ public final class PlayerService extends Service {
         return supervisor.state();
     }
 
+    /** Gave up over the settings (key): the status line should open setup. */
+    boolean needsSetup() {
+        return supervisor.needsSetup();
+    }
+
     String getStatus() {
         return status;
     }
