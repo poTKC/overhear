@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The seek bar's thumb: a 12 dp white circle, 16 dp while dragged. Both states
+     are 16 dp drawables, since the seek bar sizes the thumb once; the small one
+     is a layer-list item with 2 dp insets (on API 18 InsetDrawable does not
+     count its insets in its intrinsic size, LayerDrawable does). -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_pressed="true">
+        <shape android:shape="oval">
+            <size android:width="16dp" android:height="16dp" />
+            <solid android:color="#ffffffff" />
+        </shape>
+    </item>
+    <item>
+        <layer-list>
+            <item android:bottom="2dp" android:left="2dp" android:right="2dp" android:top="2dp">
+                <shape android:shape="oval">
+                    <size android:width="12dp" android:height="12dp" />
+                    <solid android:color="#ffffffff" />
+                </shape>
+            </item>
+        </layer-list>
+    </item>
+</selector>

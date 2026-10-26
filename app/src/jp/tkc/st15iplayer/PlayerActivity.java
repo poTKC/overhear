@@ -11,7 +11,10 @@ import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.content.pm.ApplicationInfo;
 import android.graphics.Bitmap;
+import android.graphics.PorterDuff;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.LayerDrawable;
 import android.media.AudioManager;
 import android.os.Bundle;
 import android.os.Handler;
@@ -74,6 +77,8 @@ import jp.tkc.st15iplayer.soloist.SoloistClient;
 public class PlayerActivity extends Activity {
     private static final long TICK_MS = 500;
     private static final int QUEUE_SHOWN = 10;
+    /** The played part of the seek bar while it is dragged (white otherwise). */
+    private static final int SEEK_DRAG_COLOR = 0xff1db954;
     private static final int MENU_SETTINGS = 1;
     private static final int MENU_SERVICE = 2;
 
@@ -244,10 +249,12 @@ public class PlayerActivity extends Activity {
 
             @Override public void onStartTrackingTouch(SeekBar bar) {
                 seeking = true;
+                setSeekProgressColor(SEEK_DRAG_COLOR);
             }
 
             @Override public void onStopTrackingTouch(SeekBar bar) {
                 seeking = false;
+                setSeekProgressColor(0);
                 SoloistClient c = client();
                 if (c == null) return;
                 c.seek(bar.getProgress());
@@ -493,7 +500,7 @@ public class PlayerActivity extends Activity {
         setEnabled(repeat, PlayerText.repeatEnabled(connected, state));
         shuffle.setActivated(state.isShuffle()); // ic_shuffle_state: green with a dot
         repeat.setImageLevel(PlayerText.repeatLevel(state.getRepeat())); // ic_repeat_levels
-        seek.setEnabled(enabled && state.getDurationMs() > 0);
+        setEnabled(seek, enabled && state.getDurationMs() > 0);
 
         List<PlayerState.QueueItem> q = connected ? state.getQueue()
                 : Collections.<PlayerState.QueueItem>emptyList();
@@ -545,6 +552,21 @@ public class PlayerActivity extends Activity {
         if (v.isEnabled() == enabled) return;
         v.setEnabled(enabled);
         v.setAlpha(enabled ? 1f : 0.4f);
+    }
+
+    /**
+     * Tints the played part of the seek bar (0: back to its white). A colour
+     * filter on the progress layer: on API 18 a SeekBar ignores state lists
+     * in its progress drawable, and swapping the drawable resets its bounds.
+     */
+    private void setSeekProgressColor(int color) {
+        Drawable d = seek.getProgressDrawable();
+        Drawable progress = d instanceof LayerDrawable
+                ? ((LayerDrawable) d).findDrawableByLayerId(android.R.id.progress) : null;
+        if (progress == null) return;
+        if (color == 0) progress.clearColorFilter();
+        else progress.setColorFilter(color, PorterDuff.Mode.SRC_IN);
+        seek.invalidate();
     }
 
     /** Sets the image only when it changes (the resource id is kept in the tag). */

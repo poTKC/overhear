@@ -96,34 +96,48 @@
             android:layout_height="0dp"
             android:layout_weight="2" />
 
+        <!-- Thin track (4 dp) in a 32 dp touch area: the 8 dp vertical padding
+             leaves a 16 dp content height (the thumb's), which AbsSeekBar
+             centres the track in; the 8 dp side padding is the thumb offset, so
+             the thumb is never clipped and the track ends line up with the times. -->
+        <SeekBar
+            android:id="@+id/seek"
+            android:layout_width="match_parent"
+            android:layout_height="32dp"
+            android:maxHeight="4dp"
+            android:minHeight="4dp"
+            android:paddingBottom="8dp"
+            android:paddingLeft="8dp"
+            android:paddingRight="8dp"
+            android:paddingTop="8dp"
+            android:progressDrawable="@drawable/seek_track"
+            android:thumb="@drawable/seek_thumb"
+            android:thumbOffset="8dp" />
+
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="28dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
+            android:layout_height="wrap_content"
+            android:layout_marginTop="-4dp"
+            android:orientation="horizontal"
+            android:paddingLeft="8dp"
+            android:paddingRight="8dp">
 
             <TextView
                 android:id="@+id/elapsed"
-                android:layout_width="38dp"
-                android:layout_height="wrap_content"
-                android:gravity="right"
-                android:textColor="#ffaaaaaa"
-                android:textSize="11sp" />
-
-            <SeekBar
-                android:id="@+id/seek"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:paddingLeft="12dp"
-                android:paddingRight="12dp" />
+                android:gravity="left"
+                android:textColor="#ffb3b3b3"
+                android:textSize="11sp" />
 
             <TextView
                 android:id="@+id/duration"
-                android:layout_width="38dp"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:gravity="left"
-                android:textColor="#ffaaaaaa"
+                android:layout_weight="1"
+                android:gravity="right"
+                android:textColor="#ffb3b3b3"
                 android:textSize="11sp" />
         </LinearLayout>
 
