@@ -2,4 +2,4 @@ build/
 keys/
 *.raw
 /tmp
-lib/
+/lib/

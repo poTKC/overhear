@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Runs the host JUnit tests: test/**/*Test.java against the pure-Java app
 # sources listed in test/sources.txt (no android.jar on the classpath).
+# Needs JDK 9 or later (javac --release 8).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -21,7 +22,11 @@ for entry in "${JARS[@]}"; do
     path=${entry% *} sum=${entry#* }
     jar="lib/${path##*/}"
     if [ ! -f "$jar" ]; then
-        curl -fsSL "https://repo1.maven.org/maven2/$path" -o "$jar.part"
+        curl -fsSL --retry 3 --max-time 120 "https://repo1.maven.org/maven2/$path" -o "$jar.part"
+        if ! echo "$sum  $jar.part" | shasum -a 256 -c --status -; then
+            rm -f "$jar.part"
+            die "checksum mismatch downloading $path"
+        fi
         mv "$jar.part" "$jar"
     fi
     echo "$sum  $jar" | shasum -a 256 -c --status - || die "checksum mismatch for $jar (delete it to re-download)"
