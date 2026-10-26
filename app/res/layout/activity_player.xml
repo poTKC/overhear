@@ -5,12 +5,14 @@
     android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:clipChildren="false"
     android:background="#ff101010">
 
     <LinearLayout
         android:id="@+id/player"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:clipChildren="false"
         android:orientation="vertical"
         android:paddingLeft="8dp"
         android:paddingRight="4dp">
@@ -56,13 +58,33 @@
             android:layout_height="0dp"
             android:layout_weight="1" />
 
-        <ImageView
-            android:id="@+id/artwork"
+        <!-- The artwork (240dp, as before) with a soft drop shadow
+             (tools/make_shadow.py): the shadow view reaches 12dp past the
+             sides, 8dp above and 16dp below through negative margins, so the
+             art keeps its size and place; clipChildren="false" here and on
+             the parents lets it draw into the spacing around the art. -->
+        <FrameLayout
             android:layout_width="240dp"
             android:layout_height="240dp"
             android:layout_gravity="center_horizontal"
-            android:contentDescription="@string/artwork"
-            android:scaleType="fitXY" />
+            android:clipChildren="false">
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:layout_marginBottom="-16dp"
+                android:layout_marginLeft="-12dp"
+                android:layout_marginRight="-12dp"
+                android:layout_marginTop="-8dp"
+                android:background="@drawable/art_shadow" />
+
+            <ImageView
+                android:id="@+id/artwork"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:contentDescription="@string/artwork"
+                android:scaleType="fitXY" />
+        </FrameLayout>
 
         <View
             android:layout_width="match_parent"
