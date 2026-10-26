@@ -1,0 +1,7 @@
+pulse/ holds the PulseAudio client headers, copied unchanged from the Debian
+package libpulse-dev 17.0+dfsg1-3 (usr/include/pulse/).
+
+They are part of PulseAudio and licensed under the GNU Lesser General Public
+License, version 2.1 or later (LGPL-2.1+); see the notice at the top of each
+file. fakepulse.c and the test harness only need them for the API types and
+prototypes; no PulseAudio code is linked.
