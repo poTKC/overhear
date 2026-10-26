@@ -27,9 +27,11 @@ import jp.tkc.st15iplayer.soloist.MainThreadExecutor;
 /**
  * The app's one ArtworkLoader: covers are fetched with st15i-fetch (Android
  * 4.3's own TLS cannot reach i.scdn.co reliably) into cacheDir/art and
- * decoded as RGB_565 bitmaps scaled to the view size. The main cover has a
- * thread of its own; thumbnails share two. Each fetch is killed after
- * FETCH_TIMEOUT_MS.
+ * decoded as RGB_565 bitmaps scaled to the view size, each with its
+ * background colour (ArtColor, from a box-averaged SAMPLE_SIDE square) worked
+ * out on the same background thread and kept with it in the memory cache.
+ * The main cover has a thread of its own; thumbnails share two. Each fetch
+ * is killed after FETCH_TIMEOUT_MS.
  */
 final class Artwork {
     private static final String TAG = "ST15iArtwork";
@@ -38,13 +40,25 @@ final class Artwork {
     static final long FAILURE_RETRY_MS = 60000;
     private static final int MAX_LINE_BYTES = 4096;
 
-    private static ArtworkLoader<Bitmap> loader;
+    /** A decoded cover and the player background colour for it. */
+    static final class Cover {
+        final Bitmap bitmap;
+        /** ArtColor.extract of the cover: opaque ARGB. */
+        final int color;
+
+        Cover(Bitmap bitmap, int color) {
+            this.bitmap = bitmap;
+            this.color = color;
+        }
+    }
+
+    private static ArtworkLoader<Cover> loader;
     private static ScheduledExecutorService watchdog;
 
     private Artwork() {}
 
     /** Main thread. */
-    static ArtworkLoader<Bitmap> loader(Context context) {
+    static ArtworkLoader<Cover> loader(Context context) {
         if (loader != null) return loader;
         final Context app = context.getApplicationContext();
         final RuntimeInstaller installer = new RuntimeInstaller(app);
@@ -75,12 +89,13 @@ final class Artwork {
                 runHelper(installer, url, out);
             }
         };
-        ArtworkLoader.Decoder<Bitmap> decoder = new ArtworkLoader.Decoder<Bitmap>() {
-            @Override public Bitmap decode(File file, int sizePx) throws IOException {
-                return decodeScaled(file, sizePx);
+        ArtworkLoader.Decoder<Cover> decoder = new ArtworkLoader.Decoder<Cover>() {
+            @Override public Cover decode(File file, int sizePx) throws IOException {
+                Bitmap b = decodeScaled(file, sizePx);
+                return new Cover(b, color(b));
             }
         };
-        loader = new ArtworkLoader<Bitmap>(new File(app.getCacheDir(), "art"), DISK_MAX_BYTES,
+        loader = new ArtworkLoader<Cover>(new File(app.getCacheDir(), "art"), DISK_MAX_BYTES,
                 FAILURE_RETRY_MS, fetcher, decoder, pool, urgent, new MainThreadExecutor());
         return loader;
     }
@@ -133,6 +148,18 @@ final class Artwork {
             Log.w(TAG, "artwork fetch failed (" + code + "): " + last);
             throw new IOException("st15i-fetch: " + last);
         }
+    }
+
+    /**
+     * The background colour for b, from a box-averaged SAMPLE_SIDE square
+     * (ArtColor.downscale; not createScaledBitmap, whose bilinear filter
+     * aliases at this ratio). Background thread.
+     */
+    static int color(Bitmap b) {
+        int w = b.getWidth(), h = b.getHeight();
+        int[] px = new int[w * h];
+        b.getPixels(px, 0, w, 0, 0, w, h);
+        return ArtColor.extract(ArtColor.downscale(px, w, h, ArtColor.SAMPLE_SIDE));
     }
 
     /**

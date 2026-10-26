@@ -1,5 +1,7 @@
 package jp.tkc.st15iplayer;
 
+import android.animation.ArgbEvaluator;
+import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ComponentName;
@@ -10,7 +12,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.content.pm.ApplicationInfo;
-import android.graphics.Bitmap;
+import android.graphics.PixelFormat;
 import android.graphics.PorterDuff;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
@@ -78,6 +80,7 @@ import jp.tkc.st15iplayer.soloist.SoloistClient;
  */
 public class PlayerActivity extends Activity {
     private static final long TICK_MS = 500;
+    private static final long BACKDROP_FADE_MS = 500;
     private static final int QUEUE_SHOWN = 10;
     /** The played part of the seek bar while it is dragged (white otherwise). */
     private static final int SEEK_DRAG_COLOR = 0xff1db954;
@@ -88,7 +91,7 @@ public class PlayerActivity extends Activity {
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private Prefs prefs;
-    private ArtworkLoader<Bitmap> artwork;
+    private ArtworkLoader<Artwork.Cover> artwork;
     private int artPx;
     private int thumbPx;
 
@@ -128,6 +131,12 @@ public class PlayerActivity extends Activity {
     private boolean seeking;
     private final SeekHold seekHold = new SeekHold();
     private boolean queueOpen;
+    /** The root's background: the cover colour fading into ArtColor.BACKGROUND (ArtColor.gradient). */
+    private GradientDrawable backdrop;
+    /** The colour at the top of the backdrop now, and the one it is fading to. */
+    private int backdropColor = ArtColor.BACKGROUND;
+    private int backdropTarget = ArtColor.BACKGROUND;
+    private ValueAnimator backdropFade;
     /** The service's finished-jump count when this screen started one; -1 when none is awaited. */
     private int awaitedJump = -1;
 
@@ -142,6 +151,12 @@ public class PlayerActivity extends Activity {
         }
         applyFullscreen(); // before the first layout: no jump at launch
         setContentView(R.layout.activity_player);
+        // 8 bits per channel: the dark gradient bands visibly in RGB 565.
+        getWindow().setFormat(PixelFormat.RGBA_8888);
+        backdrop = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                ArtColor.gradient(ArtColor.BACKGROUND, ArtColor.BACKGROUND));
+        backdrop.setDither(true);
+        findViewById(R.id.root).setBackground(backdrop);
         setVolumeControlStream(AudioManager.STREAM_MUSIC); // the keys always change the media volume
         float density = getResources().getDisplayMetrics().density;
         artPx = Math.round(240 * density);
@@ -387,6 +402,7 @@ public class PlayerActivity extends Activity {
     @Override
     protected void onDestroy() {
         if (artwork != null) artwork.cancelAll();
+        if (backdropFade != null) backdropFade.cancel();
         super.onDestroy();
     }
 
@@ -581,15 +597,40 @@ public class PlayerActivity extends Activity {
         if (url == null) {
             artwork.cancel(art);
             art.setImageDrawable(RoundedArt.placeholder(getResources(), artRadius));
+            setBackdrop(ArtColor.BACKGROUND);
             return;
         }
         // The old cover stays until the new one is here (or failed).
-        artwork.load(art, url, artPx, true, new ArtworkLoader.Callback<Bitmap>() {
-            @Override public void onArtwork(String loaded, Bitmap image) {
-                if (image != null) art.setImageDrawable(new RoundedArt(image, artRadius));
-                else art.setImageDrawable(RoundedArt.placeholder(getResources(), artRadius));
+        artwork.load(art, url, artPx, true, new ArtworkLoader.Callback<Artwork.Cover>() {
+            @Override public void onArtwork(String loaded, Artwork.Cover image) {
+                if (image != null) {
+                    art.setImageDrawable(new RoundedArt(image.bitmap, artRadius));
+                    setBackdrop(image.color);
+                } else {
+                    art.setImageDrawable(RoundedArt.placeholder(getResources(), artRadius));
+                    setBackdrop(ArtColor.BACKGROUND);
+                }
             }
         });
+    }
+
+    /**
+     * Cross-fades the backdrop's top colour to color over BACKDROP_FADE_MS
+     * (ArtColor.BACKGROUND: back to the plain background).
+     */
+    private void setBackdrop(int color) {
+        if (color == backdropTarget) return;
+        backdropTarget = color;
+        if (backdropFade != null) backdropFade.cancel(); // from wherever it got to
+        backdropFade = ValueAnimator.ofObject(new ArgbEvaluator(), backdropColor, color);
+        backdropFade.setDuration(BACKDROP_FADE_MS);
+        backdropFade.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            @Override public void onAnimationUpdate(ValueAnimator a) {
+                backdropColor = (Integer) a.getAnimatedValue();
+                backdrop.setColors(ArtColor.gradient(backdropColor, ArtColor.BACKGROUND));
+            }
+        });
+        backdropFade.start();
     }
 
     private static void setText(TextView v, String text) {
@@ -750,19 +791,19 @@ public class PlayerActivity extends Activity {
             thumb.setAlpha(busy ? 0.3f : 1f);
             final String url = item.smallCoverUrl;
             thumb.setTag(url);
-            Bitmap hit = url == null ? null : artwork.get(url, thumbPx);
+            Artwork.Cover hit = url == null ? null : artwork.get(url, thumbPx);
             if (hit != null) {
                 artwork.cancel(thumb);
-                thumb.setImageDrawable(new RoundedArt(hit, thumbRadius));
+                thumb.setImageDrawable(new RoundedArt(hit.bitmap, thumbRadius));
             } else {
                 thumb.setImageDrawable(RoundedArt.placeholder(getResources(), thumbRadius));
                 if (url == null) {
                     artwork.cancel(thumb);
                 } else {
-                    artwork.load(thumb, url, thumbPx, false, new ArtworkLoader.Callback<Bitmap>() {
-                        @Override public void onArtwork(String loaded, Bitmap image) {
+                    artwork.load(thumb, url, thumbPx, false, new ArtworkLoader.Callback<Artwork.Cover>() {
+                        @Override public void onArtwork(String loaded, Artwork.Cover image) {
                             if (image != null && loaded.equals(thumb.getTag())) {
-                                thumb.setImageDrawable(new RoundedArt(image, thumbRadius));
+                                thumb.setImageDrawable(new RoundedArt(image.bitmap, thumbRadius));
                             }
                         }
                     });
