@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The app theme: Holo dark with the Holo blue accents turned green (#1DB954).
+     API 18 has no colorAccent, so the widgets point at recoloured copies of the
+     AOSP Holo drawables (holo_g_*, tools/make_holo_green.py). -->
+<resources>
+    <color name="accent">#ff1db954</color>
+
+    <style name="Theme.ST15i" parent="@android:style/Theme.Holo.NoActionBar">
+        <item name="android:editTextStyle">@style/ST15i.EditText</item>
+        <item name="android:checkboxStyle">@style/ST15i.CheckBox</item>
+        <item name="android:buttonStyle">@style/ST15i.Button</item>
+        <item name="android:progressBarStyleHorizontal">@style/ST15i.ProgressBar.Horizontal</item>
+        <!-- List and popup menu rows (Widget.Holo.ListView uses it as listSelector). -->
+        <item name="android:listChoiceBackgroundIndicator">@drawable/holo_g_list_selector_holo_dark</item>
+        <item name="android:selectableItemBackground">@drawable/holo_g_item_background_holo_dark</item>
+        <item name="android:textColorHighlight">#661db954</item>
+        <item name="android:textColorLink">@color/accent</item>
+        <item name="android:textSelectHandleLeft">@drawable/holo_g_text_select_handle_left</item>
+        <item name="android:textSelectHandleRight">@drawable/holo_g_text_select_handle_right</item>
+        <item name="android:textSelectHandle">@drawable/holo_g_text_select_handle_middle</item>
+        <item name="android:alertDialogTheme">@style/Theme.ST15i.Dialog</item>
+    </style>
+
+    <!-- AlertDialogs (licences): green title; Dialogs.green() also recolours the
+         title divider, which alert_dialog_holo.xml hard-codes to Holo blue. -->
+    <style name="Theme.ST15i.Dialog" parent="@android:style/Theme.Holo.Dialog">
+        <item name="android:windowTitleStyle">@style/ST15i.DialogWindowTitle</item>
+        <item name="android:buttonStyle">@style/ST15i.Button</item>
+        <item name="android:listChoiceBackgroundIndicator">@drawable/holo_g_list_selector_holo_dark</item>
+        <item name="android:selectableItemBackground">@drawable/holo_g_item_background_holo_dark</item>
+        <item name="android:textColorHighlight">#661db954</item>
+        <item name="android:windowMinWidthMajor">@android:dimen/dialog_min_width_major</item>
+        <item name="android:windowMinWidthMinor">@android:dimen/dialog_min_width_minor</item>
+    </style>
+
+    <style name="ST15i.DialogWindowTitle" parent="@android:style/TextAppearance.Holo.DialogWindowTitle">
+        <item name="android:textAppearance">@style/ST15i.TextAppearance.DialogWindowTitle</item>
+        <!-- Also directly: the parent's own textColor would win over textAppearance. -->
+        <item name="android:textColor">@color/accent</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:ellipsize">end</item>
+    </style>
+
+    <style name="ST15i.TextAppearance.DialogWindowTitle" parent="@android:style/TextAppearance.Holo.DialogWindowTitle">
+        <item name="android:textColor">@color/accent</item>
+    </style>
+
+    <style name="ST15i.EditText" parent="@android:style/Widget.Holo.EditText">
+        <item name="android:background">@drawable/holo_g_edit_text_holo_dark</item>
+    </style>
+
+    <style name="ST15i.CheckBox" parent="@android:style/Widget.Holo.CompoundButton.CheckBox">
+        <item name="android:button">@drawable/holo_g_btn_check_holo_dark</item>
+    </style>
+
+    <style name="ST15i.Button" parent="@android:style/Widget.Holo.Button">
+        <item name="android:background">@drawable/holo_g_btn_default_holo_dark</item>
+    </style>
+
+    <style name="ST15i.ProgressBar.Horizontal" parent="@android:style/Widget.Holo.ProgressBar.Horizontal">
+        <item name="android:progressDrawable">@drawable/holo_g_progress_horizontal_holo_dark</item>
+        <item name="android:indeterminateDrawable">@drawable/holo_g_progress_indeterminate_horizontal_holo</item>
+    </style>
+</resources>

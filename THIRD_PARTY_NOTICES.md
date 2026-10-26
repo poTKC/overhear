@@ -134,6 +134,18 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
   `tools/make_icons.py`).
 - Licence text: <https://spdx.org/licenses/Apache-2.0.html>
 
+## Android Open Source Project (green Holo widgets)
+
+- `res/drawable*/holo_g_*` (text fields, check boxes, buttons, the
+  horizontal progress bar, list selectors and text selection handles) are
+  the Holo dark framework drawables of Android 4.3 (API 18), copied by
+  `tools/make_holo_green.py` from the SDK's `platforms/android-18/data/res`
+  with their Holo blue recoloured to green and their references renamed.
+- Copyright The Android Open Source Project.
+- Licence: Apache License 2.0 (SPDX `Apache-2.0`).
+- Source: <https://android.googlesource.com/platform/frameworks/base/+/refs/heads/jb-mr2-release/core/res/res/>
+  (as shipped in the Android SDK Platform 18).
+
 ## Rubik (font)
 
 - `assets/fonts/st15i-digits.ttf` shows the player's clock, battery number

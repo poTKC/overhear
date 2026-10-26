@@ -62,11 +62,11 @@ final class Licenses {
                 return tv;
             }
         });
-        new AlertDialog.Builder(a)
+        Dialogs.green(new AlertDialog.Builder(a)
                 .setTitle(R.string.licenses)
                 .setView(list)
                 .setPositiveButton(R.string.close, null)
-                .show();
+                .show());
     }
 
     private static String read(InputStream in) throws IOException {
