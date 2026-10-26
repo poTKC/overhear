@@ -1,0 +1,71 @@
+{
+  "type": "track_changed",
+  "item": {
+    "uri": "spotify:track:2nX1nKma4JpfOfh3kbWrlC",
+    "entity_type": "track",
+    "decorations": {
+      "identity": {
+        "name": "BAD HABITS TONITE"
+      },
+      "visual_identity": {
+        "cover": [
+          {
+            "url": "https://i.scdn.co/image/ab67616d000048512caa8b78b32389a29806ca4a",
+            "size": "small"
+          },
+          {
+            "url": "https://i.scdn.co/image/ab67616d00001e022caa8b78b32389a29806ca4a",
+            "size": "default"
+          },
+          {
+            "url": "https://i.scdn.co/image/ab67616d0000b2732caa8b78b32389a29806ca4a",
+            "size": "large"
+          },
+          {
+            "url": "https://i.scdn.co/image/ab67616d0000b2732caa8b78b32389a29806ca4a",
+            "size": "xlarge"
+          }
+        ]
+      },
+      "parent": {
+        "entity": {
+          "uri": "spotify:album:2JOQCL9FFYM2o6rUrOAolP",
+          "entity_type": "album",
+          "decorations": {
+            "identity": {
+              "name": "BAD HABITS TONITE"
+            }
+          }
+        }
+      },
+      "creators": [
+        {
+          "entity": {
+            "uri": "spotify:artist:7rBQch7KtqQNQjV5AxdHlE",
+            "entity_type": "artist",
+            "decorations": {
+              "identity": {
+                "name": "A2O"
+              }
+            }
+          }
+        },
+        {
+          "entity": {
+            "uri": "spotify:artist:6MHvscbuui67TvYTr3ZpV4",
+            "entity_type": "artist",
+            "decorations": {
+              "identity": {
+                "name": "A2O MAY"
+              }
+            }
+          }
+        }
+      ],
+      "playback": {
+        "duration_ms": 190000,
+        "content_ratings": []
+      }
+    }
+  }
+}

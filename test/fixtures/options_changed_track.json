@@ -1,0 +1,11 @@
+{
+  "type": "options_changed",
+  "options": {
+    "shuffle": true,
+    "repeat": "track",
+    "playback_speed": 1,
+    "modes": {
+      "context_enhancement": "NONE"
+    }
+  }
+}

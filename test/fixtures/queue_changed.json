@@ -1,0 +1,800 @@
+{
+  "type": "queue_changed",
+  "previous": [
+    {
+      "uid": "304430d2761e1b85",
+      "source": "autoplay",
+      "item": {
+        "uri": "spotify:track:4IdtNJqm7zVBwvN5jIUOYo",
+        "entity_type": "track",
+        "decorations": {
+          "identity": {
+            "name": "Next Chapter"
+          },
+          "visual_identity": {
+            "cover": [
+              {
+                "url": "https://i.scdn.co/image/ab67616d0000485100c98121de90e0638935d97b",
+                "size": "small"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d00001e0200c98121de90e0638935d97b",
+                "size": "default"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d0000b27300c98121de90e0638935d97b",
+                "size": "large"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d0000b27300c98121de90e0638935d97b",
+                "size": "xlarge"
+              }
+            ]
+          },
+          "parent": {
+            "entity": {
+              "uri": "spotify:album:1UP8wDVpZ3VCDjzbLsZ5AP",
+              "entity_type": "album",
+              "decorations": {
+                "identity": {
+                  "name": "Next Chapter"
+                }
+              }
+            }
+          },
+          "creators": [
+            {
+              "entity": {
+                "uri": "spotify:artist:1ZLU77nRzQIaP23mVSYpCQ",
+                "entity_type": "artist",
+                "decorations": {
+                  "identity": {
+                    "name": "Hearts2Hearts"
+                  }
+                }
+              }
+            }
+          ],
+          "playback": {
+            "duration_ms": 169000,
+            "content_ratings": []
+          }
+        }
+      }
+    },
+    {
+      "uid": "fee8e74bf7b2f6d0",
+      "source": "autoplay",
+      "item": {
+        "uri": "spotify:track:4rpF7VUyQTt3HEqjSEHQuE",
+        "entity_type": "track",
+        "decorations": {
+          "identity": {
+            "name": "Hot 'n Unbothered (SULLYOON, BAE)"
+          },
+          "visual_identity": {
+            "cover": [
+              {
+                "url": "https://i.scdn.co/image/ab67616d000048518a704eee887450c6c04741c0",
+                "size": "small"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d00001e028a704eee887450c6c04741c0",
+                "size": "default"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d0000b2738a704eee887450c6c04741c0",
+                "size": "large"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d0000b2738a704eee887450c6c04741c0",
+                "size": "xlarge"
+              }
+            ]
+          },
+          "parent": {
+            "entity": {
+              "uri": "spotify:album:1z0Pp1BPuADZTTM8TTUFWs",
+              "entity_type": "album",
+              "decorations": {
+                "identity": {
+                  "name": "Strange Muse"
+                }
+              }
+            }
+          },
+          "creators": [
+            {
+              "entity": {
+                "uri": "spotify:artist:28ot3wh4oNmoFOdVajibBl",
+                "entity_type": "artist",
+                "decorations": {
+                  "identity": {
+                    "name": "NMIXX"
+                  }
+                }
+              }
+            }
+          ],
+          "playback": {
+            "duration_ms": 139000,
+            "content_ratings": []
+          }
+        }
+      }
+    },
+    {
+      "uid": "da3607bc5eb5da02",
+      "source": "autoplay",
+      "item": {
+        "uri": "spotify:track:6DCc1MCY8fjkDPR9pMtJaN",
+        "entity_type": "track",
+        "decorations": {
+          "identity": {
+            "name": "Looks Can Kill"
+          },
+          "visual_identity": {
+            "cover": [
+              {
+                "url": "https://i.scdn.co/image/ab67616d00004851389fd00ce79c90f9cc96a420",
+                "size": "small"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d00001e02389fd00ce79c90f9cc96a420",
+                "size": "default"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d0000b273389fd00ce79c90f9cc96a420",
+                "size": "large"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d0000b273389fd00ce79c90f9cc96a420",
+                "size": "xlarge"
+              }
+            ]
+          },
+          "parent": {
+            "entity": {
+              "uri": "spotify:album:1yTYJgDctUC6GsbGQXYgV1",
+              "entity_type": "album",
+              "decorations": {
+                "identity": {
+                  "name": "Looks Can Kill"
+                }
+              }
+            }
+          },
+          "creators": [
+            {
+              "entity": {
+                "uri": "spotify:artist:6RHTUrRF63xao58xh9FXYJ",
+                "entity_type": "artist",
+                "decorations": {
+                  "identity": {
+                    "name": "IVE"
+                  }
+                }
+              }
+            }
+          ],
+          "playback": {
+            "duration_ms": 196000,
+            "content_ratings": []
+          }
+        }
+      }
+    }
+  ],
+  "upcoming": [
+    {
+      "uid": "6bbcc1f1e0d78d1c",
+      "source": "autoplay",
+      "item": {
+        "uri": "spotify:track:0Gl9pXfGTU8eAnEbcka6AV",
+        "entity_type": "track",
+        "decorations": {
+          "identity": {
+            "name": "IYKYK"
+          },
+          "visual_identity": {
+            "cover": [
+              {
+                "url": "https://i.scdn.co/image/ab67616d00004851fcda1903d978d02fd3f5334b",
+                "size": "small"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d00001e02fcda1903d978d02fd3f5334b",
+                "size": "default"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d0000b273fcda1903d978d02fd3f5334b",
+                "size": "large"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d0000b273fcda1903d978d02fd3f5334b",
+                "size": "xlarge"
+              }
+            ]
+          },
+          "parent": {
+            "entity": {
+              "uri": "spotify:album:1eS784kXLyL0YpDz5E7AuV",
+              "entity_type": "album",
+              "decorations": {
+                "identity": {
+                  "name": "AWE"
+                }
+              }
+            }
+          },
+          "creators": [
+            {
+              "entity": {
+                "uri": "spotify:artist:0LOK81e9H5lr61HlGGHqwA",
+                "entity_type": "artist",
+                "decorations": {
+                  "identity": {
+                    "name": "XG"
+                  }
+                }
+              }
+            }
+          ],
+          "playback": {
+            "duration_ms": 180000,
+            "content_ratings": []
+          }
+        }
+      }
+    },
+    {
+      "uid": "778a29e612f6fab1",
+      "source": "autoplay",
+      "item": {
+        "uri": "spotify:track:54E6zLaoW4ofXKaXhLVu3G",
+        "entity_type": "track",
+        "decorations": {
+          "identity": {
+            "name": "Andless"
+          },
+          "visual_identity": {
+            "cover": [
+              {
+                "url": "https://i.scdn.co/image/ab67616d0000485121d169265aa46e9b18c095d9",
+                "size": "small"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d00001e0221d169265aa46e9b18c095d9",
+                "size": "default"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d0000b27321d169265aa46e9b18c095d9",
+                "size": "large"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d0000b27321d169265aa46e9b18c095d9",
+                "size": "xlarge"
+              }
+            ]
+          },
+          "parent": {
+            "entity": {
+              "uri": "spotify:album:4xzONnGPY3wEMHOSsmeJEf",
+              "entity_type": "album",
+              "decorations": {
+                "identity": {
+                  "name": "<LOVE&POP> pt.2"
+                }
+              }
+            }
+          },
+          "creators": [
+            {
+              "entity": {
+                "uri": "spotify:artist:5Z71xE9prhpHrqL5thVMyK",
+                "entity_type": "artist",
+                "decorations": {
+                  "identity": {
+                    "name": "tripleS"
+                  }
+                }
+              }
+            }
+          ],
+          "playback": {
+            "duration_ms": 166000,
+            "content_ratings": []
+          }
+        }
+      }
+    },
+    {
+      "uid": "96f7713ef150fc82",
+      "source": "autoplay",
+      "item": {
+        "uri": "spotify:track:4CjNGe0SrasxoAhzuqrXoB",
+        "entity_type": "track",
+        "decorations": {
+          "identity": {
+            "name": "GO HARD"
+          },
+          "visual_identity": {
+            "cover": [
+              {
+                "url": "https://i.scdn.co/image/ab67616d000048518c0365c9b2f4bd7873e20de1",
+                "size": "small"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d00001e028c0365c9b2f4bd7873e20de1",
+                "size": "default"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d0000b2738c0365c9b2f4bd7873e20de1",
+                "size": "large"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d0000b2738c0365c9b2f4bd7873e20de1",
+                "size": "xlarge"
+              }
+            ]
+          },
+          "parent": {
+            "entity": {
+              "uri": "spotify:album:2cvqpuiWY2NJhNIf555mpc",
+              "entity_type": "album",
+              "decorations": {
+                "identity": {
+                  "name": "GO HARD"
+                }
+              }
+            }
+          },
+          "creators": [
+            {
+              "entity": {
+                "uri": "spotify:artist:08hHTBHlv0WRXWlyrsb6Kv",
+                "entity_type": "artist",
+                "decorations": {
+                  "identity": {
+                    "name": "MEOVV"
+                  }
+                }
+              }
+            }
+          ],
+          "playback": {
+            "duration_ms": 188000,
+            "content_ratings": []
+          }
+        }
+      }
+    },
+    {
+      "uid": "812d9f52677d200d",
+      "source": "autoplay",
+      "item": {
+        "uri": "spotify:track:5FvlfwJaWCRStNSXur3Tyk",
+        "entity_type": "track",
+        "decorations": {
+          "identity": {
+            "name": "Kerosene"
+          },
+          "visual_identity": {
+            "cover": [
+              {
+                "url": "https://i.scdn.co/image/ab67616d000048518a704eee887450c6c04741c0",
+                "size": "small"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d00001e028a704eee887450c6c04741c0",
+                "size": "default"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d0000b2738a704eee887450c6c04741c0",
+                "size": "large"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d0000b2738a704eee887450c6c04741c0",
+                "size": "xlarge"
+              }
+            ]
+          },
+          "parent": {
+            "entity": {
+              "uri": "spotify:album:1z0Pp1BPuADZTTM8TTUFWs",
+              "entity_type": "album",
+              "decorations": {
+                "identity": {
+                  "name": "Strange Muse"
+                }
+              }
+            }
+          },
+          "creators": [
+            {
+              "entity": {
+                "uri": "spotify:artist:28ot3wh4oNmoFOdVajibBl",
+                "entity_type": "artist",
+                "decorations": {
+                  "identity": {
+                    "name": "NMIXX"
+                  }
+                }
+              }
+            }
+          ],
+          "playback": {
+            "duration_ms": 166000,
+            "content_ratings": []
+          }
+        }
+      }
+    },
+    {
+      "uid": "ff87eb6ccec11cf3",
+      "source": "autoplay",
+      "item": {
+        "uri": "spotify:track:6jYiHr12NVKLzn0X7K8aSK",
+        "entity_type": "track",
+        "decorations": {
+          "identity": {
+            "name": "FOCUS"
+          },
+          "visual_identity": {
+            "cover": [
+              {
+                "url": "https://i.scdn.co/image/ab67616d000048517c887828b1a67202f0219857",
+                "size": "small"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d00001e027c887828b1a67202f0219857",
+                "size": "default"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d0000b2737c887828b1a67202f0219857",
+                "size": "large"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d0000b2737c887828b1a67202f0219857",
+                "size": "xlarge"
+              }
+            ]
+          },
+          "parent": {
+            "entity": {
+              "uri": "spotify:album:0SVlu6q116wFO1m4EZ088b",
+              "entity_type": "album",
+              "decorations": {
+                "identity": {
+                  "name": "FOCUS - The 1st Mini Album"
+                }
+              }
+            }
+          },
+          "creators": [
+            {
+              "entity": {
+                "uri": "spotify:artist:1ZLU77nRzQIaP23mVSYpCQ",
+                "entity_type": "artist",
+                "decorations": {
+                  "identity": {
+                    "name": "Hearts2Hearts"
+                  }
+                }
+              }
+            }
+          ],
+          "playback": {
+            "duration_ms": 177000,
+            "content_ratings": []
+          }
+        }
+      }
+    },
+    {
+      "uid": "3543e63def514299",
+      "source": "autoplay",
+      "item": {
+        "uri": "spotify:track:51pREVFJeAJGvhJ1rYCKZH",
+        "entity_type": "track",
+        "decorations": {
+          "identity": {
+            "name": "jellyous"
+          },
+          "visual_identity": {
+            "cover": [
+              {
+                "url": "https://i.scdn.co/image/ab67616d00004851d3f0c1aaebe2b11b0b984251",
+                "size": "small"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d00001e02d3f0c1aaebe2b11b0b984251",
+                "size": "default"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d0000b273d3f0c1aaebe2b11b0b984251",
+                "size": "large"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d0000b273d3f0c1aaebe2b11b0b984251",
+                "size": "xlarge"
+              }
+            ]
+          },
+          "parent": {
+            "entity": {
+              "uri": "spotify:album:0XKtGPLlJMTOP4DmhRpOwg",
+              "entity_type": "album",
+              "decorations": {
+                "identity": {
+                  "name": "jellyous (Feat. Sophie Powers)"
+                }
+              }
+            }
+          },
+          "creators": [
+            {
+              "entity": {
+                "uri": "spotify:artist:36cgvBn0aadzOijnjjwqMN",
+                "entity_type": "artist",
+                "decorations": {
+                  "identity": {
+                    "name": "ILLIT"
+                  }
+                }
+              }
+            }
+          ],
+          "playback": {
+            "duration_ms": 163000,
+            "content_ratings": []
+          }
+        }
+      }
+    },
+    {
+      "uid": "08f137424ad2c634",
+      "source": "autoplay",
+      "item": {
+        "uri": "spotify:track:5r2FAkZaMsO5SsHwcywQTi",
+        "entity_type": "track",
+        "decorations": {
+          "identity": {
+            "name": "HYPNOTIZE"
+          },
+          "visual_identity": {
+            "cover": [
+              {
+                "url": "https://i.scdn.co/image/ab67616d00004851edf44a9ab5c326de5c49d03b",
+                "size": "small"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d00001e02edf44a9ab5c326de5c49d03b",
+                "size": "default"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d0000b273edf44a9ab5c326de5c49d03b",
+                "size": "large"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d0000b273edf44a9ab5c326de5c49d03b",
+                "size": "xlarge"
+              }
+            ]
+          },
+          "parent": {
+            "entity": {
+              "uri": "spotify:album:07J0T7JwhvJaX6ky1PiyM6",
+              "entity_type": "album",
+              "decorations": {
+                "identity": {
+                  "name": "THE CORE - 核"
+                }
+              }
+            }
+          },
+          "creators": [
+            {
+              "entity": {
+                "uri": "spotify:artist:0LOK81e9H5lr61HlGGHqwA",
+                "entity_type": "artist",
+                "decorations": {
+                  "identity": {
+                    "name": "XG"
+                  }
+                }
+              }
+            }
+          ],
+          "playback": {
+            "duration_ms": 171000,
+            "content_ratings": []
+          }
+        }
+      }
+    },
+    {
+      "uid": "dd0dc210990d2225",
+      "source": "autoplay",
+      "item": {
+        "uri": "spotify:track:0lQmvAEjJsdt8u2dO0NOGN",
+        "entity_type": "track",
+        "decorations": {
+          "identity": {
+            "name": "Red Hot Chili Summer"
+          },
+          "visual_identity": {
+            "cover": [
+              {
+                "url": "https://i.scdn.co/image/ab67616d000048514fd7e6f8bebf178bc8218fee",
+                "size": "small"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d00001e024fd7e6f8bebf178bc8218fee",
+                "size": "default"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d0000b2734fd7e6f8bebf178bc8218fee",
+                "size": "large"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d0000b2734fd7e6f8bebf178bc8218fee",
+                "size": "xlarge"
+              }
+            ]
+          },
+          "parent": {
+            "entity": {
+              "uri": "spotify:album:7MFsCPjOUFHtLZu87S9yWw",
+              "entity_type": "album",
+              "decorations": {
+                "identity": {
+                  "name": "Lv2"
+                }
+              }
+            }
+          },
+          "creators": [
+            {
+              "entity": {
+                "uri": "spotify:artist:6T1L8TS6LeXIDHYnDAMHFe",
+                "entity_type": "artist",
+                "decorations": {
+                  "identity": {
+                    "name": "YEOJIN(L∞na)"
+                  }
+                }
+              }
+            }
+          ],
+          "playback": {
+            "duration_ms": 166000,
+            "content_ratings": []
+          }
+        }
+      }
+    },
+    {
+      "uid": "5b36e9c8fc2d547b",
+      "source": "autoplay",
+      "item": {
+        "uri": "spotify:track:1x0mG2CyQW5mjBX17ZfTUG",
+        "entity_type": "track",
+        "decorations": {
+          "identity": {
+            "name": "Runaway"
+          },
+          "visual_identity": {
+            "cover": [
+              {
+                "url": "https://i.scdn.co/image/ab67616d00004851e5fd56cd91d38d69aec9a5a2",
+                "size": "small"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d00001e02e5fd56cd91d38d69aec9a5a2",
+                "size": "default"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d0000b273e5fd56cd91d38d69aec9a5a2",
+                "size": "large"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d0000b273e5fd56cd91d38d69aec9a5a2",
+                "size": "xlarge"
+              }
+            ]
+          },
+          "parent": {
+            "entity": {
+              "uri": "spotify:album:6wL6HetMdQwsTqZzCBpGGJ",
+              "entity_type": "album",
+              "decorations": {
+                "identity": {
+                  "name": "Runaway"
+                }
+              }
+            }
+          },
+          "creators": [
+            {
+              "entity": {
+                "uri": "spotify:artist:5deOsjuFTKrNMJW3rKuL8S",
+                "entity_type": "artist",
+                "decorations": {
+                  "identity": {
+                    "name": "RESCENE"
+                  }
+                }
+              }
+            }
+          ],
+          "playback": {
+            "duration_ms": 182000,
+            "content_ratings": []
+          }
+        }
+      }
+    },
+    {
+      "uid": "e85d31de426c5ec8",
+      "source": "autoplay",
+      "item": {
+        "uri": "spotify:track:4EpUJbdObAoylk1004aMG3",
+        "entity_type": "track",
+        "decorations": {
+          "identity": {
+            "name": "Birthday Wish"
+          },
+          "visual_identity": {
+            "cover": [
+              {
+                "url": "https://i.scdn.co/image/ab67616d000048518a704eee887450c6c04741c0",
+                "size": "small"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d00001e028a704eee887450c6c04741c0",
+                "size": "default"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d0000b2738a704eee887450c6c04741c0",
+                "size": "large"
+              },
+              {
+                "url": "https://i.scdn.co/image/ab67616d0000b2738a704eee887450c6c04741c0",
+                "size": "xlarge"
+              }
+            ]
+          },
+          "parent": {
+            "entity": {
+              "uri": "spotify:album:1z0Pp1BPuADZTTM8TTUFWs",
+              "entity_type": "album",
+              "decorations": {
+                "identity": {
+                  "name": "Strange Muse"
+                }
+              }
+            }
+          },
+          "creators": [
+            {
+              "entity": {
+                "uri": "spotify:artist:28ot3wh4oNmoFOdVajibBl",
+                "entity_type": "artist",
+                "decorations": {
+                  "identity": {
+                    "name": "NMIXX"
+                  }
+                }
+              }
+            }
+          ],
+          "playback": {
+            "duration_ms": 200000,
+            "content_ratings": []
+          }
+        }
+      }
+    }
+  ]
+}

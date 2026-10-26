@@ -1,0 +1,8 @@
+{
+  "type": "context_changed",
+  "context": {
+    "uri": "spotify:album:1UP8wDVpZ3VCDjzbLsZ5AP",
+    "entity_type": "album",
+    "decorations": {}
+  }
+}

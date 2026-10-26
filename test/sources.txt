@@ -2,3 +2,6 @@
 # (nothing that imports android.*); paths are relative to the repo root.
 app/src/jp/tkc/st15iplayer/audio/FrameReader.java
 app/src/jp/tkc/st15iplayer/audio/StreamSession.java
+app/src/jp/tkc/st15iplayer/ws/WebSocketClient.java
+app/src/jp/tkc/st15iplayer/soloist/PlayerState.java
+app/src/jp/tkc/st15iplayer/soloist/SoloistClient.java
