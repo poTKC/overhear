@@ -32,6 +32,8 @@
     <string name="repeat">リピート</string>
     <string name="volume">音量</string>
     <string name="artwork">アートワーク</string>
+    <string name="menu_settings">設定</string>
+    <string name="stop">停止</string>
 
     <!-- setup -->
     <string name="setup_title">ST15i Player の設定</string>
@@ -42,6 +44,9 @@
     <string name="setup_cancelled">キャンセルしました</string>
     <string name="setup_show_key">キーを表示</string>
     <string name="setup_name_label">デバイス名（Spotify に表示）</string>
+    <string name="setup_auto_start">端末の起動時に自動で開始</string>
+    <string name="licenses">ライセンス</string>
+    <string name="licenses_missing">ライセンス情報を読み込めませんでした</string>
     <string name="setup_save">保存して開始</string>
     <string name="setup_save_edit">保存</string>
     <string name="setup_need_key">API キーを入力してください</string>

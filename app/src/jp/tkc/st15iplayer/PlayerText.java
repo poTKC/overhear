@@ -9,8 +9,8 @@ import jp.tkc.st15iplayer.soloist.PlayerState;
  * text and times. Pure Java (host tests).
  */
 final class PlayerText {
-    /** What tapping the status line does. */
-    enum Action { NONE, START, RETRY, SETUP }
+    /** What tapping the status line (or the service menu item) does. */
+    enum Action { NONE, START, RETRY, SETUP, STOP }
 
     static final class Status {
         final String text;
@@ -28,6 +28,8 @@ final class PlayerText {
     static final String CHECK_KEY = "\u30ad\u30fc\u3092\u78ba\u8a8d\u3057\u3066\u304f\u3060\u3055\u3044"
             + " \u2014 \u30bf\u30c3\u30d7\u3067\u8a2d\u5b9a";
     static final String LOGIN_ERROR = "ログインエラー — タップで設定";
+    static final String STOP = "停止";
+    static final String START = "開始";
 
     private PlayerText() {}
 
@@ -59,6 +61,19 @@ final class PlayerText {
             return new Status(selectDevice(deviceName), Action.NONE);
         }
         return new Status(serviceStatus == null ? "" : serviceStatus, Action.NONE);
+    }
+
+    /**
+     * The menu's service item (Menu key, long-press on settings): stop while
+     * the service runs, whatever its state (starting, failed ...), else start.
+     * After a stop the status line reads TAP_TO_START (status()).
+     */
+    static Action serviceMenuAction(boolean serviceUp) {
+        return serviceUp ? Action.STOP : Action.START;
+    }
+
+    static String serviceMenuLabel(boolean serviceUp) {
+        return serviceUp ? STOP : START;
     }
 
     /** Playback controls work only on the active device. */

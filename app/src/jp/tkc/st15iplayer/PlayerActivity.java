@@ -19,6 +19,8 @@ import android.os.SystemClock;
 import android.view.GestureDetector;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -26,6 +28,7 @@ import android.widget.BaseAdapter;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.ListView;
+import android.widget.PopupMenu;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.TextView;
@@ -48,13 +51,16 @@ import jp.tkc.st15iplayer.soloist.SoloistClient;
  * the service); commands go through the service's SoloistClient.
  *
  * The launcher entry: without an API key it hands over to SetupActivity.
- * Closing it leaves playback running.
+ * Closing it leaves playback running; the menu (Menu key or long-press on
+ * settings) stops the service.
  */
 public class PlayerActivity extends Activity {
     private static final long TICK_MS = 500;
     private static final int VOLUME_STEP = 5;
     private static final int QUEUE_SHOWN = 10;
     private static final int ON_COLOR = 0xff33b5e5;
+    private static final int MENU_SETTINGS = 1;
+    private static final int MENU_SERVICE = 2;
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private final VolumeControl volume = new VolumeControl();
@@ -154,6 +160,12 @@ public class PlayerActivity extends Activity {
         findViewById(R.id.settings).setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 openSettings();
+            }
+        });
+        findViewById(R.id.settings).setOnLongClickListener(new View.OnLongClickListener() {
+            @Override public boolean onLongClick(View v) {
+                showMenu();
+                return true;
             }
         });
         playPause.setOnClickListener(new View.OnClickListener() {
@@ -525,7 +537,7 @@ public class PlayerActivity extends Activity {
             return true;
         }
         if (keyCode == KeyEvent.KEYCODE_MENU) {
-            openSettings();
+            showMenu();
             return true;
         }
         return super.onKeyUp(keyCode, event);
@@ -632,7 +644,16 @@ public class PlayerActivity extends Activity {
     // --- status line, settings, debug ---
 
     private void onStatusTapped() {
-        switch (statusAction) {
+        run(statusAction);
+    }
+
+    private void run(PlayerText.Action action) {
+        switch (action) {
+            case STOP:
+                // onDestroy stops Soloist and releases the locks; the tick
+                // notices the service is gone and shows TAP_TO_START.
+                PlayerService.stop(this);
+                break;
             case START:
                 PlayerService.start(this);
                 break;
@@ -645,6 +666,22 @@ public class PlayerActivity extends Activity {
             default:
                 break;
         }
+    }
+
+    /** Menu key or long-press on settings: settings, and stop (or start) the service. */
+    private void showMenu() {
+        final boolean up = PlayerService.current() != null;
+        PopupMenu menu = new PopupMenu(this, findViewById(R.id.settings));
+        menu.getMenu().add(Menu.NONE, MENU_SETTINGS, 0, R.string.menu_settings);
+        menu.getMenu().add(Menu.NONE, MENU_SERVICE, 1, PlayerText.serviceMenuLabel(up));
+        menu.setOnMenuItemClickListener(new PopupMenu.OnMenuItemClickListener() {
+            @Override public boolean onMenuItemClick(MenuItem item) {
+                if (item.getItemId() == MENU_SETTINGS) openSettings();
+                else run(PlayerText.serviceMenuAction(up));
+                return true;
+            }
+        });
+        menu.show();
     }
 
     private void openSettings() {

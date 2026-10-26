@@ -63,6 +63,14 @@
             android:singleLine="true"
             android:textSize="14sp" />
 
+        <CheckBox
+            android:id="@+id/auto_start"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/setup_auto_start"
+            android:textSize="13sp" />
+
         <Button
             android:id="@+id/save"
             android:layout_width="match_parent"
@@ -93,5 +101,23 @@
             android:layout_marginTop="8dp"
             android:textColor="#ffaaaaaa"
             android:textSize="13sp" />
+
+        <!-- Pushes the licence link to the bottom when the form is short. -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+        <TextView
+            android:id="@+id/licenses"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="16dp"
+            android:background="?android:attr/selectableItemBackground"
+            android:padding="8dp"
+            android:text="@string/licenses"
+            android:textColor="#ff33b5e5"
+            android:textSize="12sp" />
     </LinearLayout>
 </ScrollView>

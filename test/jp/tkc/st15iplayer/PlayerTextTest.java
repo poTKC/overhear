@@ -100,4 +100,23 @@ public class PlayerTextTest {
         assertEquals("\u30ad\u30fc\u3092\u78ba\u8a8d\u3057\u3066\u304f\u3060\u3055\u3044"
                 + " \u2014 \u30bf\u30c3\u30d7\u3067\u8a2d\u5b9a", s.text);
     }
+
+    @Test public void serviceMenuStopsARunningService() {
+        assertEquals(PlayerText.Action.STOP, PlayerText.serviceMenuAction(true));
+        assertEquals("停止", PlayerText.serviceMenuLabel(true));
+    }
+
+    @Test public void serviceMenuStartsAStoppedService() {
+        assertEquals(PlayerText.Action.START, PlayerText.serviceMenuAction(false));
+        assertEquals("開始", PlayerText.serviceMenuLabel(false));
+    }
+
+    @Test public void afterAStopTheStatusLineOffersStartEvenWithStaleState() throws Exception {
+        // The service went away: whatever it reported last no longer counts.
+        PlayerText.Status s = PlayerText.status(false, Supervisor.State.FAILED, true, "停止: x", "login failed",
+                true, state(true, true), "ST15i");
+        assertEquals(PlayerText.Action.START, s.action);
+        assertEquals("停止中 — タップで開始", s.text);
+        assertEquals(PlayerText.Action.START, PlayerText.serviceMenuAction(false));
+    }
 }

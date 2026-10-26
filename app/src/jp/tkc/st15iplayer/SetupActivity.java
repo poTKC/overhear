@@ -22,7 +22,7 @@ import jp.tkc.st15iplayer.runtime.ProgressListener;
 import jp.tkc.st15iplayer.runtime.RuntimeInstaller;
 
 /**
- * The API key and device name. Saving installs the runtime and downloads
+ * The API key, device name and auto start, and the licence notices. Saving installs the runtime and downloads
  * Soloist (with progress, cancellable) when the service is not running yet,
  * then starts the service and opens the player; from the player
  * (EXTRA_EDIT) a change restarts Soloist through the running service and
@@ -41,6 +41,7 @@ public class SetupActivity extends Activity {
     private EditText key;
     private EditText name;
     private CheckBox showKey;
+    private CheckBox autoStart;
     private Button save;
     private Button cancel;
     private ProgressBar progress;
@@ -63,6 +64,7 @@ public class SetupActivity extends Activity {
         key = (EditText) findViewById(R.id.api_key);
         name = (EditText) findViewById(R.id.device_name);
         showKey = (CheckBox) findViewById(R.id.show_key);
+        autoStart = (CheckBox) findViewById(R.id.auto_start);
         save = (Button) findViewById(R.id.save);
         cancel = (Button) findViewById(R.id.cancel);
         progress = (ProgressBar) findViewById(R.id.progress);
@@ -70,7 +72,10 @@ public class SetupActivity extends Activity {
 
         if (edit) save.setText(R.string.setup_save_edit);
         if (prefs.hasApiKey()) key.setHint(R.string.setup_key_saved_hint);
-        if (savedInstanceState == null) name.setText(prefs.getDeviceName());
+        if (savedInstanceState == null) {
+            name.setText(prefs.getDeviceName());
+            autoStart.setChecked(prefs.isAutoStart());
+        }
         showKey.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override public void onCheckedChanged(CompoundButton b, boolean checked) {
                 int sel = key.getSelectionEnd();
@@ -88,6 +93,11 @@ public class SetupActivity extends Activity {
         cancel.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 cancelInstall();
+            }
+        });
+        findViewById(R.id.licenses).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Licenses.show(SetupActivity.this);
             }
         });
     }
@@ -119,7 +129,7 @@ public class SetupActivity extends Activity {
         if (n.isEmpty()) n = Prefs.DEFAULT_DEVICE_NAME;
         boolean changed = (!typed.isEmpty() && !typed.equals(prefs.getApiKey()))
                 || !n.equals(prefs.getDeviceName());
-        if (!prefs.save(typed, n)) {
+        if (!prefs.save(typed, n, autoStart.isChecked())) {
             message.setText(R.string.setup_save_failed);
             return;
         }
@@ -212,6 +222,7 @@ public class SetupActivity extends Activity {
         key.setEnabled(!working);
         name.setEnabled(!working);
         showKey.setEnabled(!working);
+        autoStart.setEnabled(!working);
         cancel.setVisibility(working ? View.VISIBLE : View.GONE);
         progress.setVisibility(working ? View.VISIBLE : View.GONE);
         progress.setIndeterminate(true);

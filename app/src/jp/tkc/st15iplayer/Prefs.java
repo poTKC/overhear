@@ -48,17 +48,19 @@ public final class Prefs {
     }
 
     /**
-     * Stores the device name and, unless key is null or blank, the trimmed
-     * key, in one commit. Returns whether it was written.
+     * Stores the device name, auto start and, unless key is null or blank,
+     * the trimmed key, in one commit. Returns whether it was written.
      */
-    public boolean save(String key, String deviceName) {
+    public boolean save(String key, String deviceName, boolean autoStart) {
         SharedPreferences.Editor e = prefs.edit();
         String k = key == null ? "" : key.trim();
         if (!k.isEmpty()) e.putString(API_KEY, k);
         e.putString(DEVICE_NAME, deviceName == null ? DEFAULT_DEVICE_NAME : deviceName.trim());
+        e.putBoolean(AUTO_START, autoStart);
         return e.commit();
     }
 
+    /** Start the service after boot (BootReceiver) and when the player opens. */
     public boolean isAutoStart() {
         return prefs.getBoolean(AUTO_START, true);
     }

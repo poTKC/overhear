@@ -26,6 +26,8 @@ import android.os.SystemClock;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.KeyEvent;
+import android.view.View;
+import android.widget.RemoteViews;
 
 import java.io.IOException;
 import java.util.List;
@@ -51,7 +53,8 @@ import jp.tkc.st15iplayer.soloist.SoloistClient;
  * up; this class carries it out. Its methods and every callback run on the
  * main thread; installs, downloads and the fork run on one worker thread.
  *
- * Controls: notification actions (prev / play-pause / next), media buttons
+ * Controls: notification buttons (prev / play-pause / next, and stop, which
+ * ends the service: onDestroy stops Soloist and releases every lock), media buttons
  * through a RemoteControlClient, audio focus through AudioSink, and
  * "becoming noisy" (headphones unplugged) pauses.
  */
@@ -724,21 +727,34 @@ public final class PlayerService extends Service {
     private Notification buildNotification() {
         boolean track = hasTrack();
         boolean playing = track && isPlaying();
-        Notification.Builder b = new Notification.Builder(this)
+        String title = track ? state.getTitle() : getString(R.string.app_name);
+        String text = track ? TextUtils.join(", ", state.getArtists()) : status;
+        // Android 4.1-4.3 shows at most three actions, and only expanded: a
+        // custom row holds prev / play-pause / next (with a track) and stop.
+        RemoteViews v = new RemoteViews(getPackageName(), R.layout.notification);
+        v.setTextViewText(R.id.n_title, title);
+        v.setTextViewText(R.id.n_text, text);
+        int controls = track ? View.VISIBLE : View.GONE;
+        v.setViewVisibility(R.id.n_prev, controls);
+        v.setViewVisibility(R.id.n_play_pause, controls);
+        v.setViewVisibility(R.id.n_next, controls);
+        if (track) {
+            v.setImageViewResource(R.id.n_play_pause,
+                    playing ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play);
+            v.setOnClickPendingIntent(R.id.n_prev, serviceIntent(ACTION_PREV));
+            v.setOnClickPendingIntent(R.id.n_play_pause, serviceIntent(ACTION_PLAY_PAUSE));
+            v.setOnClickPendingIntent(R.id.n_next, serviceIntent(ACTION_NEXT));
+        }
+        v.setOnClickPendingIntent(R.id.n_stop, serviceIntent(ACTION_STOP));
+        return new Notification.Builder(this)
                 .setSmallIcon(android.R.drawable.ic_media_play)
-                .setContentTitle(track ? state.getTitle() : getString(R.string.app_name))
-                .setContentText(track ? TextUtils.join(", ", state.getArtists()) : status)
+                .setContentTitle(title)
+                .setContentText(text)
+                .setContent(v)
                 .setContentIntent(activityIntent())
                 .setOngoing(true)
-                .setPriority(Notification.PRIORITY_DEFAULT);
-        if (track) {
-            if (!TextUtils.isEmpty(state.getAlbum())) b.setSubText(state.getAlbum());
-            b.addAction(android.R.drawable.ic_media_previous, "", serviceIntent(ACTION_PREV));
-            b.addAction(playing ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play,
-                    "", serviceIntent(ACTION_PLAY_PAUSE));
-            b.addAction(android.R.drawable.ic_media_next, "", serviceIntent(ACTION_NEXT));
-        }
-        return b.build();
+                .setPriority(Notification.PRIORITY_DEFAULT)
+                .build();
     }
 
     private PendingIntent activityIntent() {
