@@ -80,7 +80,7 @@ public class PlayerActivity extends Activity {
     private static final int QUEUE_SHOWN = 10;
     /** The played part of the seek bar while it is dragged (white otherwise). */
     private static final int SEEK_DRAG_COLOR = 0xff1db954;
-    /** Varela Round's digits (renamed subset, tools/make_fonts.py), loaded once. */
+    /** Rubik Regular's digits (subset, tools/make_fonts.py), loaded once. */
     private static Typeface digits;
     private static final int MENU_SETTINGS = 1;
     private static final int MENU_SERVICE = 2;

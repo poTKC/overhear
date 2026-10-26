@@ -134,22 +134,21 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
   `tools/make_icons.py`).
 - Licence text: <https://spdx.org/licenses/Apache-2.0.html>
 
-## Varela Round (font, as "ST15i Digits")
+## Rubik (font)
 
 - `assets/fonts/st15i-digits.ttf` shows the player's clock, battery number
-  and seek times. It is a subset of Varela Round Regular, made by
-  `tools/make_fonts.py`: only the glyphs for `0`-`9`, `:` and space are
-  kept, layout features are dropped, and the font is renamed "ST15i Digits"
-  in its name table (copyright, licence and designer entries kept).
-- Copyright 2023 The Varela Round Project Authors
-  (https://github.com/alefalefalef/Varela-Round-Hebrew/), with Reserved Font
-  Names 'Varela' and 'Varela Round'.
-- Licence: SIL Open Font License, Version 1.1 (SPDX `OFL-1.1`). Under the OFL
-  the subset is a Modified Version, which may not use the Reserved Font
-  Names; hence the new name. It is not sold on its own.
-- Source: <https://github.com/google/fonts/tree/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/varelaround>
-  (`VarelaRound-Regular.ttf`, sha256
-  `e1e47eb66dbc2ddc106661338e712d9176c9e83c669a82fde155324823d03aa2`,
+  and seek times. It is made by `tools/make_fonts.py` from the Rubik
+  variable font: instanced at the Regular weight (wght 400, fontTools
+  instancer), then subsetted to the glyphs for `0`-`9`, `:` and space, with
+  layout features dropped. Its names (Rubik Regular), copyright and licence
+  entries are kept.
+- Copyright 2015 The Rubik Project Authors (https://github.com/googlefonts/rubik).
+  No Reserved Font Names are declared.
+- Licence: SIL Open Font License, Version 1.1 (SPDX `OFL-1.1`). It is not
+  sold on its own.
+- Source: <https://github.com/google/fonts/tree/e7db6ca603fd4862010383ff17ffd6cc4ffac1c0/ofl/rubik>
+  (`Rubik[wght].ttf`, sha256
+  `1b3a7437ba2af80e465e773ed60c5036d1ba6ace492d89046dbcf18fb31e4e88`,
   checked by `tools/make_fonts.py`).
 - Licence text: <https://openfontlicense.org/>, <https://spdx.org/licenses/OFL-1.1.html>
 

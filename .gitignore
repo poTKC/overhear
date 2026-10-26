@@ -3,3 +3,4 @@ keys/
 *.raw
 /tmp
 /lib/
+__pycache__/

@@ -3,7 +3,7 @@ package jp.tkc.st15iplayer;
 /**
  * The player's top strip in full-screen mode (the status bar is hidden):
  * the time on the left, a battery dot and number on the right, both in the
- * Varela Round digits subset (assets/fonts, tools/make_fonts.py). Pure Java
+ * Rubik digits subset (assets/fonts, tools/make_fonts.py). Pure Java
  * (host tests).
  */
 final class StatusStrip {
@@ -18,7 +18,7 @@ final class StatusStrip {
     static final int UNKNOWN = 0xff666666;
 
     /**
-     * The characters in assets/fonts/VarelaRound-digits.ttf (tools/make_fonts.py
+     * The characters in assets/fonts/st15i-digits.ttf (tools/make_fonts.py
      * subsets to the same set): clock, battery and seek times only use these.
      */
     static final String DIGITS_FONT_CHARS = "0123456789: ";
