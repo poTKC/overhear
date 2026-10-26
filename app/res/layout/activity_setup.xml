@@ -71,6 +71,14 @@
             android:text="@string/setup_auto_start"
             android:textSize="13sp" />
 
+        <CheckBox
+            android:id="@+id/fullscreen"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:singleLine="true"
+            android:text="@string/setup_fullscreen"
+            android:textSize="13sp" />
+
         <Button
             android:id="@+id/save"
             android:layout_width="match_parent"

@@ -19,3 +19,4 @@ app/src/jp/tkc/st15iplayer/PlayerText.java
 app/src/jp/tkc/st15iplayer/VolumeSync.java
 app/src/jp/tkc/st15iplayer/ArtworkLoader.java
 app/src/jp/tkc/st15iplayer/SeekHold.java
+app/src/jp/tkc/st15iplayer/SetupValues.java

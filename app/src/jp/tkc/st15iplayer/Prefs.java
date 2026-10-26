@@ -8,11 +8,12 @@ import android.content.SharedPreferences;
  * read them). The Spotify developer API key lives here; never log it.
  */
 public final class Prefs {
-    public static final String DEFAULT_DEVICE_NAME = "ST15i";
+    public static final String DEFAULT_DEVICE_NAME = SetupValues.DEFAULT_DEVICE_NAME;
     private static final String FILE = "st15i";
     private static final String API_KEY = "api_key";
     private static final String DEVICE_NAME = "device_name";
     private static final String AUTO_START = "auto_start";
+    private static final String FULLSCREEN = "fullscreen";
 
     private final SharedPreferences prefs;
 
@@ -48,21 +49,26 @@ public final class Prefs {
     }
 
     /**
-     * Stores the device name, auto start and, unless key is null or blank,
-     * the trimmed key, in one commit. Returns whether it was written.
+     * Stores the device name, auto start, full screen and, unless the key is
+     * blank, the key, in one commit. Returns whether it was written.
      */
-    public boolean save(String key, String deviceName, boolean autoStart) {
+    boolean save(SetupValues v) {
         SharedPreferences.Editor e = prefs.edit();
-        String k = key == null ? "" : key.trim();
-        if (!k.isEmpty()) e.putString(API_KEY, k);
-        e.putString(DEVICE_NAME, deviceName == null ? DEFAULT_DEVICE_NAME : deviceName.trim());
-        e.putBoolean(AUTO_START, autoStart);
+        if (v.keyToStore() != null) e.putString(API_KEY, v.keyToStore());
+        e.putString(DEVICE_NAME, v.deviceName());
+        e.putBoolean(AUTO_START, v.autoStart());
+        e.putBoolean(FULLSCREEN, v.fullscreen());
         return e.commit();
     }
 
     /** Start the service after boot (BootReceiver) and when the player opens. */
     public boolean isAutoStart() {
-        return prefs.getBoolean(AUTO_START, true);
+        return prefs.getBoolean(AUTO_START, SetupValues.DEFAULT_AUTO_START);
+    }
+
+    /** The player screen hides the status bar. */
+    public boolean isFullscreen() {
+        return prefs.getBoolean(FULLSCREEN, SetupValues.DEFAULT_FULLSCREEN);
     }
 
     public void setAutoStart(boolean autoStart) {

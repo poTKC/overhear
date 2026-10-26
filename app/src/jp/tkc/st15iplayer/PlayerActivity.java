@@ -23,6 +23,7 @@ import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowManager;
 import android.widget.BaseAdapter;
 import android.widget.ImageButton;
 import android.widget.ImageView;
@@ -49,6 +50,11 @@ import jp.tkc.st15iplayer.soloist.SoloistClient;
  * slides up over it. State comes from PlayerService (bound with flags 0, so
  * the screen never starts or keeps the service); commands go through the
  * service's SoloistClient.
+ *
+ * Full screen (Prefs.isFullscreen, default on): FLAG_FULLSCREEN hides the
+ * status bar; set before the first layout and re-read on every resume, so a
+ * change in setup applies on return. The layout's weighted spacers absorb
+ * the extra height.
  *
  * There is no volume control on screen: the volume keys adjust the media
  * volume (with the system panel), which PlayerService keeps in step with the
@@ -111,6 +117,7 @@ public class PlayerActivity extends Activity {
             finish();
             return;
         }
+        applyFullscreen(); // before the first layout: no jump at launch
         setContentView(R.layout.activity_player);
         setVolumeControlStream(AudioManager.STREAM_MUSIC); // the keys always change the media volume
         float density = getResources().getDisplayMetrics().density;
@@ -302,6 +309,7 @@ public class PlayerActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        applyFullscreen(); // setup may have changed it
         started = true;
         // Flags 0: connects when the service runs, never creates or keeps it.
         bound = bindService(new Intent(this, PlayerService.class), connection, 0);
@@ -323,6 +331,14 @@ public class PlayerActivity extends Activity {
     protected void onDestroy() {
         if (artwork != null) artwork.cancelAll();
         super.onDestroy();
+    }
+
+    private void applyFullscreen() {
+        int full = WindowManager.LayoutParams.FLAG_FULLSCREEN;
+        boolean want = prefs.isFullscreen();
+        if (((getWindow().getAttributes().flags & full) != 0) == want) return;
+        if (want) getWindow().addFlags(full);
+        else getWindow().clearFlags(full);
     }
 
     private final ServiceConnection connection = new ServiceConnection() {

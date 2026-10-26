@@ -42,6 +42,7 @@ public class SetupActivity extends Activity {
     private EditText name;
     private CheckBox showKey;
     private CheckBox autoStart;
+    private CheckBox fullscreen;
     private Button save;
     private Button cancel;
     private ProgressBar progress;
@@ -65,6 +66,7 @@ public class SetupActivity extends Activity {
         name = (EditText) findViewById(R.id.device_name);
         showKey = (CheckBox) findViewById(R.id.show_key);
         autoStart = (CheckBox) findViewById(R.id.auto_start);
+        fullscreen = (CheckBox) findViewById(R.id.fullscreen);
         save = (Button) findViewById(R.id.save);
         cancel = (Button) findViewById(R.id.cancel);
         progress = (ProgressBar) findViewById(R.id.progress);
@@ -75,6 +77,7 @@ public class SetupActivity extends Activity {
         if (savedInstanceState == null) {
             name.setText(prefs.getDeviceName());
             autoStart.setChecked(prefs.isAutoStart());
+            fullscreen.setChecked(prefs.isFullscreen());
         }
         showKey.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override public void onCheckedChanged(CompoundButton b, boolean checked) {
@@ -129,7 +132,7 @@ public class SetupActivity extends Activity {
         if (n.isEmpty()) n = Prefs.DEFAULT_DEVICE_NAME;
         boolean changed = (!typed.isEmpty() && !typed.equals(prefs.getApiKey()))
                 || !n.equals(prefs.getDeviceName());
-        if (!prefs.save(typed, n, autoStart.isChecked())) {
+        if (!prefs.save(new SetupValues(typed, n, autoStart.isChecked(), fullscreen.isChecked()))) {
             message.setText(R.string.setup_save_failed);
             return;
         }
@@ -223,6 +226,7 @@ public class SetupActivity extends Activity {
         name.setEnabled(!working);
         showKey.setEnabled(!working);
         autoStart.setEnabled(!working);
+        fullscreen.setEnabled(!working);
         cancel.setVisibility(working ? View.VISIBLE : View.GONE);
         progress.setVisibility(working ? View.VISIBLE : View.GONE);
         progress.setIndeterminate(true);
