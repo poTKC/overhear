@@ -1,7 +1,6 @@
 package jp.tkc.st15iplayer.audio;
 
 import android.content.Context;
-import android.content.pm.ApplicationInfo;
 import android.media.AudioFormat;
 import android.media.AudioManager;
 import android.media.AudioTrack;
@@ -30,13 +29,17 @@ import java.io.InputStream;
  * An instance is single use: start() it once, stop() it once, and create a new
  * one to listen again. A new instance retries the bind every second until the
  * previous one has let go of the socket name.
+ *
+ * Audio focus: the session requests it when audio starts and abandons it on
+ * pause. Focus changes go through FocusPolicy; pausing and resuming is
+ * Soloist's job (FocusHandler sends the commands), so the socket is always
+ * drained, and ducking lowers the track volume here.
  */
 public final class AudioSink {
     public static final String SOCKET_NAME = "st15i-player-audio";
     private static final String TAG = "ST15iAudio";
     private static final long BIND_RETRY_MS = 1000;
-    /** Soloist runs as the shell user while it is started by hand from /data/local/tmp. */
-    private static final int SHELL_UID = 2000;
+    private static final float DUCK_VOLUME = 0.2f;
 
     /**
      * Sink state for the service and UI. Callbacks run on the audio read
@@ -52,9 +55,22 @@ public final class AudioSink {
         void onPlaying(boolean playing);
     }
 
+    /**
+     * Playback commands for audio focus changes, on the main thread (it may
+     * block briefly, unlike Listener). Usually routed to SoloistClient.
+     */
+    public interface FocusHandler {
+        void pausePlayback();
+
+        void resumePlayback();
+    }
+
     private final AudioManager audioManager;
     private final Listener listener;
-    private final boolean debuggable;
+    private final FocusPolicy focusPolicy = new FocusPolicy();
+    private volatile FocusHandler focusHandler;
+    /** Audio is being written (the last onPlaying value). */
+    private volatile boolean playing;
 
     private final Object lock = new Object();
     // Guarded by lock.
@@ -73,21 +89,44 @@ public final class AudioSink {
             new AudioManager.OnAudioFocusChangeListener() {
                 @Override
                 public void onAudioFocusChange(int change) {
-                    // Pausing Soloist on focus loss comes with the service; for
-                    // now the track keeps playing so the socket stays drained.
-                    Log.i(TAG, "audio focus change " + change);
+                    FocusPolicy.Action a = focusPolicy.onChange(change, playing);
+                    Log.i(TAG, "audio focus change " + change + " -> " + a);
+                    FocusHandler h = focusHandler;
+                    switch (a) {
+                        case PAUSE:
+                            if (h != null) h.pausePlayback();
+                            break;
+                        case RESUME:
+                            if (h != null) h.resumePlayback();
+                            break;
+                        case DUCK:
+                        case UNDUCK:
+                            applyVolume();
+                            break;
+                        case ABANDON:
+                            audioManager.abandonAudioFocus(focusListener);
+                            break;
+                        default:
+                            break;
+                    }
                 }
             };
 
     private final StreamSession.Focus focus = new StreamSession.Focus() {
         @Override
         public boolean request() {
-            return audioManager.requestAudioFocus(focusListener, AudioManager.STREAM_MUSIC,
+            boolean granted = audioManager.requestAudioFocus(focusListener, AudioManager.STREAM_MUSIC,
                     AudioManager.AUDIOFOCUS_GAIN) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
+            if (granted && focusPolicy.onGranted()) applyVolume();
+            return granted;
         }
 
         @Override
         public void abandon() {
+            if (focusPolicy.holdOnPause()) {
+                Log.i(TAG, "paused for a transient focus loss: keeping focus until it returns");
+                return;
+            }
             audioManager.abandonAudioFocus(focusListener);
         }
     };
@@ -99,8 +138,9 @@ public final class AudioSink {
         }
 
         @Override
-        public void onPlaying(boolean playing) {
-            if (listener != null) listener.onPlaying(playing);
+        public void onPlaying(boolean p) {
+            playing = p;
+            if (listener != null) listener.onPlaying(p);
         }
 
         @Override
@@ -128,8 +168,24 @@ public final class AudioSink {
     public AudioSink(Context context, Listener listener) {
         Context app = context.getApplicationContext();
         this.audioManager = (AudioManager) app.getSystemService(Context.AUDIO_SERVICE);
-        this.debuggable = (app.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
         this.listener = listener;
+    }
+
+    /** Routes focus-driven pause/resume; null drops them. Any thread. */
+    public void setFocusHandler(FocusHandler h) {
+        focusHandler = h;
+    }
+
+    /** Gives up audio focus, e.g. when the owner is being destroyed. */
+    public void abandonFocus() {
+        audioManager.abandonAudioFocus(focusListener);
+    }
+
+    private void applyVolume() {
+        float v = focusPolicy.isDucked() ? DUCK_VOLUME : AudioTrack.getMaxVolume();
+        synchronized (trackLock) {
+            if (currentTrack != null) currentTrack.setStereoVolume(v, v);
+        }
     }
 
     /** @throws IllegalStateException if this instance was started before */
@@ -250,7 +306,7 @@ public final class AudioSink {
         }
     }
 
-    /** Only this app, and Soloist started from adb shell in a debuggable build. */
+    /** Only this app's uid (Soloist runs as a child of this app). */
     private boolean allowed(LocalSocket s) {
         int uid;
         try {
@@ -260,7 +316,7 @@ public final class AudioSink {
             Log.w(TAG, "no peer credentials, rejecting: " + e.getMessage());
             return false;
         }
-        if (uid == Process.myUid() || (debuggable && uid == SHELL_UID)) return true;
+        if (uid == Process.myUid()) return true;
         Log.w(TAG, "rejecting client uid " + uid);
         return false;
     }
@@ -330,6 +386,7 @@ public final class AudioSink {
         synchronized (trackLock) {
             currentTrack = t;
         }
+        applyVolume();
         Log.i(TAG, "track created: buffer " + size + " bytes (min " + minBuf + ")");
         return new StreamSession.Track() {
             @Override

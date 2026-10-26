@@ -13,3 +13,5 @@ app/src/jp/tkc/st15iplayer/runtime/SoloistCommand.java
 app/src/jp/tkc/st15iplayer/runtime/LineReader.java
 app/src/jp/tkc/st15iplayer/runtime/Storage.java
 app/src/jp/tkc/st15iplayer/runtime/Strays.java
+app/src/jp/tkc/st15iplayer/audio/FocusPolicy.java
+app/src/jp/tkc/st15iplayer/Supervisor.java
