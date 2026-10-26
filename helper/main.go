@@ -1,11 +1,11 @@
-// st15i-fetch downloads files over HTTPS for ST15i Player.
+// overhear-fetch downloads files over HTTPS for Overhear.
 //
 // Android 4.3's Java TLS stack cannot reach many modern hosts and the system
 // has no tar, so the app delegates downloads (the Soloist tarball, artwork)
 // to this static helper.
 //
-//	st15i-fetch [--ca FILE] [--dns a,b] get URL OUT
-//	st15i-fetch [--ca FILE] [--dns a,b] extract URL DIR
+//	overhear-fetch [--ca FILE] [--dns a,b] get URL OUT
+//	overhear-fetch [--ca FILE] [--dns a,b] extract URL DIR
 //
 // Only https URLs are accepted, on the command line and in redirects.
 //
@@ -39,13 +39,13 @@ import (
 )
 
 const (
-	userAgent          = "st15i-player/1"
+	userAgent          = "overhear/1"
 	connectTimeout     = 15 * time.Second
 	defaultIdleTimeout = 60 * time.Second
 	progressEvery      = 100 * time.Millisecond
 )
 
-// Used when neither --dns nor ST15I_DNS is given and the system has no
+// Used when neither --dns nor OVERHEAR_DNS is given and the system has no
 // /etc/resolv.conf (Android), where Go would otherwise query 127.0.0.1:53.
 const fallbackDNS = "8.8.8.8,1.1.1.1"
 
@@ -54,12 +54,12 @@ func main() {
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("st15i-fetch", flag.ContinueOnError)
+	fs := flag.NewFlagSet("overhear-fetch", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	caFile := fs.String("ca", "", "PEM bundle of trusted roots (default: system roots)")
-	dns := fs.String("dns", "", "comma-separated DNS server IPs, optionally ip:port (default: $ST15I_DNS)")
+	dns := fs.String("dns", "", "comma-separated DNS server IPs, optionally ip:port (default: $OVERHEAR_DNS)")
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "usage: st15i-fetch [--ca FILE] [--dns a,b] get URL OUT | extract URL DIR")
+		fmt.Fprintln(stderr, "usage: overhear-fetch [--ca FILE] [--dns a,b] get URL OUT | extract URL DIR")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -71,7 +71,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	fail := func(err error) int {
-		fmt.Fprintln(stderr, "st15i-fetch:", err)
+		fmt.Fprintln(stderr, "overhear-fetch:", err)
 		return 1
 	}
 	if err := checkHTTPS(rest[1]); err != nil {
@@ -79,7 +79,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	_, statErr := os.Stat("/etc/resolv.conf")
-	servers, err := dnsServers(*dns, os.Getenv("ST15I_DNS"), statErr == nil)
+	servers, err := dnsServers(*dns, os.Getenv("OVERHEAR_DNS"), statErr == nil)
 	if err != nil {
 		return fail(err)
 	}
@@ -107,7 +107,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-// dnsServers picks the resolver list: --dns, then $ST15I_DNS, then a public
+// dnsServers picks the resolver list: --dns, then $OVERHEAR_DNS, then a public
 // fallback when the system has no resolv.conf. nil means the Go default.
 func dnsServers(flagValue, env string, haveResolvConf bool) ([]string, error) {
 	for _, s := range []string{flagValue, env} {

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds build/st15i-player.apk without Gradle.
+# Builds build/overhear.apk without Gradle.
 # Overrides: ANDROID_HOME, BUILD_TOOLS (build-tools dir), ANDROID_PLATFORM_JAR,
 # DEBUGGABLE=1 to add android:debuggable (off by default; enables run-as and jdwp),
 # SKIP_RUNTIME=1 to package build/assets as it is instead of running runtime/build.sh.
@@ -9,7 +9,7 @@ cd "$(dirname "$0")"
 SDK="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 BT="${BUILD_TOOLS:-$SDK/build-tools/36.0.0}"
 JAR="${ANDROID_PLATFORM_JAR:-$SDK/platforms/android-18/android.jar}"
-OUT=build/st15i-player.apk
+OUT=build/overhear.apk
 
 die() { echo "build.sh: $*" >&2; exit 1; }
 for tool in aapt2 d8 zipalign apksigner; do
@@ -33,7 +33,7 @@ mkdir -p build/gen build/classes build/dex
 
 link_opts=()
 [ -d build/assets ] && link_opts=(-A build/assets)
-# The app's own committed assets (fonts/st15i-digits.ttf from tools/make_fonts.py).
+# The app's own committed assets (fonts/overhear-digits.ttf from tools/make_fonts.py).
 [ -d app/assets ] && link_opts+=(-A app/assets)
 [ "${DEBUGGABLE:-0}" = 1 ] && link_opts+=(--debug-mode)
 "$BT/aapt2" link -I "$JAR" --manifest app/AndroidManifest.xml \

@@ -53,9 +53,9 @@ static void test_build_argv0_only_empty_env(void)
 static void test_take(void)
 {
     char e0[] = "HOME=/h";
-    char e1[] = "ST15I_SOLOIST_KEY=abc123";
-    char e2[] = "ST15I_SOLOIST_KEYX=other";
-    char e3[] = "ST15I_SOLOIST_KEY=dup";
+    char e1[] = "OVERHEAR_SOLOIST_KEY=abc123";
+    char e2[] = "OVERHEAR_SOLOIST_KEYX=other";
+    char e3[] = "OVERHEAR_SOLOIST_KEY=dup";
     char e4[] = "Z=1";
     size_t l1 = strlen(e1), l3 = strlen(e3);
     char *envp[] = {e0, e1, e2, e3, e4, NULL};
@@ -71,7 +71,7 @@ static void test_take(void)
 
 static void test_take_first_and_absent(void)
 {
-    char e0[] = "ST15I_SOLOIST_KEY=";
+    char e0[] = "OVERHEAR_SOLOIST_KEY=";
     char e1[] = "A=b";
     char *envp[] = {e0, e1, NULL};
     char *key = argkey_take(envp);

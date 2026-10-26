@@ -1,6 +1,10 @@
-# ST15i Player 設計書
+# Overhear 設計書（旧名 ST15i Player）
 
 日付: 2026-10-26（実装に合わせて更新: 2026-10-27）
+
+> **Overhear (renamed from ST15i Player).** 2026-10-27 にアプリ名を Overhear、パッケージを
+> `com.potkc.overhear` に改名した（「実装での決定事項」の「改名（Overhear）」を参照）。
+> 以下の「目的」などは当初の ST15i 専用アプリとしての記述を残している。ST15i は開発・確認に使う実機である。
 
 ## 目的
 
@@ -32,7 +36,7 @@ ST15i の画面に曲情報が表示され、ST15i から操作もできる。
 st15i-player/
   app/            Android アプリ（Java、minSdk 16、Gradle なし）
   native/         fakepulse と libargkey（C、zig cc で arm-linux-gnueabihf.2.38 向けにビルド）
-  helper/         st15i-fetch（Go、静的リンク）
+  helper/         overhear-fetch（Go、静的リンク）
   runtime/        同梱物の作成スクリプト（glibc 取得・パッチ、CA バンドル、ライセンス文）
   test/           JVM 上の単体テスト
   build.sh        javac + d8 + aapt2 + zipalign + apksigner で APK を作る
@@ -51,7 +55,7 @@ st15i-player/
    Soloist を子プロセスとして起動し監視する。起動・再起動・断念の判断は純 Java の Supervisor が行い、
    PlayerService はその指示（Effects）を実行する（後述「Supervisor の方針」）。
    ロックの持ち方は後述「Wi-Fi とロック」。
-   音声ソケットのサーバー（LocalServerSocket `st15i-player-audio`）と AudioTrack 再生を担当する。
+   音声ソケットのサーバー（LocalServerSocket `overhear-audio`）と AudioTrack 再生を担当する。
 3. **SoloistClient**
    `127.0.0.1` の WebSocket API に接続し、イベント（auth_state、playback_state、track_changed、playback_changed、
    volume_changed、position_sync、options_changed、queue_changed）を受けて状態モデルを更新する。
@@ -70,7 +74,7 @@ st15i-player/
 
 ### 音声の流れ
 
-Soloist → fakepulse（float32 → s16le、ゲインは常に 1.0）→ 抽象 Unix ソケット `@st15i-player-audio` →
+Soloist → fakepulse（float32 → s16le、ゲインは常に 1.0）→ 抽象 Unix ソケット `@overhear-audio` →
 PlayerService の音声スレッド → AudioTrack（44.1kHz・ステレオ・16bit・MODE_STREAM）。
 
 フレーム形式（リトルエンディアン）: u8 種別、u32 長さ、ペイロード。
@@ -105,10 +109,37 @@ fakepulse が報告する遅延（timing info の sink_usec）は、AudioTrack �
 
 ## 実装での決定事項
 
+### 改名（Overhear）
+
+ST15i 専用ではなくなったので、2026-10-27 にアプリ名を **Overhear**（近くの端末から音楽が聞こえる、の意）に改めた。
+Spotify のブランド規定に合わせ、名前とアイコンに「Spotify」「Spot…」「Connect」や Spotify に似た見た目を使わない。
+
+| 対象 | 旧 | 新 |
+|---|---|---|
+| applicationId / Java パッケージ | `jp.tkc.st15iplayer` | `com.potkc.overhear`（サブパッケージ audio・ws・soloist・runtime はそのまま） |
+| アプリ名（`app_name`） | ST15i Player | Overhear |
+| 既定のデバイス名 | 固定の「ST15i」 | `android.os.Build.MODEL` を trim したもの。空なら「Overhear」（SetupValues.defaultDeviceName） |
+| 抽象ソケット | `@st15i-player-audio` | `@overhear-audio`（fakepulse の既定値とアプリの両方） |
+| API キーの環境変数 | `ST15I_SOLOIST_KEY` | `OVERHEAR_SOLOIST_KEY` |
+| ダウンロードヘルパー | `st15i-fetch`、User-Agent `st15i-player/1`、`ST15I_DNS` | `overhear-fetch`、`overhear/1`、`OVERHEAR_DNS` |
+| ログタグ | `ST15iService` など | `OverhearService`・`OverhearAudio`・`OverhearSoloist`・`OverhearDebug` など |
+| テーマ・スタイル | `Theme.ST15i*`、`ST15i.*` | `Theme.Overhear*`、`Overhear.*` |
+| 数字フォント | `st15i-digits.ttf` | `overhear-digits.ttf` |
+| SharedPreferences のファイル | `st15i` | `overhear` |
+| ロック・スレッド名 | `st15i-player*`、`ST15iWorker` など | `overhear*`、`OverhearWorker` など |
+| APK | `build/st15i-player.apk` | `build/overhear.apk` |
+
+パッケージが変わるので端末上は別アプリになる（API キー・ログインは引き継がない。旧アプリを止めてからアンインストールする）。
+ランタイムの VERSION は overhear-fetch と fakepulse・libargkey の文字列が変わるので変わる（初回起動で展開し直す）。
+デバッグ用署名鍵の CN（`ST15i Player Debug`）は変えていない。リポジトリのディレクトリ名 `st15i-player/` もそのまま。
+
+ランチャーアイコンは `tools/make_app_icon.py` が SVG から作る（API 18 なのでアダプティブアイコンはなく、
+mdpi 48・hdpi 72・xhdpi 96・xxhdpi 144 px の PNG）。通知の小さいアイコンは従来の音符のまま。
+
 ### API キーの受け渡し
 
 Soloist はキーを `-k <key>` でしか受け取らないが、Android 4.3 ではどのアプリも `/proc/<pid>/cmdline` を読める。
-そこでコマンドラインには載せず、環境変数 `ST15I_SOLOIST_KEY` で渡す（`/proc/<pid>/environ` は同じ uid しか読めない）。
+そこでコマンドラインには載せず、環境変数 `OVERHEAR_SOLOIST_KEY` で渡す（`/proc/<pid>/environ` は同じ uid しか読めない）。
 起動は `ld-linux-armhf.so.3 --preload libargkey.so --library-path DIR soloist ...` とし、
 `libargkey.so`（native/argkey.c）が `__libc_start_main` をフックして、環境変数の値を消してから
 ヒープ上の argv に `-k <key>` を差し込む。`/proc/<pid>/cmdline` は元の argv を見せるのでキーは出ない。
@@ -223,7 +254,7 @@ SoloistClient は切断時に 1s、2s、5s（以降 5s）の間隔で再接続�
   `ACTION_BATTERY_CHANGED`）を 13sp の白（#FFFFFF。背景のグラデーションの前は灰色 #B8B8B8）で出す（`includeFontPadding` なしで 20dp に収める。受信は onResume〜onPause の間だけ。
   規則は純 Java の StatusStrip）。時刻・電池の数字とシークバーの時間は Rubik（SIL OFL 1.1）の可変フォントを
   Regular（wght 400）で固定し、数字・`:`・空白だけに切り出したフォント（`tools/make_fonts.py`、google/fonts の固定したコミットから
-  取得して sha256 を確認、`assets/fonts/st15i-digits.ttf`、`Typeface.createFromAsset` で一度だけ読む）。Rubik は予約フォント名を
+  取得して sha256 を確認、`assets/fonts/overhear-digits.ttf`、`Typeface.createFromAsset` で一度だけ読む）。Rubik は予約フォント名を
   宣言していないので、名前表の名前（Rubik Regular）と著作権・ライセンスの記載はそのまま。アートワークは 240dp、角は 6dp の丸め
   （BitmapShader と drawRoundRect の自前 Drawable RoundedArt。ハードウェアアクセラレーションでも効く。プレースホルダーも同じ、
   キューのサムネイルは 3dp）。その下に曲名・アーティスト、シークバー、操作ボタンの行（両端にシャッフルとリピート、⏮ ⏭ は 56dp、
@@ -250,9 +281,9 @@ SoloistClient は切断時に 1s、2s、5s（以降 5s）の間隔で再接続�
   API 18 には colorAccent がないので、SDK の `platforms/android-18/data/res` にある AOSP の Holo dark の Drawable
   （Apache-2.0）を `tools/make_holo_green.py` が写し、青い画素だけを塗り替えたものをテーマから指す（mdpi・hdpi・xhdpi、
   透明度と 9-patch の枠はそのまま、ダウンロードなし）。
-  - 再生画面 `Theme.ST15i`（Theme.Holo.NoActionBar が親）: リストの選択（`listChoiceBackgroundIndicator`、ポップアップメニューと
+  - 再生画面 `Theme.Overhear`（Theme.Holo.NoActionBar が親）: リストの選択（`listChoiceBackgroundIndicator`、ポップアップメニューと
     キュー）だけを緑の holo_g_* にする。
-  - 設定画面 `Theme.ST15i.Setup`（その子）: EditText・CheckBox・Button・横の ProgressBar・リストの選択・`selectableItemBackground`・
+  - 設定画面 `Theme.Overhear.Setup`（その子）: EditText・CheckBox・Button・横の ProgressBar・リストの選択・`selectableItemBackground`・
     選択範囲の色（半透明の白）・リンク色（白）・テキスト選択のハンドル・AlertDialog のテーマ（白いタイトル）を holo_w_* に。
     青い線や印は明るい灰色（#33B5E5 → #E5E5E5）、押下とボタンの状態は白を元の透明度の 20% にして、白い文字やチェックが
     読めるようにする。見出しは白の太字、「ライセンス」は白の下線付き。
@@ -368,17 +399,17 @@ set_volume・set_shuffle・set_repeat_*・add_to_queue・activate・deactivate�
 - **ポートの先取り:** ほかの端末内アプリが先に `127.0.0.1:8765` で待ち受けると、Soloist は起動できず（短命終了の扱いで断念に至る）、
   SoloistClient はそのアプリにつながってイベントをそのまま信じる。曲情報やアートワーク URL も偽装できる。
   これも専用端末の前提で受け入れるリスクとする。
-- **音声ソケット:** 抽象 Unix ソケット `@st15i-player-audio` には誰でも接続できる。AudioSink は接続元の uid を確認し、
+- **音声ソケット:** 抽象 Unix ソケット `@overhear-audio` には誰でも接続できる。AudioSink は接続元の uid を確認し、
   このアプリの uid（Soloist は子プロセス）以外を拒否する。逆に fakepulse は接続先のサーバーを確認しない。
   ほかのアプリが先にこの名前で待ち受けると音声を受け取れるが、流れるのは再生中の音声だけで、受け入れるリスクとする。
 - **API キー:** Prefs（MODE_PRIVATE）に保存し、コマンドラインにもログにも出さない（「API キーの受け渡し」）。
   設定画面は FLAG_SECURE を付け、保存済みのキーは入力欄に戻さない。
 - **バックアップ:** `android:allowBackup="false"`。`adb backup` で API キーや Soloist のログイン情報が持ち出されないようにする。
 - **デバッグ:** リリースビルドは debuggable にしない（`DEBUGGABLE=1` のときだけ。run-as と jdwp を閉じる）。
-- **アートワーク:** 画像の URL は Soloist のイベントから来る。st15i-fetch（30 秒で打ち切り）で取得してアプリのキャッシュに保存し、
+- **アートワーク:** 画像の URL は Soloist のイベントから来る。overhear-fetch（30 秒で打ち切り）で取得してアプリのキャッシュに保存し、
   縮小デコードして表示するだけで、ほかの用途には使わない。URL の宛先は検証しない（Soloist を信頼する）。
   上の「ポートの先取り」により、この信頼は実際には 8765 番ポートを握っている相手全体に及ぶ。
-  st15i-fetch は https の URL だけを受け付け、リダイレクト先も https に限る（平文 HTTP には落ちない）。
+  overhear-fetch は https の URL だけを受け付け、リダイレクト先も https に限る（平文 HTTP には落ちない）。
 
 ## テスト
 

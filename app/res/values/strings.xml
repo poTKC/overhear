@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">ST15i Player</string>
+    <string name="app_name">Overhear</string>
 
     <!-- service status (status line and notification) -->
     <string name="notify_no_key">API キーを設定してください</string>
@@ -35,7 +35,7 @@
     <string name="stop">停止</string>
 
     <!-- setup -->
-    <string name="setup_title">ST15i Player の設定</string>
+    <string name="setup_title">Overhear の設定</string>
     <string name="setup_key_label">Spotify API キー</string>
     <string name="setup_key_hint">API キーを貼り付け</string>
     <string name="setup_key_saved_hint">保存済み（変更する場合のみ入力）</string>

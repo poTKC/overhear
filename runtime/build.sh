@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the runtime bundle that the APK ships under assets/runtime/:
-#   st15i-fetch            static Go download helper (linux/arm, ARMv7)
+#   overhear-fetch            static Go download helper (linux/arm, ARMv7)
 #   ld-linux-armhf.so.3 libc.so.6 libm.so.6 libpthread.so.0 librt.so.1
 #   libdl.so.2             Debian trixie glibc (libc6), for Soloist
 #   libatomic.so.1         Debian trixie libatomic1
@@ -78,7 +78,7 @@ sha256() { shasum -a 256 "$1" | cut -d' ' -f1; }
 
 # 1. fetch helper (reproducible: pinned toolchain, no VCS stamp, no paths)
 (cd helper && GOTOOLCHAIN=$GO_TOOLCHAIN GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 \
-    go build -trimpath -buildvcs=false -ldflags '-s -w' -o "../$STAGE/st15i-fetch" .)
+    go build -trimpath -buildvcs=false -ldflags '-s -w' -o "../$STAGE/overhear-fetch" .)
 
 # 2. Debian packages. fetch_deb POOL_PATH SHA256 -> prints the cached path.
 #    A cached file with the right hash is used without touching the network.

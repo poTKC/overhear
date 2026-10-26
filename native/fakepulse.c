@@ -5,7 +5,7 @@
  *
  *   FAKEPULSE_OUT=file:/path       write PCM to a file, paced in real time
  *   FAKEPULSE_OUT=unix:@name       stream framed PCM to an abstract unix socket
- *                                  (Linux; the default is unix:@st15i-player-audio)
+ *                                  (Linux; the default is unix:@overhear-audio)
  *   FAKEPULSE_OUT=unix:/path       the same over a pathname socket (host tests)
  *   FAKEPULSE_LATENCY_US=n         output latency reported for the socket sink
  *                                  (default 250000: socket plus AudioTrack buffer)
@@ -589,7 +589,7 @@ static void sink_connect(sink *s) {
 
 static void sink_open(sink *s) {
     const char *out = getenv("FAKEPULSE_OUT");
-    if (!out) out = "unix:@st15i-player-audio";
+    if (!out) out = "unix:@overhear-audio";
     if (!strncmp(out, "file:", 5)) {
         s->fd = open(out + 5, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
         s->file_mode = 1;

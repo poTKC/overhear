@@ -35,13 +35,13 @@ int main(int argc, char **argv)
         printf("argv[%d]=%s\n", i, argv[i]);
     printf("argv[argc]=%s\n", argv[argc] ? "non-null" : "null");
     printf("environ_is_after_argv=%d\n", environ == &argv[argc + 1]);
-    printf("getenv_key_var=%s\n", getenv("ST15I_SOLOIST_KEY") ? "set" : "unset");
+    printf("getenv_key_var=%s\n", getenv("OVERHEAR_SOLOIST_KEY") ? "set" : "unset");
     printf("getenv_home=%s\n", getenv("HOME") ? getenv("HOME") : "(null)");
     printf("pagesz=%lu sysconf=%ld\n", getauxval(AT_PAGESZ), sysconf(_SC_PAGESIZE));
     if (key) {
         printf("cmdline_key=%d\n", count_in_file("/proc/self/cmdline", key));
         printf("environ_key=%d\n", count_in_file("/proc/self/environ", key));
     }
-    printf("environ_var=%d\n", count_in_file("/proc/self/environ", "ST15I_SOLOIST_KEY"));
+    printf("environ_var=%d\n", count_in_file("/proc/self/environ", "OVERHEAR_SOLOIST_KEY"));
     return 0;
 }

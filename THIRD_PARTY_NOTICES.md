@@ -1,6 +1,6 @@
 # Third-party notices
 
-ST15i Player ships the third-party components below inside its APK
+Overhear ships the third-party components below inside its APK
 (`assets/runtime/`, the icons in `res/` and a font in `assets/fonts/`). This file is also packaged as
 `assets/licenses/THIRD_PARTY_NOTICES.txt` and shown in the app
 (設定画面の「ライセンス」). In that packaged copy, `runtime/build.sh` appends the
@@ -14,7 +14,7 @@ Spotify's Soloist is **not** part of this app. The app downloads it on the
 device from Spotify's CDN, under Spotify's terms. It is never committed to this
 repository or bundled in the APK.
 
-The project's own code (the Android app, fakepulse, libargkey, st15i-fetch's
+The project's own code (the Android app, fakepulse, libargkey, overhear-fetch's
 own sources and the build scripts) has no licence chosen yet.
 
 ---
@@ -63,9 +63,9 @@ own sources and the build scripts) has no licence chosen yet.
 - Licence: MPL-2.0 (SPDX `MPL-2.0`). <https://spdx.org/licenses/MPL-2.0.html>
 - Source: <https://hg.mozilla.org/projects/nss/> (`lib/ckfw/builtins/certdata.txt`)
 
-## Go standard library (in `st15i-fetch`)
+## Go standard library (in `overhear-fetch`)
 
-- File: `st15i-fetch`, a static Go program built with Go 1.27.3. It links parts
+- File: `overhear-fetch`, a static Go program built with Go 1.27.3. It links parts
   of the Go standard library.
 - Licence: BSD-3-Clause (SPDX `BSD-3-Clause`). Go's patent grant is at
   <https://go.dev/PATENTS>.
@@ -150,7 +150,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## Rubik (font)
 
-- `assets/fonts/st15i-digits.ttf` shows the player's clock, battery number
+- `assets/fonts/overhear-digits.ttf` shows the player's clock, battery number
   and seek times. It is made by `tools/make_fonts.py` from the Rubik
   variable font: instanced at the Regular weight (wght 400, fontTools
   instancer), then subsetted to the glyphs for `0`-`9`, `:` and space, with

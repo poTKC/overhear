@@ -34,7 +34,7 @@ expect() { # output line...
     done
 }
 
-with=$(run "HOME=/h PROBE_EXPECT_KEY=$KEY ST15I_SOLOIST_KEY=$KEY")
+with=$(run "HOME=/h PROBE_EXPECT_KEY=$KEY OVERHEAR_SOLOIST_KEY=$KEY")
 echo "$with" | sed "s/$KEY/<key>/g"
 expect "$with" "argc=5" "argv[0]=./argkey_probe" "argv[1]=-k" "argv[2]=$KEY" "argv[3]=-n" "argv[4]=ST15i" \
     "argv[argc]=null" "environ_is_after_argv=1" "getenv_key_var=unset" "getenv_home=/h" \

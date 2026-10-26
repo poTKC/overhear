@@ -2,7 +2,7 @@
 #ifndef ARGKEY_H
 #define ARGKEY_H
 
-#define ARGKEY_ENV "ST15I_SOLOIST_KEY"
+#define ARGKEY_ENV "OVERHEAR_SOLOIST_KEY"
 
 /*
  * Returns a malloc'd block {argv[0], "-k", key, argv[1..argc-1], NULL,

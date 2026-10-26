@@ -2,13 +2,13 @@
  * libargkey.so: hands Soloist its API key without putting it on the command
  * line. Soloist only accepts the key as "-k <key>", and on Android 4.3 every
  * app can read /proc/<pid>/cmdline. So the app passes the key in the
- * environment (ST15I_SOLOIST_KEY; /proc/<pid>/environ is private to the uid)
+ * environment (OVERHEAR_SOLOIST_KEY; /proc/<pid>/environ is private to the uid)
  * and preloads this library:
  *
  *   ld-linux-armhf.so.3 --preload libargkey.so --library-path DIR soloist ...
  *
  * The __libc_start_main hook copies the key, wipes the original
- * "ST15I_SOLOIST_KEY=..." bytes (/proc/<pid>/environ reads that memory, so
+ * "OVERHEAR_SOLOIST_KEY=..." bytes (/proc/<pid>/environ reads that memory, so
  * unsetenv alone would leave the key there) and removes the variable. It then
  * calls the real __libc_start_main with a heap argv that has "-k <key>" right
  * after argv[0]. /proc/<pid>/cmdline shows the original stack argv, which never

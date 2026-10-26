@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Makes app/assets/fonts/st15i-digits.ttf: Rubik (SIL OFL 1.1), instanced
+"""Makes app/assets/fonts/overhear-digits.ttf: Rubik (SIL OFL 1.1), instanced
 from the variable font at one weight and cut down to the characters the
 player shows in it (clock, battery number, seek times;
 StatusStrip.DIGITS_FONT_CHARS).
@@ -25,7 +25,7 @@ COMMIT = "e7db6ca603fd4862010383ff17ffd6cc4ffac1c0"  # google/fonts main, 2026-1
 URL = "https://raw.githubusercontent.com/google/fonts/%s/ofl/rubik/Rubik%%5Bwght%%5D.ttf" % COMMIT
 SHA256 = "1b3a7437ba2af80e465e773ed60c5036d1ba6ace492d89046dbcf18fb31e4e88"
 CACHE = os.path.join("build", "cache", "fonts", COMMIT[:12], "Rubik[wght].ttf")
-OUT = os.path.join("app", "assets", "fonts", "st15i-digits.ttf")
+OUT = os.path.join("app", "assets", "fonts", "overhear-digits.ttf")
 CHARS = "0123456789: "  # keep in step with StatusStrip.DIGITS_FONT_CHARS
 WEIGHT = 400  # Regular
 
