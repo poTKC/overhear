@@ -113,18 +113,23 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
   - <https://snapshot.debian.org/package/pulseaudio/17.0%2Bdfsg1-3/>
   - Upstream: <https://www.freedesktop.org/wiki/Software/PulseAudio/>
 
-## Material Symbols (icons)
+## Remix Icon (icons)
 
 - The player, notification and status bar icons are rasterised (by
-  `tools/make_icons.py`) from Google's Material Symbols, Rounded style:
-  play_arrow, pause, skip_previous, skip_next, shuffle, repeat, repeat_one,
-  queue_music, settings, close and music_note. Recoloured and composed (the
-  toggle dot, the artwork placeholder); otherwise unmodified.
-- Licence: Apache License 2.0 (SPDX `Apache-2.0`).
-  Copyright Google LLC.
-- Source: <https://github.com/google/material-design-icons>, commit
-  `10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7` (`symbols/web/*/materialsymbolsrounded/`;
-  each SVG is checked by sha256 in `tools/make_icons.py`).
+  `tools/make_icons.py`) from Remix Icon 4.5.0 (npm package
+  `remixicon@4.5.0`): shuffle-line, repeat-2-line, repeat-one-line,
+  skip-back-fill, skip-forward-fill, play-fill, pause-fill, play-list-2-line,
+  settings-3-line, close-line, music-2-line and music-2-fill. Recoloured,
+  resized and composed (the toggle dot, the artwork placeholder); otherwise
+  unmodified.
+- Licence: Apache License 2.0 (SPDX `Apache-2.0`). The package's `License`
+  file is the unmodified Apache-2.0 text, and its `package.json` says
+  `Apache-2.0`. Its README adds a request (not a licence condition) that the
+  icons themselves not be sold, and welcomes a mention of "Remix Icon".
+  Remix Icon is by Remix Design.
+- Source: <https://remixicon.com>, <https://github.com/Remix-Design/remixicon>,
+  <https://unpkg.com/remixicon@4.5.0/> (each SVG is checked by sha256 in
+  `tools/make_icons.py`).
 - Licence text: <https://spdx.org/licenses/Apache-2.0.html>
 
 ## Zig toolchain runtime

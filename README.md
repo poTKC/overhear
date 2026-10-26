@@ -44,7 +44,7 @@ native/     fakepulse と libargkey（C、zig cc）
 helper/     st15i-fetch（Go）
 runtime/    同梱ランタイムの作成（glibc の取得とパッチ、CA バンドル、ライセンス文）
 test/       JVM 上の単体テスト
-tools/      raw2png.py（スクリーンショット変換）、make_icons.py（アイコンの PNG 生成）など
+tools/      raw2png.py（スクリーンショット変換）、make_icons.py（Remix Icon からアイコンの PNG を生成）など
 ```
 
 ## 必要なもの

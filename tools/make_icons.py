@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Makes the app's PNG icons (API 18 has no VectorDrawable) from Google's
-Material Symbols, Rounded style (Apache-2.0; see THIRD_PARTY_NOTICES.md).
+"""Makes the app's PNG icons (API 18 has no VectorDrawable) from Remix Icon
+(https://remixicon.com, Apache-2.0; see THIRD_PARTY_NOTICES.md).
 
-The SVGs come from google/material-design-icons at a pinned commit and are
+The SVGs come from the npm package remixicon@4.5.0 (via unpkg) and are
 checked against the sha256 below, then recoloured and rasterised with
 rsvg-convert, and composed (toggle dot, placeholder) with Pillow, into
 app/res/drawable-{mdpi,hdpi,xhdpi}. The PNGs are committed, so a normal
@@ -19,22 +19,23 @@ import sys
 
 from PIL import Image, ImageDraw
 
-COMMIT = "10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7"  # google/material-design-icons master, 2026-10-23
-BASE = "https://raw.githubusercontent.com/google/material-design-icons/%s/symbols/web" % COMMIT
-CACHE = os.path.join("build", "cache", "material-symbols", COMMIT[:12])
-# file -> sha256 (weight 400, grade 0, optical size 24; fill1 = filled)
+VERSION = "4.5.0"
+BASE = "https://unpkg.com/remixicon@%s/icons" % VERSION
+CACHE = os.path.join("build", "cache", "remixicon", VERSION)
+# icons/<Category>/<name>.svg -> sha256 (24 x 24 viewBox, fill="currentColor")
 SVGS = {
-    "play_arrow_fill1_24px.svg": "a0a39a2aef0c113c0ce19dfe2f59dbc363d9619d7af5a97f0cbd286c880d29e8",
-    "pause_fill1_24px.svg": "25be92a75759fac11fa809ba44340de5327657e896dcd6363fc480b2191d2809",
-    "skip_previous_fill1_24px.svg": "273da62928c7633ff6045339d9967d069a0157e61e3669d65d7d4231dd0532c3",
-    "skip_next_fill1_24px.svg": "9095cabdee09f64e22594d2393ee50b06412ee1a5f5da67236e111803a66b211",
-    "shuffle_24px.svg": "6c07ebaa88385637a58c81a86b7e5a9bcdfdbcce9f757e091626a42006b26629",
-    "repeat_24px.svg": "25166d52f33baa07cab65832d8cdb0538ea77af0e2ad7b1db941ca0661064efd",
-    "repeat_one_24px.svg": "e2f808170e8c8c418e648f986ec5a0e4514f10883f58b4556cc0ab83f1548694",
-    "queue_music_24px.svg": "1c5925fd0234d7d0121f7f5c980ef533dd911669e084972b42a86b8ba7daa94e",
-    "settings_24px.svg": "6cd47de90647ece6b00922f497f8c4ea9c1649548cf15828d1df9d78d5bdf30d",
-    "close_24px.svg": "fabc7e16160e93ed11d6d72b87f5c67092d04abfcc1fc2410fab1abe075cd8fc",
-    "music_note_24px.svg": "6678b23e4e6ef7e9d46362d9085d7e704eeda30adee2d7cb42a3930d3342b11a",
+    "Media/shuffle-line.svg": "69bc287ba0effd35e89e554ae9754e3f9a274ce8b50eab2c5de29dc5e71038cd",
+    "Media/repeat-2-line.svg": "04332c70adde08a07683e5fb892d522ef42f4b50b64d5e28dadb43a482c41b95",
+    "Media/repeat-one-line.svg": "8f17990ff8708c9be4dfa2fca7afb58f98700faea8cdd1175e9d5e8346a81494",
+    "Media/skip-back-fill.svg": "bf02c933bce295539b75acda83d6aa417a021ae4c9081a8a5b245b3e2c501ee3",
+    "Media/skip-forward-fill.svg": "196ebc286a2002f8725348b4b2615a0a485e1ca7ac2150ff39e0df6d8d0a4b3c",
+    "Media/play-fill.svg": "ac35d2ee814f73004c748273aabbddb57d0e5c1eead3788b889276781876a7c5",
+    "Media/pause-fill.svg": "82bfb45bf5b77f055ce984fca319d551c4319036520fd8a0719f41e656431953",
+    "Media/play-list-2-line.svg": "ed697dce9bbbde15715cc0b385926ca40731958e12bcceac67b8b950fe44493b",
+    "System/settings-3-line.svg": "f2e1fd30e6eadb8d5636f5037cf477f38ef81b235757d3ed290b92b2c002fec1",
+    "System/close-line.svg": "db3b4dcebb2d962a0231a191538bf6939620798b18f0ba52d4b91c5a4649ce54",
+    "Media/music-2-line.svg": "beaf516b74a065afb95022f9b311ecc981cbdd22af446b96e8a8b353f7b49342",
+    "Media/music-2-fill.svg": "70a5c81119274e9b6c0a6286afa125c15414f42d0aa3a799e8c971bebecb1221",
 }
 DENSITIES = {"mdpi": 1.0, "hdpi": 1.5, "xhdpi": 2.0}
 
@@ -49,10 +50,8 @@ PLACEHOLDER_BG = (0x28, 0x28, 0x28, 255)
 def svg(name):
     path = os.path.join(CACHE, name)
     if not os.path.exists(path):
-        os.makedirs(CACHE, exist_ok=True)
-        icon = name.split("_24px")[0].replace("_fill1", "")
-        url = "%s/%s/materialsymbolsrounded/%s" % (BASE, icon, name)
-        subprocess.run(["curl", "-fsSL", "-o", path + ".part", url], check=True)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        subprocess.run(["curl", "-fsSL", "-o", path + ".part", "%s/%s" % (BASE, name)], check=True)
         os.rename(path + ".part", path)
     data = open(path, "rb").read()
     got = hashlib.sha256(data).hexdigest()
@@ -63,8 +62,11 @@ def svg(name):
 
 
 def glyph(name, color, px):
-    """The symbol in color, px square (the 24 dp symbol's own padding included)."""
-    text = svg(name).replace("<svg ", '<svg fill="%s" ' % color, 1)
+    """The icon in color, px square (its 24-unit box, little padding)."""
+    text = svg(name)
+    if 'fill="currentColor"' not in text:
+        sys.exit("%s: no fill=currentColor to recolour" % name)
+    text = text.replace('fill="currentColor"', 'fill="%s"' % color, 1)
     png = subprocess.run(["rsvg-convert", "-w", str(px), "-h", str(px)], input=text.encode("utf-8"),
                          stdout=subprocess.PIPE, check=True).stdout
     return Image.open(io.BytesIO(png)).convert("RGBA")
@@ -76,21 +78,28 @@ def out(density, name, img):
     img.save(os.path.join(d, name + ".png"), optimize=True)
 
 
-def plain(density, f, name, svg_name, color, dp):
-    out(density, name, glyph(svg_name, color, round(dp * f)))
+def plain(density, f, name, svg_name, color, dp, glyph_dp):
+    """A dp square with the glyph at glyph_dp, centred (Remix glyphs nearly fill their box)."""
+    c, g = round(dp * f), round(glyph_dp * f)
+    img = Image.new("RGBA", (c, c), (0, 0, 0, 0))
+    img.alpha_composite(glyph(svg_name, color, g), ((c - g) // 2, (c - g) // 2))
+    out(density, name, img)
+
+
+TOGGLE_GLYPH_DP = 24
 
 
 def toggle(density, f, name, svg_name, on):
     """28 x 44 dp: the glyph centred, and when on, a 4 dp dot below it, so the
     glyph does not move between the states."""
-    w, h, g = round(28 * f), round(44 * f), round(28 * f)
+    w, h, g = round(28 * f), round(44 * f), round(TOGGLE_GLYPH_DP * f)
     img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     top = (h - g) // 2
-    img.alpha_composite(glyph(svg_name, GREEN if on else GREY, g), (0, top))
+    img.alpha_composite(glyph(svg_name, GREEN if on else GREY, g), ((w - g) // 2, top))
     if on:
         ss = 8  # supersampled dot
         r = 2 * f * ss
-        cx, cy = w / 2 * ss, (top + g + 4 * f) * ss
+        cx, cy = w / 2 * ss, (top + g + 5 * f) * ss
         dot = Image.new("RGBA", (w * ss, h * ss), (0, 0, 0, 0))
         ImageDraw.Draw(dot).ellipse((cx - r, cy - r, cx + r, cy + r), fill=GREEN)
         img.alpha_composite(dot.resize((w, h), Image.LANCZOS))
@@ -99,35 +108,35 @@ def toggle(density, f, name, svg_name, on):
 
 def placeholder(density, f):
     """240 dp dark square (RoundedArt rounds it) with a grey note."""
-    s, n = round(240 * f), round(96 * f)
+    s, n = round(240 * f), round(80 * f)
     img = Image.new("RGBA", (s, s), PLACEHOLDER_BG)
-    img.alpha_composite(glyph("music_note_24px.svg", NOTE_GREY, n), ((s - n) // 2, (s - n) // 2))
+    img.alpha_composite(glyph("Media/music-2-line.svg", NOTE_GREY, n), ((s - n) // 2, (s - n) // 2))
     out(density, "art_placeholder", img)
 
 
 def main():
     for density, f in DENSITIES.items():
-        # player
-        plain(density, f, "ic_play", "play_arrow_fill1_24px.svg", BLACK, 36)
-        plain(density, f, "ic_pause", "pause_fill1_24px.svg", BLACK, 36)
-        plain(density, f, "ic_prev", "skip_previous_fill1_24px.svg", WHITE, 36)
-        plain(density, f, "ic_next", "skip_next_fill1_24px.svg", WHITE, 36)
-        toggle(density, f, "ic_shuffle_off", "shuffle_24px.svg", False)
-        toggle(density, f, "ic_shuffle_on", "shuffle_24px.svg", True)
-        toggle(density, f, "ic_repeat_off", "repeat_24px.svg", False)
-        toggle(density, f, "ic_repeat_on", "repeat_24px.svg", True)
-        toggle(density, f, "ic_repeat_one_on", "repeat_one_24px.svg", True)
-        plain(density, f, "ic_queue", "queue_music_24px.svg", GREY, 20)
-        plain(density, f, "ic_settings", "settings_24px.svg", GREY, 20)
-        plain(density, f, "ic_close", "close_24px.svg", WHITE, 24)
+        # player: canvas dp (as the buttons expect), glyph dp
+        plain(density, f, "ic_play", "Media/play-fill.svg", BLACK, 36, 28)
+        plain(density, f, "ic_pause", "Media/pause-fill.svg", BLACK, 36, 28)
+        plain(density, f, "ic_prev", "Media/skip-back-fill.svg", WHITE, 36, 28)
+        plain(density, f, "ic_next", "Media/skip-forward-fill.svg", WHITE, 36, 28)
+        toggle(density, f, "ic_shuffle_off", "Media/shuffle-line.svg", False)
+        toggle(density, f, "ic_shuffle_on", "Media/shuffle-line.svg", True)
+        toggle(density, f, "ic_repeat_off", "Media/repeat-2-line.svg", False)
+        toggle(density, f, "ic_repeat_on", "Media/repeat-2-line.svg", True)
+        toggle(density, f, "ic_repeat_one_on", "Media/repeat-one-line.svg", True)
+        plain(density, f, "ic_queue", "Media/play-list-2-line.svg", GREY, 20, 18)
+        plain(density, f, "ic_settings", "System/settings-3-line.svg", GREY, 20, 18)
+        plain(density, f, "ic_close", "System/close-line.svg", WHITE, 24, 22)
         placeholder(density, f)
-        # notification row (40 dp wide buttons) and status bar icon
-        plain(density, f, "ic_n_prev", "skip_previous_fill1_24px.svg", WHITE, 28)
-        plain(density, f, "ic_n_play", "play_arrow_fill1_24px.svg", WHITE, 28)
-        plain(density, f, "ic_n_pause", "pause_fill1_24px.svg", WHITE, 28)
-        plain(density, f, "ic_n_next", "skip_next_fill1_24px.svg", WHITE, 28)
-        plain(density, f, "ic_n_close", "close_24px.svg", WHITE, 24)
-        plain(density, f, "ic_stat_music", "music_note_24px.svg", WHITE, 24)
+        # notification row (40 dp wide buttons) and status bar icon (white on transparent)
+        plain(density, f, "ic_n_prev", "Media/skip-back-fill.svg", WHITE, 28, 24)
+        plain(density, f, "ic_n_play", "Media/play-fill.svg", WHITE, 28, 24)
+        plain(density, f, "ic_n_pause", "Media/pause-fill.svg", WHITE, 28, 24)
+        plain(density, f, "ic_n_next", "Media/skip-forward-fill.svg", WHITE, 28, 24)
+        plain(density, f, "ic_n_close", "System/close-line.svg", WHITE, 24, 20)
+        plain(density, f, "ic_stat_music", "Media/music-2-fill.svg", WHITE, 24, 18)
     for old in ("ic_repeat", "ic_repeat_one", "ic_shuffle"):
         p = os.path.join("app", "res", "drawable-mdpi", old + ".png")
         if os.path.exists(p):

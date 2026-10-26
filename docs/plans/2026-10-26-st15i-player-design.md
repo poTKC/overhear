@@ -222,8 +222,10 @@ SoloistClient は切断時に 1s、2s、5s（以降 5s）の間隔で再接続�
   キューのサムネイルは 3dp）。その下に曲名・アーティスト、シークバー、操作ボタンの行（両端にシャッフルとリピート、⏮ ⏭ は 56dp、
   ⏯ は 60dp の円形背景で強調）、最下段 36dp にステータス行とキュー・設定のボタン（36dp、小さいアイコン）。
   余白は重み付きのスペーサーで配分する。
-- アイコン: Google の Material Symbols（Rounded、Apache-2.0）を `tools/make_icons.py` が固定したコミットから取得し
+- アイコン: Remix Icon 4.5.0（Apache-2.0、npm の `remixicon@4.5.0` を unpkg から）を `tools/make_icons.py` が取得し
   （SVG ごとに sha256 を確認）、rsvg-convert で mdpi・hdpi・xhdpi の PNG にする（API 18 には VectorDrawable がない。PNG はコミット済み）。
+  シャッフルは交差する曲線の `shuffle-line`。Remix の記号は枠いっぱいに描かれているので、ボタンの大きさは変えずに記号だけを
+  縮めて重さをそろえる（⏮ ⏭ は 28dp、シャッフル・リピートは 24dp）。
   Spotify のアイコンやロゴは使わず、配色と作法だけ倣う: ⏯ は白い円に黒い記号、⏮ ⏭ は白の塗り、シャッフルとリピートは
   オフで灰色（#B3B3B3）、オンで緑（#1DB954）と下に 4dp の点（シャッフルは `state_activated` のセレクター、リピートは
   `PlayerText.repeatLevel` で切り替えるレベルリスト。色フィルターは使わない）。キュー・設定は小さな灰色、プレースホルダーは
