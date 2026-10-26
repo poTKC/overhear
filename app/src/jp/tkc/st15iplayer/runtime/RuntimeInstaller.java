@@ -2,9 +2,10 @@ package jp.tkc.st15iplayer.runtime;
 
 import android.content.Context;
 import android.content.res.AssetManager;
+import android.os.StatFs;
+import android.os.SystemClock;
 import android.util.Log;
 
-import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -25,7 +26,9 @@ import java.util.List;
  *                       (it must never be bundled or redistributed)
  *
  * Every method does file or network I/O and may block for minutes: call them
- * off the main thread. Calls are serialised on this instance; use one
+ * off the main thread. ensureBundle and ensureSoloist are serialised on this
+ * instance; writeResolvConf has its own lock so a Soloist start never waits
+ * for a download. cancelDownload() may be called from any thread. Use one
  * instance per process.
  */
 public final class RuntimeInstaller {
@@ -38,6 +41,10 @@ public final class RuntimeInstaller {
     private static final String RESOLV_CONF = "resolv.conf";
     private static final String[] EXECUTABLES = {SoloistCommand.LOADER, HELPER};
     private static final int STDERR_LINES = 20;
+    /** A download that takes longer than this is killed and reported as failed. */
+    static final long DOWNLOAD_DEADLINE_MS = 10 * 60 * 1000L;
+    private static final long STDERR_JOIN_MS = 2000;
+    static final int MAX_LINE_BYTES = 4096;
 
     /** Outcome of ensureSoloist. */
     public static final class Result {
@@ -57,6 +64,10 @@ public final class RuntimeInstaller {
 
     private final Context context;
     private final File filesDir;
+    private final Object resolvLock = new Object();
+    /** The running st15i-fetch, for cancelDownload(). */
+    private volatile Process download;
+    private volatile boolean cancelled;
 
     public RuntimeInstaller(Context context) {
         this.context = context.getApplicationContext();
@@ -124,14 +135,21 @@ public final class RuntimeInstaller {
      * Downloads and unpacks Soloist into filesDir/soloist/ through
      * st15i-fetch when it is missing, or always when refresh is set (Soloist
      * exited with SoloistCommand.EXIT_EXPIRED). The helper replaces the dir
-     * atomically. Needs ensureBundle() first. listener may be null and is
-     * called on this thread.
+     * atomically. Fails early when /data has less than
+     * Storage.DOWNLOAD_MIN_FREE_MB free, and after DOWNLOAD_DEADLINE_MS.
+     * Needs ensureBundle() first. listener may be null and is called on this
+     * thread.
      */
     public synchronized Result ensureSoloist(boolean refresh, ProgressListener listener) {
         File bin = soloistBin();
         if (!refresh && bin.isFile()) {
             bin.setExecutable(true, false);
             return new Result(true, "");
+        }
+        String noRoom = Storage.downloadError(freeBytes(filesDir));
+        if (noRoom != null) {
+            Log.w(TAG, noRoom);
+            return new Result(false, noRoom);
         }
         File runtime = runtimeDir();
         List<String> dns = systemDns();
@@ -145,12 +163,14 @@ public final class RuntimeInstaller {
         cmd.add(SOLOIST_URL);
         cmd.add(soloistDir().getPath());
 
-        Process p;
+        cancelled = false;
+        final Process p;
         try {
             p = new ProcessBuilder(cmd).directory(runtime).start();
         } catch (IOException e) {
             return new Result(false, "cannot run " + HELPER + ": " + e.getMessage());
         }
+        download = p;
         final LogRing stderr = new LogRing(STDERR_LINES);
         final InputStream err = p.getErrorStream();
         Thread errReader = new Thread(new Runnable() {
@@ -158,38 +178,97 @@ public final class RuntimeInstaller {
                 pumpLines(err, stderr);
             }
         }, "st15i-fetch-stderr");
+        errReader.setDaemon(true);
         errReader.start();
+        // Killing the helper closes its pipes, which ends the read loop below.
+        final boolean[] timedOut = {false};
+        final Object doneLock = new Object();
+        final boolean[] finished = {false};
+        Thread watchdog = new Thread(new Runnable() {
+            @Override public void run() {
+                long deadline = SystemClock.elapsedRealtime() + DOWNLOAD_DEADLINE_MS;
+                synchronized (doneLock) {
+                    long left;
+                    while (!finished[0] && (left = deadline - SystemClock.elapsedRealtime()) > 0) {
+                        try {
+                            doneLock.wait(left);
+                        } catch (InterruptedException e) {
+                            return;
+                        }
+                    }
+                    if (finished[0]) return;
+                    timedOut[0] = true;
+                }
+                p.destroy();
+            }
+        }, "st15i-fetch-deadline");
+        watchdog.setDaemon(true);
+        watchdog.start();
 
         HelperOutput out = new HelperOutput(listener);
-        BufferedReader r = null;
+        LineReader r = new LineReader(p.getInputStream(), MAX_LINE_BYTES);
         int code;
         try {
             p.getOutputStream().close();
-            r = new BufferedReader(new InputStreamReader(p.getInputStream(), "UTF-8"));
             String line;
             while ((line = r.readLine()) != null) out.line(line);
             code = p.waitFor();
-            errReader.join();
         } catch (IOException e) {
             p.destroy();
-            return new Result(false, "download interrupted: " + e.getMessage());
+            code = -1;
         } catch (InterruptedException e) {
             p.destroy();
             Thread.currentThread().interrupt();
             return new Result(false, "interrupted");
         } finally {
-            closeQuietly(r);
+            download = null;
+            synchronized (doneLock) {
+                finished[0] = true;
+                doneLock.notifyAll();
+            }
+            closeQuietly(p.getInputStream());
+            joinQuietly(errReader, STDERR_JOIN_MS);
         }
+        boolean wasTimedOut;
+        synchronized (doneLock) {
+            wasTimedOut = timedOut[0];
+        }
+        if (cancelled) return fail("download cancelled");
+        if (wasTimedOut) return fail("download timed out after " + DOWNLOAD_DEADLINE_MS / 60000 + " min");
         if (code != 0 || !out.isDone()) {
             List<String> lines = stderr.lines();
-            String msg = lines.isEmpty() ? HELPER + " exited with " + code : lines.get(lines.size() - 1);
-            Log.w(TAG, "Soloist download failed: " + msg);
-            return new Result(false, msg);
+            return fail(lines.isEmpty() ? HELPER + " exited with " + code : lines.get(lines.size() - 1));
         }
-        if (!bin.isFile()) return new Result(false, "the download has no soloist binary");
+        if (!bin.isFile()) return fail("the download has no soloist binary");
         bin.setExecutable(true, false);
         Log.i(TAG, "Soloist installed");
         return new Result(true, "");
+    }
+
+    private static Result fail(String msg) {
+        Log.w(TAG, "Soloist download failed: " + msg);
+        return new Result(false, msg);
+    }
+
+    /**
+     * Kills a running ensureSoloist download, which then returns a failure.
+     * The helper recovers its half-done work on the next run. Any thread.
+     */
+    public void cancelDownload() {
+        Process p = download;
+        if (p == null) return;
+        cancelled = true;
+        p.destroy();
+    }
+
+    /** Free bytes on the filesystem holding dir, or Long.MAX_VALUE if unknown. */
+    public static long freeBytes(File dir) {
+        try {
+            StatFs st = new StatFs(dir.getPath());
+            return st.getAvailableBlocksLong() * st.getBlockSizeLong();
+        } catch (IllegalArgumentException e) {
+            return Long.MAX_VALUE;
+        }
     }
 
     /**
@@ -197,7 +276,13 @@ public final class RuntimeInstaller {
      * returns them. Call right before every Soloist start: the servers change
      * with the Wi-Fi network.
      */
-    public synchronized List<String> writeResolvConf() throws IOException {
+    public List<String> writeResolvConf() throws IOException {
+        synchronized (resolvLock) {
+            return writeResolvConfLocked();
+        }
+    }
+
+    private List<String> writeResolvConfLocked() throws IOException {
         List<String> dns = systemDns();
         File dir = runtimeDir();
         File tmp = new File(dir, RESOLV_CONF + ".tmp");
@@ -241,15 +326,22 @@ public final class RuntimeInstaller {
     }
 
     static void pumpLines(InputStream in, LogRing ring) {
-        BufferedReader r = null;
+        LineReader r = new LineReader(in, MAX_LINE_BYTES);
         try {
-            r = new BufferedReader(new InputStreamReader(in, "UTF-8"));
             String line;
             while ((line = r.readLine()) != null) ring.add(line);
         } catch (IOException e) {
             // process gone
         } finally {
-            closeQuietly(r);
+            closeQuietly(in);
+        }
+    }
+
+    private static void joinQuietly(Thread t, long ms) {
+        try {
+            t.join(ms);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 

@@ -22,7 +22,8 @@ import java.util.regex.Pattern;
 public final class SoloistCommand {
     public static final String DEFAULT_NAME = "ST15i";
     public static final String WS_ADDRESS = "127.0.0.1:8765";
-    public static final int CACHE_MB = 200;
+    /** Soloist rejects -z values below this. */
+    public static final int MIN_CACHE_MB = 100;
     /** Soloist's exit status when its build has expired (builds live 90 days). */
     public static final int EXIT_EXPIRED = 10;
     static final String KEY_ENV = "ST15I_SOLOIST_KEY";
@@ -31,6 +32,14 @@ public final class SoloistCommand {
     static final String ARGKEY = "libargkey.so";
     static final String CACERT = "cacert.pem";
     private static final String REDACTED = "<redacted>";
+    /** "-k <token>": the key as Soloist's argv would show it. */
+    private static final Pattern DASH_K = Pattern.compile("(^|\\s)-k\\s+\\S+");
+    /**
+     * "api key=<token>" and similar. Only token-like values (16+ chars) so
+     * Soloist's own "--api-key is required" stays readable.
+     */
+    private static final Pattern API_KEY_VALUE =
+            Pattern.compile("(?i)(api[-_ ]?key[=: ]\\s*)[A-Za-z0-9+/=_.-]{16,}");
     private static final Pattern ANSI = Pattern.compile("\u001b\\[[0-9;?]*[ -/]*[@-~]");
     /** Soloist's log format: "HH:MM:SS.mmm E [..." for errors. */
     private static final Pattern ERROR_LEVEL = Pattern.compile("^\\S+ E \\[.*");
@@ -44,10 +53,12 @@ public final class SoloistCommand {
     private final File homeDir;
     private final String deviceName;
     private final String apiKey;
+    private final int cacheMb;
     private final boolean verbose;
 
     public SoloistCommand(File runtimeDir, File soloistBin, File dataDir, File cacheDir, File homeDir,
-            String deviceName, String apiKey, boolean verbose) {
+            String deviceName, String apiKey, int cacheMb, boolean verbose) {
+        if (cacheMb < MIN_CACHE_MB) throw new IllegalArgumentException("cache below " + MIN_CACHE_MB + " MB");
         if (apiKey == null || apiKey.isEmpty()) throw new IllegalArgumentException("no API key");
         for (int i = 0; i < apiKey.length(); i++) {
             char ch = apiKey.charAt(i);
@@ -60,6 +71,7 @@ public final class SoloistCommand {
         this.homeDir = homeDir;
         this.deviceName = cleanName(deviceName);
         this.apiKey = apiKey;
+        this.cacheMb = cacheMb;
         this.verbose = verbose;
     }
 
@@ -94,7 +106,7 @@ public final class SoloistCommand {
         c.add("-w");
         c.add(WS_ADDRESS);
         c.add("-z");
-        c.add(Integer.toString(CACHE_MB));
+        c.add(Integer.toString(cacheMb));
         if (verbose) c.add("-v");
         return c;
     }
@@ -114,23 +126,23 @@ public final class SoloistCommand {
         env.put(KEY_ENV, apiKey);
     }
 
-    /**
-     * True when a /proc/<pid>/cmdline (NUL-separated) is a run of this
-     * runtime's loader, i.e. a Soloist this app started, possibly orphaned by
-     * a force-stop.
-     */
-    public boolean isRunOf(String cmdline) {
-        int end = cmdline.indexOf('\0');
-        String argv0 = end < 0 ? cmdline : cmdline.substring(0, end);
-        return argv0.equals(new File(runtimeDir, LOADER).getPath());
+    /** argv0 of every run: Strays recognises leftover runs by it. */
+    public String loaderPath() {
+        return new File(runtimeDir, LOADER).getPath();
     }
 
-    /** Strips terminal colour codes and replaces every occurrence of secret. */
+    /**
+     * Strips terminal colour codes and redacts every occurrence of secret,
+     * plus anything shaped like a key argument ("-k <token>",
+     * "api-key=<token>"), in case Soloist echoes its argv.
+     */
     public static String sanitize(String line, String secret) {
         String out = ANSI.matcher(line).replaceAll("");
         if (secret != null && !secret.isEmpty() && out.contains(secret)) {
             out = out.replace(secret, REDACTED);
         }
+        if (out.contains("-k")) out = DASH_K.matcher(out).replaceAll("$1-k " + REDACTED);
+        out = API_KEY_VALUE.matcher(out).replaceAll("$1" + REDACTED);
         return out;
     }
 

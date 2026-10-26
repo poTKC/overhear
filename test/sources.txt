@@ -10,3 +10,6 @@ app/src/jp/tkc/st15iplayer/runtime/HelperOutput.java
 app/src/jp/tkc/st15iplayer/runtime/LogRing.java
 app/src/jp/tkc/st15iplayer/runtime/ProgressListener.java
 app/src/jp/tkc/st15iplayer/runtime/SoloistCommand.java
+app/src/jp/tkc/st15iplayer/runtime/LineReader.java
+app/src/jp/tkc/st15iplayer/runtime/Storage.java
+app/src/jp/tkc/st15iplayer/runtime/Strays.java

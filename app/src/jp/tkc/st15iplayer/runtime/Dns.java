@@ -16,6 +16,7 @@ public final class Dns {
             Collections.unmodifiableList(Arrays.asList("8.8.8.8", "1.1.1.1"));
     /** glibc reads at most MAXNS (3) nameserver lines. */
     static final int MAX_SERVERS = 3;
+    static final String OPTIONS = "options timeout:2 attempts:2 rotate";
 
     private Dns() {}
 
@@ -36,6 +37,8 @@ public final class Dns {
     public static String resolvConf(List<String> servers) {
         StringBuilder sb = new StringBuilder();
         for (String s : servers) sb.append("nameserver ").append(s).append('\n');
+        // Fail over quickly (default 5 s x 2) and spread queries across servers.
+        sb.append(OPTIONS).append('\n');
         return sb.toString();
     }
 

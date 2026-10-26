@@ -18,7 +18,7 @@ public class SoloistCommandTest {
 
     private static SoloistCommand cmd(String name, boolean verbose) {
         return new SoloistCommand(new File("/f/runtime"), new File("/f/soloist/soloist"),
-                new File("/f/soloist-data"), new File("/c/soloist"), new File("/f"), name, KEY, verbose);
+                new File("/f/soloist-data"), new File("/c/soloist"), new File("/f"), name, KEY, 100, verbose);
     }
 
     @Test public void commandPreloadsArgkeyAndNeverContainsTheKey() {
@@ -32,7 +32,7 @@ public class SoloistCommandTest {
                 "-D", "/f/soloist-data",
                 "-C", "/c/soloist",
                 "-w", "127.0.0.1:8765",
-                "-z", "200"), c);
+                "-z", "100"), c);
         for (String arg : c) {
             assertFalse(arg.contains(KEY));
             assertFalse(arg.equals("-k"));
@@ -76,13 +76,13 @@ public class SoloistCommandTest {
     @Test(expected = IllegalArgumentException.class)
     public void rejectsMissingKey() {
         new SoloistCommand(new File("/r"), new File("/s"), new File("/d"), new File("/c"), new File("/h"),
-                "ST15i", "", false);
+                "ST15i", "", 100, false);
     }
 
     @Test(expected = IllegalArgumentException.class)
     public void rejectsKeyWithControlCharacters() {
         new SoloistCommand(new File("/r"), new File("/s"), new File("/d"), new File("/c"), new File("/h"),
-                "ST15i", "abc\ndef", false);
+                "ST15i", "abc\ndef", 100, false);
     }
 
     @Test public void sanitizeStripsAnsiAndRedactsKey() {
@@ -92,6 +92,28 @@ public class SoloistCommandTest {
         assertEquals("plain", SoloistCommand.sanitize("plain", null));
         assertEquals("plain", SoloistCommand.sanitize("plain", ""));
         assertEquals("a b", SoloistCommand.sanitize("a\u001b[1;31m b", KEY));
+    }
+
+    @Test public void sanitizeRedactsKeyLikeArguments() {
+        assertEquals("argv: -k <redacted> -n ST15i", SoloistCommand.sanitize("argv: -k abcdef0123 -n ST15i", KEY));
+        String tok = "Zz0123456789abcdefXY";
+        assertEquals("api_key=<redacted> x", SoloistCommand.sanitize("api_key=" + tok + " x", KEY));
+        assertEquals("API-KEY: <redacted>", SoloistCommand.sanitize("API-KEY: " + tok, KEY));
+        assertEquals("apikey=<redacted>", SoloistCommand.sanitize("apikey=" + tok, null));
+        assertEquals("api key <redacted>", SoloistCommand.sanitize("api key " + tok, null));
+        assertEquals("--api-key <redacted>", SoloistCommand.sanitize("--api-key " + tok, null));
+        assertEquals("-k <redacted>", SoloistCommand.sanitize("-k short", null));
+        // Soloist's own messages without a value stay readable.
+        assertEquals("Error: --api-key is required", SoloistCommand.sanitize("Error: --api-key is required", null));
+        assertEquals("login failed: make sure --api-key is valid",
+                SoloistCommand.sanitize("login failed: make sure --api-key is valid", null));
+        assertEquals("-kx stays", SoloistCommand.sanitize("-kx stays", null));
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void rejectsCacheBelowSoloistsMinimum() {
+        new SoloistCommand(new File("/r"), new File("/s"), new File("/d"), new File("/c"), new File("/h"),
+                "ST15i", KEY, 99, false);
     }
 
     @Test public void errorLinesAreRecognised() {
@@ -109,13 +131,8 @@ public class SoloistCommandTest {
         assertFalse(SoloistCommand.isExpired(137));
     }
 
-    @Test public void recognisesItsOwnProcessesFromCmdline() {
-        String ours = "/f/runtime/ld-linux-armhf.so.3\0--preload\0/f/runtime/libargkey.so\0-n\0ST15i\0";
-        assertTrue(cmd("ST15i", false).isRunOf(ours));
-        assertTrue(cmd("ST15i", false).isRunOf("/f/runtime/ld-linux-armhf.so.3"));
-        assertFalse(cmd("ST15i", false).isRunOf("./lib/ld-linux-armhf.so.3\0--library-path\0./lib\0"));
-        assertFalse(cmd("ST15i", false).isRunOf("/f/runtime/ld-linux-armhf.so.3x\0"));
-        assertFalse(cmd("ST15i", false).isRunOf(""));
-        assertFalse(cmd("ST15i", false).isRunOf("/f/runtime/st15i-fetch\0extract\0"));
+    @Test public void loaderPathIsArgv0() {
+        assertEquals("/f/runtime/ld-linux-armhf.so.3", cmd("ST15i", false).loaderPath());
+        assertEquals(cmd("ST15i", false).loaderPath(), cmd("ST15i", false).command().get(0));
     }
 }

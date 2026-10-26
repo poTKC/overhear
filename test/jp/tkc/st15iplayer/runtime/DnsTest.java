@@ -75,7 +75,7 @@ public class DnsTest {
     }
 
     @Test public void resolvConfAndHelperArg() {
-        assertEquals("nameserver 192.168.40.1\nnameserver 8.8.8.8\n",
+        assertEquals("nameserver 192.168.40.1\nnameserver 8.8.8.8\noptions timeout:2 attempts:2 rotate\n",
                 Dns.resolvConf(Arrays.asList("192.168.40.1", "8.8.8.8")));
         assertEquals("192.168.40.1,2001:db8::1", Dns.helperArg(Arrays.asList("192.168.40.1", "2001:db8::1")));
     }
