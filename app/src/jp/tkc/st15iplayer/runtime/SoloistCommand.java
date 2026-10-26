@@ -55,6 +55,7 @@ public final class SoloistCommand {
     private final String apiKey;
     private final int cacheMb;
     private final boolean verbose;
+    private boolean traceAudio;
 
     public SoloistCommand(File runtimeDir, File soloistBin, File dataDir, File cacheDir, File homeDir,
             String deviceName, String apiKey, int cacheMb, boolean verbose) {
@@ -73,6 +74,11 @@ public final class SoloistCommand {
         this.apiKey = apiKey;
         this.cacheMb = cacheMb;
         this.verbose = verbose;
+    }
+
+    /** Debug: run fakepulse with FAKEPULSE_LOG=1 (it traces calls and underflows on stderr). */
+    public void setTraceAudio(boolean trace) {
+        traceAudio = trace;
     }
 
     /** Blank names, and names Soloist would parse as an option, become DEFAULT_NAME. */
@@ -113,8 +119,9 @@ public final class SoloistCommand {
 
     /**
      * Edits a ProcessBuilder environment: sets HOME, SSL_CERT_FILE,
-     * FAKEPULSE_OUT and the key; drops Android's loader variables, which
-     * would leak into the glibc loader.
+     * FAKEPULSE_OUT and the key (and FAKEPULSE_LOG only with traceAudio);
+     * drops Android's loader variables, which would leak into the glibc
+     * loader.
      */
     public void applyEnvironment(Map<String, String> env) {
         env.remove("LD_LIBRARY_PATH");
@@ -124,6 +131,8 @@ public final class SoloistCommand {
         env.put("SSL_CERT_FILE", new File(runtimeDir, CACERT).getPath());
         env.put("FAKEPULSE_OUT", AUDIO_OUT);
         env.put(KEY_ENV, apiKey);
+        if (traceAudio) env.put("FAKEPULSE_LOG", "1");
+        else env.remove("FAKEPULSE_LOG");
     }
 
     /** argv0 of every run: Strays recognises leftover runs by it. */

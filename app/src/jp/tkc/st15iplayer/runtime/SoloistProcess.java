@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 
@@ -33,10 +34,10 @@ import java.util.regex.Pattern;
  * leaving a process behind.
  *
  * Restart and backoff policy belongs to the caller: this class only reports
- * exits. Task 7 makes the instance a process-wide singleton (owned by the
- * player service); start() kills Soloist runs it does not own, i.e. those
- * left over from an earlier app process, so two instances in one process
- * would fight.
+ * exits. PlayerService owns the only instance (one per service lifetime,
+ * released in onDestroy); start() kills Soloist runs it does not own, i.e.
+ * those left over from an earlier app process, so two live instances in one
+ * process would fight.
  */
 public final class SoloistProcess {
     public static final int LOG_LINES = 200;
@@ -49,6 +50,8 @@ public final class SoloistProcess {
     /** How long stop() lets Soloist shut down after SIGTERM before SIGKILL. */
     static final long TERM_GRACE_MS = 2000;
     private static final int SIGTERM = 15;
+    /** fakepulse's trace line for an underflow it reports to Soloist. */
+    static final String UNDERFLOW_LINE = "[fakepulse] underflow";
     private static final Pattern PID = Pattern.compile("[0-9]+");
 
     public interface Listener {
@@ -87,11 +90,20 @@ public final class SoloistProcess {
         @Override public void run() {
             InputStream in = process.getInputStream();
             try {
-                LineReader r = new LineReader(in, MAX_LINE_BYTES);
-                String raw;
-                while ((raw = r.readLine()) != null) {
-                    String line = SoloistCommand.sanitize(raw, secret);
+                // Redacts before the line is cut, so no key fragment survives.
+                LineReader r = new LineReader(in, MAX_LINE_BYTES, LineReader.DEFAULT_SLACK,
+                        new LineReader.Filter() {
+                            @Override public String apply(String raw) {
+                                return SoloistCommand.sanitize(raw, secret);
+                            }
+                        });
+                String line;
+                while ((line = r.readLine()) != null) {
                     log.add(line);
+                    if (line.startsWith(UNDERFLOW_LINE)) {
+                        underflows.incrementAndGet();
+                        continue; // counted, not logged: they can come in bursts
+                    }
                     if (SoloistCommand.isErrorLine(line)) logcat(line);
                 }
             } catch (IOException e) {
@@ -169,6 +181,8 @@ public final class SoloistProcess {
     private boolean starting; // guarded by lock
     private boolean released; // guarded by lock
     private int stopCount; // guarded by lock
+    private volatile boolean lowStorageWarned;
+    private final AtomicInteger underflows = new AtomicInteger();
 
     /** listener may be null. */
     public SoloistProcess(RuntimeInstaller installer, Listener listener) {
@@ -187,13 +201,24 @@ public final class SoloistProcess {
      *         while starting (no process is left running)
      */
     public void start(String deviceName, String apiKey, boolean verbose) throws IOException {
+        start(deviceName, apiKey, verbose, false);
+    }
+
+    /**
+     * As start(deviceName, apiKey, verbose), optionally with FAKEPULSE_LOG=1
+     * (debug: fakepulse traces its calls and underflows to the log ring;
+     * getUnderflowCount() counts the latter).
+     */
+    public void start(String deviceName, String apiKey, boolean verbose, boolean traceAudio)
+            throws IOException {
         File bin = installer.soloistBin();
         if (!bin.isFile()) throw new IOException("Soloist is not installed");
         File cacheDir = installer.cacheDir();
         long free = RuntimeInstaller.freeBytes(installer.homeDir());
-        int cacheMb = Storage.cacheSizeMb(free);
+        int cacheMb = Storage.CACHE_MB;
         SoloistCommand cmd = new SoloistCommand(installer.runtimeDir(), bin, installer.dataDir(),
                 cacheDir, installer.homeDir(), deviceName, apiKey, cacheMb, verbose);
+        cmd.setTraceAudio(traceAudio);
         int stopsBefore;
         synchronized (lock) {
             if (released) throw new IllegalStateException("released");
@@ -202,7 +227,8 @@ public final class SoloistProcess {
             stopsBefore = stopCount;
         }
         try {
-            if (Storage.isLowForCache(free)) {
+            if (Storage.isLowForCache(free) && !lowStorageWarned) {
+                lowStorageWarned = true; // once per instance, i.e. per service lifetime
                 String warn = "low storage: " + free / (1024 * 1024) + " MB free for a " + cacheMb + " MB cache";
                 Log.w(TAG, warn);
                 log.add("[st15i] " + warn);
@@ -272,6 +298,11 @@ public final class SoloistProcess {
             released = true;
         }
         stop();
+    }
+
+    /** fakepulse underflow reports seen so far (only traced with traceAudio). */
+    public int getUnderflowCount() {
+        return underflows.get();
     }
 
     /** Lock-free. */

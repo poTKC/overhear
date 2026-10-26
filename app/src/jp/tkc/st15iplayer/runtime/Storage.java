@@ -6,7 +6,13 @@ package jp.tkc.st15iplayer.runtime;
  */
 public final class Storage {
     private static final long MB = 1024L * 1024L;
-    /** Soloist's minimum -z value; also the most it may take of /data. */
+    /**
+     * Soloist's -z (cache size) value, fixed at Soloist's minimum
+     * (SoloistCommand.MIN_CACHE_MB): /data has no room to grow it, and
+     * Soloist rejects anything smaller. isLowForCache warns when even this
+     * is more than half the free space. The cache dir is disposable and may
+     * be deleted while Soloist is not running.
+     */
     public static final int CACHE_MB = 100;
     /**
      * Free space a Soloist download needs: the tarball (~12 MB) and the
@@ -16,15 +22,6 @@ public final class Storage {
     public static final int DOWNLOAD_MIN_FREE_MB = 80;
 
     private Storage() {}
-
-    /**
-     * The -z value: clamp(free / 2, CACHE_MB, CACHE_MB). Always Soloist's
-     * minimum, since there is no room to grow on this phone; when even that is
-     * more than half the free space, isLowForCache says so.
-     */
-    public static int cacheSizeMb(long freeBytes) {
-        return CACHE_MB;
-    }
 
     /** True when the cache could take more than half of the free space. */
     public static boolean isLowForCache(long freeBytes) {

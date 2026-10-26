@@ -28,8 +28,10 @@ import java.util.List;
  * Every method does file or network I/O and may block for minutes: call them
  * off the main thread. ensureBundle and ensureSoloist are serialised on this
  * instance; writeResolvConf has its own lock so a Soloist start never waits
- * for a download. cancelDownload() may be called from any thread. Use one
- * instance per process.
+ * for a download. cancelDownload() may be called from any thread and is
+ * sticky: it ends this instance's downloads for good (owners call it when
+ * they are destroyed). PlayerService owns the instance, one per service
+ * lifetime.
  */
 public final class RuntimeInstaller {
     public static final String SOLOIST_URL =
@@ -51,10 +53,20 @@ public final class RuntimeInstaller {
         public final boolean ok;
         /** "" on success, else a short reason (the helper's last stderr line). */
         public final String message;
+        /**
+         * Failed before downloading because /data is too full
+         * (Storage.downloadError); freeing space (clearSoloistCache) may help.
+         */
+        public final boolean noSpace;
 
         Result(boolean ok, String message) {
+            this(ok, message, false);
+        }
+
+        Result(boolean ok, String message, boolean noSpace) {
             this.ok = ok;
             this.message = message;
+            this.noSpace = noSpace;
         }
 
         @Override public String toString() {
@@ -67,7 +79,8 @@ public final class RuntimeInstaller {
     private final Object resolvLock = new Object();
     /** The running st15i-fetch, for cancelDownload(). */
     private volatile Process download;
-    private volatile boolean cancelled;
+    /** Set for good by cancelDownload(). */
+    private volatile boolean closed;
 
     public RuntimeInstaller(Context context) {
         this.context = context.getApplicationContext();
@@ -146,10 +159,11 @@ public final class RuntimeInstaller {
             bin.setExecutable(true, false);
             return new Result(true, "");
         }
+        if (closed) return fail("download cancelled");
         String noRoom = Storage.downloadError(freeBytes(filesDir));
         if (noRoom != null) {
             Log.w(TAG, noRoom);
-            return new Result(false, noRoom);
+            return new Result(false, noRoom, true);
         }
         File runtime = runtimeDir();
         List<String> dns = systemDns();
@@ -163,7 +177,6 @@ public final class RuntimeInstaller {
         cmd.add(SOLOIST_URL);
         cmd.add(soloistDir().getPath());
 
-        cancelled = false;
         final Process p;
         try {
             p = new ProcessBuilder(cmd).directory(runtime).start();
@@ -171,6 +184,9 @@ public final class RuntimeInstaller {
             return new Result(false, "cannot run " + HELPER + ": " + e.getMessage());
         }
         download = p;
+        // cancelDownload() sets closed before reading download, so one of the
+        // two sides always sees the other.
+        if (closed) p.destroy();
         final LogRing stderr = new LogRing(STDERR_LINES);
         final InputStream err = p.getErrorStream();
         Thread errReader = new Thread(new Runnable() {
@@ -233,7 +249,7 @@ public final class RuntimeInstaller {
         synchronized (doneLock) {
             wasTimedOut = timedOut[0];
         }
-        if (cancelled) return fail("download cancelled");
+        if (closed) return fail("download cancelled");
         if (wasTimedOut) return fail("download timed out after " + DOWNLOAD_DEADLINE_MS / 60000 + " min");
         if (code != 0 || !out.isDone()) {
             List<String> lines = stderr.lines();
@@ -251,14 +267,27 @@ public final class RuntimeInstaller {
     }
 
     /**
-     * Kills a running ensureSoloist download, which then returns a failure.
-     * The helper recovers its half-done work on the next run. Any thread.
+     * Kills a running ensureSoloist download, which then returns a failure,
+     * and makes every later download on this instance fail at once (also one
+     * that is just forking its helper). The helper recovers its half-done
+     * work on the next run. Any thread.
      */
     public void cancelDownload() {
+        closed = true;
         Process p = download;
-        if (p == null) return;
-        cancelled = true;
-        p.destroy();
+        if (p != null) p.destroy();
+    }
+
+    /**
+     * Deletes Soloist's cache dir (disposable: Soloist refills it) to free
+     * space, e.g. when a re-download after expiry has no room. Only while
+     * Soloist is not running. Returns the bytes now free on /data.
+     */
+    public long clearSoloistCache() {
+        deleteRecursively(cacheDir());
+        long free = freeBytes(filesDir);
+        Log.i(TAG, "cleared the Soloist cache: " + free / (1024 * 1024) + " MB free");
+        return free;
     }
 
     /** Free bytes on the filesystem holding dir, or Long.MAX_VALUE if unknown. */

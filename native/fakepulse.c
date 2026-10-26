@@ -850,7 +850,9 @@ static void stream_poll_underflow(pa_stream *s) {
     int u = s->sink->underflow;
     s->sink->underflow = 0;
     pthread_mutex_unlock(&s->sink->mu);
-    if (u && s->underflow_cb && s->state == PA_STREAM_READY) s->underflow_cb(s, s->underflow_ud);
+    if (!u || s->state != PA_STREAM_READY) return;
+    trace("underflow%s", s->underflow_cb ? "" : " (no callback)");
+    if (s->underflow_cb) s->underflow_cb(s, s->underflow_ud);
 }
 
 static void poll_streams(pa_threaded_mainloop *m) {

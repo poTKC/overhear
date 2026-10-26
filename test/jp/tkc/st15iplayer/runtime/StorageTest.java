@@ -10,11 +10,8 @@ import org.junit.Test;
 public class StorageTest {
     private static final long MB = 1024L * 1024L;
 
-    @Test public void cacheIsAlwaysSoloistsMinimum() {
-        assertEquals(100, Storage.cacheSizeMb(10 * MB));
-        assertEquals(100, Storage.cacheSizeMb(160 * MB));
-        assertEquals(100, Storage.cacheSizeMb(4000 * MB));
-        assertEquals(100, Storage.cacheSizeMb(-1));
+    @Test public void cacheIsSoloistsMinimum() {
+        assertEquals(SoloistCommand.MIN_CACHE_MB, Storage.CACHE_MB);
     }
 
     @Test public void lowForCacheWhenHalfTheFreeSpaceIsUnderTheCache() {

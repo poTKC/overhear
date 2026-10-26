@@ -61,6 +61,17 @@ public class SoloistCommandTest {
         assertEquals(KEY, env.get("ST15I_SOLOIST_KEY"));
     }
 
+    @Test public void audioTraceIsOptIn() {
+        Map<String, String> env = new HashMap<String, String>();
+        env.put("FAKEPULSE_LOG", "1"); // inherited from somewhere: dropped
+        cmd("ST15i", false).applyEnvironment(env);
+        assertNull(env.get("FAKEPULSE_LOG"));
+        SoloistCommand c = cmd("ST15i", false);
+        c.setTraceAudio(true);
+        c.applyEnvironment(env);
+        assertEquals("1", env.get("FAKEPULSE_LOG"));
+    }
+
     @Test public void workingDirIsTheRuntimeDir() {
         assertEquals(new File("/f/runtime"), cmd("ST15i", false).workingDir());
     }
