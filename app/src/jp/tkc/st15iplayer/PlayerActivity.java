@@ -40,7 +40,6 @@ public class PlayerActivity extends Activity {
     private TextView logView;
     private RuntimeInstaller installer;
     private SoloistProcess soloist;
-    private volatile boolean destroyed;
     // TEMPORARY: without a multicast lock the Wi-Fi driver drops the mDNS
     // queries Spotify sends, so the phone never sees "ST15i". Task 7's
     // player service takes this over.
@@ -135,7 +134,8 @@ public class PlayerActivity extends Activity {
                         setStatus("Soloist download failed: " + r.message);
                         return;
                     }
-                    if (destroyed) return;
+                    // After onDestroy's release() this throws instead of
+                    // starting, so the check and the start are atomic.
                     soloist.start(prefs.getDeviceName(), prefs.getApiKey(), false);
                     setStatus("Soloist running");
                 } catch (IOException e) {
@@ -237,8 +237,8 @@ public class PlayerActivity extends Activity {
 
     @Override
     protected void onDestroy() {
-        destroyed = true;
-        soloist.stop();
+        installer.cancelDownload();
+        soloist.release();
         audioSink.stop();
         multicastLock.release();
         super.onDestroy();
