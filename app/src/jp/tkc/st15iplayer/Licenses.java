@@ -62,7 +62,7 @@ final class Licenses {
                 return tv;
             }
         });
-        Dialogs.green(new AlertDialog.Builder(a)
+        Dialogs.neutral(new AlertDialog.Builder(a)
                 .setTitle(R.string.licenses)
                 .setView(list)
                 .setPositiveButton(R.string.close, null)

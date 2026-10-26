@@ -245,15 +245,19 @@ SoloistClient は切断時に 1s、2s、5s（以降 5s）の間隔で再接続�
   上下 8dp の余白を取り、内容の高さをつまみと同じ 16dp にして AbsSeekBar に 4dp のトラックを中央へ置かせる。左右 8dp
   （thumbOffset と同じ）でつまみが端で切れず、トラックの両端が下の経過時間・全体時間（11sp、#B3B3B3、左右寄せ）とそろう。
   無効時は他の操作と同じく透明度 40%。
-- アクセント色: Holo の青をすべて緑（#1DB954、シークバーと同じ）に替える。API 18 には colorAccent がないので、アプリのテーマ
-  `Theme.ST15i`（Theme.Holo.NoActionBar を親に、`values/styles.xml`）が EditText・CheckBox・Button・横の ProgressBar・
-  リストの選択（`listChoiceBackgroundIndicator`、ポップアップメニューにも効く）・`selectableItemBackground`・選択範囲の色・
-  リンク色・テキスト選択のハンドル・AlertDialog のテーマ（タイトルの色）を差し替える。差し替え先は SDK の
-  `platforms/android-18/data/res` にある AOSP の Holo dark の Drawable（Apache-2.0）を `tools/make_holo_green.py` が
-  holo_g_* として写し、青い画素だけ色相を緑に回したもの（mdpi・hdpi・xhdpi、透明度と 9-patch の枠はそのまま、ダウンロードなし）。
-  ダイアログのタイトル下の線は alert_dialog_holo.xml が青を直書きしているので、`Dialogs.green()` が表示後に塗り替える。
-  設定画面の見出しとライセンスのリンクは緑。端までスクロールしたときの光（overscroll）はフレームワーク内部の画像で
-  テーマから変えられないので青のまま。デバッグ用のダイアログもそのまま。
+- アクセント色: Holo の青は使わない。再生画面は緑（#1DB954、シークバーと同じ）、設定画面は色なし（白と明るい灰色）。
+  API 18 には colorAccent がないので、SDK の `platforms/android-18/data/res` にある AOSP の Holo dark の Drawable
+  （Apache-2.0）を `tools/make_holo_green.py` が写し、青い画素だけを塗り替えたものをテーマから指す（mdpi・hdpi・xhdpi、
+  透明度と 9-patch の枠はそのまま、ダウンロードなし）。
+  - 再生画面 `Theme.ST15i`（Theme.Holo.NoActionBar が親）: リストの選択（`listChoiceBackgroundIndicator`、ポップアップメニューと
+    キュー）だけを緑の holo_g_* にする。
+  - 設定画面 `Theme.ST15i.Setup`（その子）: EditText・CheckBox・Button・横の ProgressBar・リストの選択・`selectableItemBackground`・
+    選択範囲の色（半透明の白）・リンク色（白）・テキスト選択のハンドル・AlertDialog のテーマ（白いタイトル）を holo_w_* に。
+    青い線や印は明るい灰色（#33B5E5 → #E5E5E5）、押下とボタンの状態は白を元の透明度の 20% にして、白い文字やチェックが
+    読めるようにする。見出しは白の太字、「ライセンス」は白の下線付き。
+  - ダイアログのタイトル下の線は alert_dialog_holo.xml が青を直書きしているので、`Dialogs.neutral()` が表示後に
+    明るい灰色に塗り替える（ライセンスのダイアログ）。端までスクロールしたときの光（overscroll）はフレームワーク内部の画像で
+    テーマから変えられないので青のまま。デバッグ用のダイアログは標準の Holo のまま。
 - シャッフル・リピートの可否: Soloist は playback_state の `available_actions`（毎回リスト全体。ほかのイベントには来ない）に、
   使える文脈では `shuffle` と `set_repeat` を入れ、使えない文脈（ラジオや一部のアルバム再生など。実機でもそこでは
   set_shuffle が無視された）では入れない。PlayerState はそれを保持して（部分イベントでは変わらず、一度も来ていなければ可とみなす）

@@ -3,6 +3,7 @@ package jp.tkc.st15iplayer;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Paint;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -98,7 +99,10 @@ public class SetupActivity extends Activity {
                 cancelInstall();
             }
         });
-        findViewById(R.id.licenses).setOnClickListener(new View.OnClickListener() {
+        TextView licenses = (TextView) findViewById(R.id.licenses);
+        // White like the rest of setup; the underline keeps it reading as a link.
+        licenses.setPaintFlags(licenses.getPaintFlags() | Paint.UNDERLINE_TEXT_FLAG);
+        licenses.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 Licenses.show(SetupActivity.this);
             }

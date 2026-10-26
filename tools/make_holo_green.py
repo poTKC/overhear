@@ -1,16 +1,23 @@
 #!/usr/bin/env python3
-"""Makes green (#1DB954) versions of the Holo dark widgets the app shows, for
-the app theme (values/styles.xml): text fields, check boxes, buttons, the
-horizontal progress bar, list selectors and text selection handles. API 18
-has no colorAccent, so the drawables themselves are recoloured.
+"""Makes recoloured versions of the Holo dark widgets the app shows, for the
+app themes (values/styles.xml). API 18 has no colorAccent, so the drawables
+themselves are recoloured, in two variants:
+
+  green   holo_g_*  #1DB954: the list selector (player popup menu, queue)
+  neutral holo_w_*  setup screen: text fields, check boxes, buttons, the
+                    horizontal progress bar, list selectors, selectable
+                    backgrounds and text selection handles. Blue marks become
+                    light grey (#33B5E5 -> #E5E5E5); pressed and button
+                    states become white at 20 % of their alpha, so white
+                    text and check marks stay readable on them.
 
 Source: the AOSP framework resources in the local SDK
 (platforms/android-18/data/res, Apache-2.0; see THIRD_PARTY_NOTICES.md), so
 nothing is downloaded. Each selector or layer XML below is copied with its
 references renamed to holo_g_*; every PNG they use (also the grey ones, which
 are private to the framework) is copied for mdpi, hdpi and xhdpi with its
-Holo blue pixels hue-shifted to green. Alpha and 9-patch borders (black, no
-hue) are kept. Outputs go to app/res/drawable*/holo_g_*; they are committed.
+Holo blue pixels recoloured. Alpha and 9-patch borders (black, no hue) are
+kept. Outputs go to app/res/drawable*/holo_[gw]_*; they are committed.
 
 Needs Pillow. Run from the repo root: python3 -I tools/make_holo_green.py
 """
@@ -25,20 +32,21 @@ from PIL import Image
 SDK = os.environ.get("ANDROID_HOME", os.path.expanduser("~/Library/Android/sdk"))
 SRC = os.path.join(SDK, "platforms", "android-18", "data", "res")
 RES = os.path.join("app", "res")
-PREFIX = "holo_g_"
 DENSITIES = ("mdpi", "hdpi", "xhdpi")
-# The XML drawables the theme points at; what they reference follows.
-ROOTS = [
-    "edit_text_holo_dark",
-    "btn_check_holo_dark",
-    "btn_default_holo_dark",
-    "progress_horizontal_holo_dark",
-    "progress_indeterminate_horizontal_holo",
-    "list_selector_holo_dark",
-    "item_background_holo_dark",
-]
-# PNGs the theme uses directly.
-PNGS = ["text_select_handle_left", "text_select_handle_right", "text_select_handle_middle"]
+# variant -> (prefix, XML drawables the theme points at (what they reference
+# follows), PNGs the theme uses directly)
+VARIANTS = {
+    "green": ("holo_g_", ["list_selector_holo_dark"], []),
+    "neutral": ("holo_w_", [
+        "edit_text_holo_dark",
+        "btn_check_holo_dark",
+        "btn_default_holo_dark",
+        "progress_horizontal_holo_dark",
+        "progress_indeterminate_horizontal_holo",
+        "list_selector_holo_dark",
+        "item_background_holo_dark",
+    ], ["text_select_handle_left", "text_select_handle_right", "text_select_handle_middle"]),
+}
 
 GREEN_H = 141 / 360.0  # #1DB954
 # Holo blue #33B5E5 (S .78, V .90) -> #1DB954 (S .84, V .73)
@@ -51,7 +59,13 @@ def is_blue(h, s):
     return 0.45 < h < 0.62 and s > 0.2
 
 
-def recolour(src, dst):
+def neutral_translucent(name):
+    """Pressed and button states: a faint white instead of a solid fill."""
+    return "pressed" in name or "btn_default" in name or name.startswith("list_")
+
+
+def recolour(src, dst, variant, name):
+    translucent = variant == "neutral" and neutral_translucent(name)
     im = Image.open(src).convert("RGBA")
     px = im.load()
     for y in range(im.height):
@@ -62,56 +76,63 @@ def recolour(src, dst):
             h, s, v = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
             if not is_blue(h, s):
                 continue
-            r2, g2, b2 = colorsys.hsv_to_rgb(GREEN_H, min(1.0, s * S_SCALE), v * V_SCALE)
-            px[x, y] = (round(r2 * 255), round(g2 * 255), round(b2 * 255), a)
+            if variant == "green":
+                r2, g2, b2 = colorsys.hsv_to_rgb(GREEN_H, min(1.0, s * S_SCALE), v * V_SCALE)
+                px[x, y] = (round(r2 * 255), round(g2 * 255), round(b2 * 255), a)
+            elif translucent:
+                px[x, y] = (255, 255, 255, round(a * 0.2))
+            else:
+                g = round(v * 255)  # the blue's brightness as grey: #33B5E5 -> #E5E5E5
+                px[x, y] = (g, g, g, a)
     os.makedirs(os.path.dirname(dst), exist_ok=True)
     im.save(dst, optimize=True)
 
 
-def png(name):
+def png(name, variant, prefix):
     found = False
     for d in DENSITIES:
         for ext in (".9.png", ".png"):
             src = os.path.join(SRC, "drawable-" + d, name + ext)
             if os.path.exists(src):
-                recolour(src, os.path.join(RES, "drawable-" + d, PREFIX + name + ext))
+                recolour(src, os.path.join(RES, "drawable-" + d, prefix + name + ext), variant, name)
                 found = True
                 break
     if not found:
         sys.exit("no PNG for " + name)
 
 
-def xml(name, done):
+def xml(name, done, variant, prefix):
     if name in done:
         return
     done.add(name)
     text = open(os.path.join(SRC, "drawable", name + ".xml"), encoding="utf-8").read()
     for _, ref in set(REF.findall(text)):
         if os.path.exists(os.path.join(SRC, "drawable", ref + ".xml")):
-            xml(ref, done)
+            xml(ref, done, variant, prefix)
         elif ref not in done:
             done.add(ref)
-            png(ref)
-    text = REF.sub(lambda m: "@drawable/" + PREFIX + m.group(2), text)
+            png(ref, variant, prefix)
+    text = REF.sub(lambda m: "@drawable/" + prefix + m.group(2), text)
     text = re.sub(r"@color/", "@android:color/", text)  # framework colours, public ones only here
     text = text.replace("<?xml version=\"1.0\" encoding=\"utf-8\"?>",
                         "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n"
                         "<!-- Generated by tools/make_holo_green.py from AOSP " + name + ".xml (Apache-2.0). -->", 1)
-    with open(os.path.join(RES, "drawable", PREFIX + name + ".xml"), "w", encoding="utf-8") as f:
+    with open(os.path.join(RES, "drawable", prefix + name + ".xml"), "w", encoding="utf-8") as f:
         f.write(text)
 
 
 def main():
     if not os.path.isdir(SRC):
         sys.exit("missing " + SRC)
-    for old in glob.glob(os.path.join(RES, "drawable*", PREFIX + "*")):
-        os.remove(old)
-    done = set()
-    for name in ROOTS:
-        xml(name, done)
-    for name in PNGS:
-        png(name)
-    print("made", len(glob.glob(os.path.join(RES, "drawable*", PREFIX + "*"))), "files")
+    for variant, (prefix, roots, pngs) in VARIANTS.items():
+        for old in glob.glob(os.path.join(RES, "drawable*", prefix + "*")):
+            os.remove(old)
+        done = set()
+        for name in roots:
+            xml(name, done, variant, prefix)
+        for name in pngs:
+            png(name, variant, prefix)
+        print(variant, len(glob.glob(os.path.join(RES, "drawable*", prefix + "*"))), "files")
 
 
 if __name__ == "__main__":
