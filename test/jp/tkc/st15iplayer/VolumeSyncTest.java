@@ -271,9 +271,21 @@ public class VolumeSyncTest {
         sync.onDevice(9, 100); // sent 60
         sync.onSoloist(true, 80, t.device, 150); // the phone, before our echo
         assertEquals(list(12), t.setIndex);
-        sync.onSoloist(true, 60, t.device, 200); // our echo: dropped
-        assertEquals(list(12), t.setIndex);
+        // Soloist applied our 60 after the phone's 80: it now says 60, and
+        // the device follows (last writer at Soloist wins).
+        sync.onSoloist(true, 60, t.device, 200);
+        assertEquals(list(12, 9), t.setIndex);
         sync.onDevice(t.device, 210);
+        assertEquals(list(60), t.sent);
+    }
+
+    @Test public void phoneChangeAfterOurSendLeavesThePhoneValue() {
+        login(53);
+        t.device = 9;
+        sync.onDevice(9, 100); // sent 60; Soloist applies it first
+        sync.onSoloist(true, 60, t.device, 150); // our echo
+        sync.onSoloist(true, 80, t.device, 200); // then the phone
+        assertEquals(list(12), t.setIndex);
         assertEquals(list(60), t.sent);
     }
 
@@ -329,6 +341,74 @@ public class VolumeSyncTest {
             assertEquals("agree after step " + step, device[0], VolumeSync.percentToIndex(soloist[0], MAX));
         }
         assertTrue("one command per key press or refused raise: " + commands[0], commands[0] <= 10);
+    }
+
+    /**
+     * Like convergesWithoutOscillation, but Soloist applies commands in its
+     * own order: our set_volume waits in a queue, and a phone change can land
+     * before or after it, between a key press and its echo.
+     */
+    @Test public void convergesWhenThePhoneChangesBetweenAKeyAndItsEcho() {
+        // {key delta, phone percent, 1 = phone applied before our command}
+        int[][] cases = {
+            {1, 80, 0}, {1, 80, 1}, {-1, 20, 0}, {-1, 20, 1}, {1, 47, 1}, {1, 53, 0}, {-1, 0, 1}, {1, 100, 0},
+        };
+        for (int[] c : cases) {
+            final int[] soloist = {53};
+            final int[] device = {8};
+            final List<Integer> commands = new ArrayList<Integer>(); // to Soloist, not applied yet
+            final List<Integer> echoes = new ArrayList<Integer>(); // from Soloist
+            final List<Integer> broadcasts = new ArrayList<Integer>();
+            VolumeSync s = new VolumeSync(MAX, new VolumeSync.Target() {
+                @Override public int setDeviceIndex(int index) {
+                    device[0] = index;
+                    broadcasts.add(index);
+                    return index;
+                }
+
+                @Override public void sendPercent(int percent) {
+                    commands.add(percent);
+                }
+            });
+            long now = 0;
+            s.onSoloist(true, soloist[0], device[0], now); // 53 maps to 8: nothing sent
+            String what = "key " + c[0] + ", phone " + c[1] + (c[2] == 1 ? " first" : " second");
+
+            device[0] += c[0];
+            s.onDevice(device[0], now += 10); // queues our command
+            assertEquals(what, 1, commands.size());
+            if (c[2] == 1) { // the phone's change reaches Soloist first
+                soloist[0] = c[1];
+                echoes.add(c[1]);
+            }
+            soloist[0] = apply(commands.remove(0));
+            echoes.add(soloist[0]);
+            if (c[2] == 0) {
+                soloist[0] = c[1];
+                echoes.add(c[1]);
+            }
+            for (int round = 0; round < 50; round++) {
+                now += 10;
+                if (!broadcasts.isEmpty()) {
+                    broadcasts.remove(0);
+                    s.onDevice(device[0], now);
+                } else if (!commands.isEmpty()) {
+                    soloist[0] = apply(commands.remove(0));
+                    echoes.add(soloist[0]);
+                } else if (!echoes.isEmpty()) {
+                    s.onSoloist(true, echoes.remove(0), device[0], now);
+                } else {
+                    break;
+                }
+            }
+            assertTrue(what + ": settled", echoes.isEmpty() && broadcasts.isEmpty() && commands.isEmpty());
+            assertEquals(what + ": agree", device[0], VolumeSync.percentToIndex(soloist[0], MAX));
+        }
+    }
+
+    /** Soloist's 16-bit volume, truncated: 47 comes back as 46. */
+    private static int apply(int percent) {
+        return percent * 65535 / 100 * 100 / 65535;
     }
 
     private static List<Integer> list(Integer... v) {

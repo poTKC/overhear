@@ -23,7 +23,9 @@ import java.util.List;
  * still in flight and dropped; a stale echo can then never pull the device
  * back while the user is still pressing keys. A phone change that maps to
  * the index already set is not answered: the phone keeps its 45, the device
- * plays index 7 (47).
+ * plays index 7 (47). A phone change clears the sends in flight: the sides
+ * then follow whatever Soloist reports, so whichever write Soloist applied
+ * last wins and both end up agreeing.
  *
  * Startup: the first logged-in state after a connect adopts the device:
  * Soloist gets indexToPercent(device index) (nothing when its volume already
@@ -137,6 +139,10 @@ final class VolumeSync {
         soloist = percent;
         int index = percentToIndex(percent, max);
         if (consumeEcho(index, now)) return;
+        // A change from the phone. Sends still in flight are older than what
+        // Soloist reports now; whatever it reports next is followed (last
+        // writer at Soloist wins), so their echoes are no longer expected.
+        inFlight.clear();
         synced = index;
         if (device == index) return;
         int actual = target.setDeviceIndex(index);

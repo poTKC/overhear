@@ -8,6 +8,8 @@
  * 1. File sink (FAKEPULSE_OUT=file:<out.raw>): states, real-time pacing, PCM,
  *    cork, flush, timing and underflow.
  * 2. Teardown with operations still queued, twice (ASan finds use-after-free).
+ *    Also the volume: stored and reported, never applied, for float, s16 and
+ *    s32 streams.
  * 3. Socket sink (FAKEPULSE_OUT=unix:<out.raw>.sock): a listener thread parses
  *    the frames while the test corks, flushes, drops and wedges the connection.
  */
@@ -50,6 +52,7 @@
     X(pa_context_set_state_callback)                                                                                   \
     X(pa_context_connect)                                                                                              \
     X(pa_context_get_state)                                                                                            \
+    X(pa_context_set_subscribe_callback)                                                                               \
     X(pa_context_subscribe)                                                                                            \
     X(pa_context_get_sink_input_info)                                                                                  \
     X(pa_context_set_sink_input_volume)                                                                                \
@@ -157,6 +160,9 @@ static void context_op_cb(pa_context *c, int ok, void *ud) {
     k->ops++;
 }
 
+/* The sample format client_open uses (Soloist's is float). */
+static pa_sample_format_t open_format = PA_SAMPLE_FLOAT32LE;
+
 /* Context and stream set up the way Soloist does it. With wait, returns once
  * both are READY; the stream starts corked. Leaves the loop locked. */
 static void client_open(client *k, int wait) {
@@ -177,7 +183,7 @@ static void client_open(client *k, int wait) {
     drop(f_pa_context_subscribe(k->c, PA_SUBSCRIPTION_MASK_SINK_INPUT, NULL, NULL));
     pa_proplist *pl = f_pa_proplist_new();
     f_pa_proplist_sets(pl, PA_PROP_MEDIA_ROLE, "music");
-    pa_sample_spec ss = {PA_SAMPLE_FLOAT32LE, RATE, CH};
+    pa_sample_spec ss = {open_format, RATE, CH};
     k->s = f_pa_stream_new_with_proplist(k->c, "Spotify", &ss, NULL, pl);
     f_pa_proplist_free(pl);
     f_pa_stream_set_state_callback(k->s, stream_state_cb, k);
@@ -265,6 +271,20 @@ static float *make_signal(size_t frames) {
     return buf;
 }
 
+/* Counts sink input change events from the subscription. */
+typedef struct sub_count {
+    client *k;
+    int changes;
+    int other;
+} sub_count;
+
+static void subscribe_cb(pa_context *c, pa_subscription_event_type_t t, uint32_t idx, void *ud) {
+    sub_count *n = ud;
+    if (t == (PA_SUBSCRIPTION_EVENT_SINK_INPUT | PA_SUBSCRIPTION_EVENT_CHANGE) && idx == 1) n->changes++;
+    else n->other++;
+    f_pa_threaded_mainloop_signal(n->k->m, 0);
+}
+
 /* Collects pa_context_get_sink_input_info results. */
 typedef struct sink_input_query {
     client *k;
@@ -332,12 +352,21 @@ static void test_file(const char *out) {
 
     /* Soloist's 40 % (linear, as it sends it): stored and reported back, but
      * the PCM below must still come out at full scale. */
+    sub_count subs = {&k, 0, 0};
+    query_sink_input(&k); /* a round trip: client_open's own volume event is delivered first */
+    f_pa_context_set_subscribe_callback(k.c, subscribe_cb, &subs);
     pa_cvolume vol;
     f_pa_cvolume_set(&vol, CH, 26214);
     drop(f_pa_context_set_sink_input_volume(k.c, f_pa_stream_get_index(k.s), &vol, NULL, NULL));
-    sink_input_query q = query_sink_input(&k);
+    double sub_deadline = now_s() + 2;
+    while (!subs.changes && now_s() < sub_deadline) f_pa_threaded_mainloop_wait(k.m);
+    CHECK(subs.changes == 1 && subs.other == 0,
+          "set_sink_input_volume fires one sink input change event (%d, %d others)", subs.changes, subs.other);
+    sink_input_query q = query_sink_input(&k); /* also lets any extra event through */
+    CHECK(subs.changes == 1, "and no more after a round trip (%d)", subs.changes);
     CHECK(q.done && q.infos == 1 && q.has_volume && q.avg == 26214,
           "get_sink_input_info reports the volume set (%d infos, avg %u, want 26214)", q.infos, q.avg);
+    f_pa_context_set_subscribe_callback(k.c, NULL, NULL);
     drop(f_pa_stream_cork(k.s, 0, NULL, NULL));
     f_pa_threaded_mainloop_unlock(k.m);
 
@@ -427,6 +456,73 @@ static void test_file(const char *out) {
     client_teardown(&k);
     client_free(&k);
     free(sig);
+}
+
+/* s16 and s32 streams at volume 40 %: the file holds the input unscaled
+ * (s32 keeps its top 16 bits). */
+static void test_format(const char *out, pa_sample_format_t fmt, const char *name) {
+    char env[1024];
+    snprintf(env, sizeof env, "file:%s", out);
+    setenv("FAKEPULSE_OUT", env, 1);
+    unlink(out);
+
+    enum { FRAMES = RATE / 10 };
+    size_t sample = fmt == PA_SAMPLE_S16LE ? 2 : 4, fb = sample * CH;
+    int16_t *want = malloc(FRAMES * CH * sizeof(int16_t));
+    unsigned char *in = malloc(FRAMES * fb);
+    for (size_t i = 0; i < FRAMES * CH; i++) {
+        int16_t v = (int16_t)lrint(30000.0 * sin(2 * M_PI * 1000.0 * (double)(i / CH) / RATE));
+        if (i == 10) v = -32768;
+        if (i == 11) v = 32767;
+        want[i] = v;
+        if (fmt == PA_SAMPLE_S16LE) {
+            memcpy(in + i * 2, &v, 2);
+        } else {
+            int32_t w = (int32_t)((int64_t)v * 65536 + 0x1234); /* low bits must be dropped */
+            memcpy(in + i * 4, &w, 4);
+        }
+    }
+
+    open_format = fmt;
+    client k;
+    client_open(&k, 1);
+    open_format = PA_SAMPLE_FLOAT32LE;
+    pa_cvolume vol;
+    f_pa_cvolume_set(&vol, CH, 26214);
+    drop(f_pa_context_set_sink_input_volume(k.c, f_pa_stream_get_index(k.s), &vol, NULL, NULL));
+    drop(f_pa_stream_cork(k.s, 0, NULL, NULL));
+    f_pa_threaded_mainloop_unlock(k.m);
+
+    size_t off = 0, total = FRAMES * fb;
+    while (off < total) {
+        f_pa_threaded_mainloop_lock(k.m);
+        size_t n = f_pa_stream_writable_size(k.s);
+        if (n > total - off) n = total - off;
+        n -= n % fb;
+        if (n) f_pa_stream_write(k.s, in + off, n, NULL, 0, PA_SEEK_RELATIVE);
+        f_pa_threaded_mainloop_unlock(k.m);
+        off += n;
+        if (!n) sleep_ms(5);
+    }
+    long bytes = (long)(FRAMES * OUT_FRAME);
+    double t0 = now_s();
+    while (file_size(out) < bytes && now_s() - t0 < 2) sleep_ms(5);
+
+    int16_t *got = calloc(FRAMES * CH, sizeof(int16_t));
+    FILE *f = fopen(out, "rb");
+    size_t n = f ? fread(got, sizeof(int16_t), FRAMES * CH, f) : 0;
+    if (f) fclose(f);
+    int diffs = 0;
+    for (size_t i = 0; i < n; i++) diffs += got[i] != want[i];
+    CHECK(n == FRAMES * CH && diffs == 0, "%s stream at volume 40 %% plays unscaled (%zu samples, %d differ)", name, n,
+          diffs);
+
+    f_pa_threaded_mainloop_lock(k.m);
+    client_teardown(&k);
+    client_free(&k);
+    free(got);
+    free(in);
+    free(want);
 }
 
 static void test_teardown(const char *out) {
@@ -738,6 +834,8 @@ int main(int argc, char **argv) {
     if (check_symbols(lib, argv[2]) < 0) return 1;
 
     test_file(argv[3]);
+    test_format(argv[3], PA_SAMPLE_S16LE, "s16");
+    test_format(argv[3], PA_SAMPLE_S32LE, "s32");
     test_teardown(argv[3]);
     test_socket(argv[3]);
 

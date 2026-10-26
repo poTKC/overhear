@@ -30,6 +30,7 @@ import android.view.View;
 import android.widget.RemoteViews;
 
 import java.io.IOException;
+import java.lang.reflect.Method;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -84,6 +85,10 @@ public final class PlayerService extends Service {
     /** Hidden on API 18 but sent by AudioService for every stream volume change. */
     private static final String VOLUME_CHANGED_ACTION = "android.media.VOLUME_CHANGED_ACTION";
     private static final String EXTRA_VOLUME_STREAM_TYPE = "android.media.EXTRA_VOLUME_STREAM_TYPE";
+    /** The volume panel for a refused raise, at most this often. */
+    private static final long SAFE_VOLUME_UI_MS = 10000;
+    /** An output change settles in AudioService a little after its broadcasts. */
+    private static final long OUTPUT_RECHECK_MS = 1500;
 
     /** The live instance, for MediaButtonReceiver and the debug screen. Main thread. */
     private static PlayerService current;
@@ -103,6 +108,9 @@ public final class PlayerService extends Service {
     private Supervisor supervisor;
     private AudioManager audioManager;
     private VolumeSync volumeSync;
+    private long lastSafeVolumeUi = Long.MIN_VALUE / 2;
+    /** AudioManager.isStreamMute (hidden on API 18); null if missing. */
+    private Method isStreamMute;
     private NotificationManager notifications;
     private ConnectivityManager connectivity;
     private WifiManager wifi;
@@ -163,6 +171,11 @@ public final class PlayerService extends Service {
         status = getString(R.string.status_starting_service);
         audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
         volumeSync = new VolumeSync(audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC), volumeTarget);
+        try {
+            isStreamMute = AudioManager.class.getMethod("isStreamMute", int.class);
+        } catch (NoSuchMethodException e) {
+            isStreamMute = null;
+        }
         notifications = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         connectivity = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
         wifi = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
@@ -230,6 +243,7 @@ public final class PlayerService extends Service {
         registerReceiver(connectivityReceiver, new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION));
         registerReceiver(noisyReceiver, new IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY));
         registerReceiver(volumeReceiver, new IntentFilter(VOLUME_CHANGED_ACTION));
+        registerReceiver(headsetReceiver, new IntentFilter(Intent.ACTION_HEADSET_PLUG));
         Log.i(TAG, "created");
     }
 
@@ -305,6 +319,7 @@ public final class PlayerService extends Service {
         unregisterReceiver(connectivityReceiver);
         unregisterReceiver(noisyReceiver);
         unregisterReceiver(volumeReceiver);
+        unregisterReceiver(headsetReceiver);
         volumeSync.reset();
         unregisterMedia();
         releaseLocks();
@@ -655,6 +670,7 @@ public final class PlayerService extends Service {
         @Override public void onReceive(Context context, Intent intent) {
             Log.i(TAG, "audio becoming noisy: pause");
             client.pause();
+            recheckOutputVolume(); // the output is about to change to the speaker
         }
     };
 
@@ -671,15 +687,23 @@ public final class PlayerService extends Service {
             audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, index, 0);
             int now = mediaIndex();
             if (now >= index || index <= before) return now;
-            // Refused: Android 4.3's safe headphone volume. Without UI the
-            // raise would stay pending, unseen. Go as high as allowed, then
-            // show the system's warning: accepting it applies the raise (and
-            // its volume broadcast tells Soloist).
+            // Muted (getStreamVolume reads 0): the index is stored for the
+            // unmute, nothing to step. Report the 0 in effect, quietly.
+            if (before == 0 || isMusicMuted()) return now;
+            // Refused: Android 4.3's safe headphone volume. On this ROM the
+            // media volume stops at 10 of 15 on headphones (the keys too) and
+            // no confirmation dialog ever appears; with flags 0 the raise is
+            // only kept pending. Go as high as allowed and show the volume
+            // panel (at most every SAFE_VOLUME_UI_MS) so the cap is visible.
             for (int i = index - 1; i > now; i--) {
                 audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, i, 0);
                 if (mediaIndex() == i) break;
             }
-            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, index, AudioManager.FLAG_SHOW_UI);
+            long t = SystemClock.elapsedRealtime();
+            if (t - lastSafeVolumeUi >= SAFE_VOLUME_UI_MS) {
+                lastSafeVolumeUi = t;
+                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, index, AudioManager.FLAG_SHOW_UI);
+            }
             now = mediaIndex();
             Log.i(TAG, "volume: media " + index + " refused (safe volume), at " + now);
             return now;
@@ -700,6 +724,41 @@ public final class PlayerService extends Service {
         @Override public void onReceive(Context context, Intent intent) {
             if (intent.getIntExtra(EXTRA_VOLUME_STREAM_TYPE, -1) != AudioManager.STREAM_MUSIC) return;
             volumeSync.onDevice(mediaIndex(), SystemClock.elapsedRealtime());
+        }
+    };
+
+    private boolean isMusicMuted() {
+        if (isStreamMute == null) return false;
+        try {
+            return (Boolean) isStreamMute.invoke(audioManager, AudioManager.STREAM_MUSIC);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private final Runnable volumeRecheck = new Runnable() {
+        @Override public void run() {
+            volumeSync.onDevice(mediaIndex(), SystemClock.elapsedRealtime());
+        }
+    };
+
+    /**
+     * The output changed (or is about to): each output keeps its own media
+     * index, so read it now and once more when AudioService has switched, and
+     * let VolumeSync pass it on to the phone's slider.
+     */
+    private void recheckOutputVolume() {
+        main.removeCallbacks(volumeRecheck);
+        main.post(volumeRecheck);
+        main.postDelayed(volumeRecheck, OUTPUT_RECHECK_MS);
+    }
+
+    /** Headphones plugged or unplugged. The sticky delivery at registration is ignored. */
+    private final BroadcastReceiver headsetReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            if (isInitialStickyBroadcast()) return;
+            Log.i(TAG, "headset " + (intent.getIntExtra("state", 0) != 0 ? "plugged" : "unplugged"));
+            recheckOutputVolume();
         }
     };
 
