@@ -39,9 +39,9 @@
 
             <View
                 android:id="@+id/battery_dot"
-                android:layout_width="8dp"
-                android:layout_height="8dp"
-                android:layout_marginRight="5dp" />
+                android:layout_width="6dp"
+                android:layout_height="6dp"
+                android:layout_marginRight="4dp" />
 
             <TextView
                 android:id="@+id/battery"
