@@ -219,7 +219,7 @@ SoloistClient は切断時に 1s、2s、5s（以降 5s）の間隔で再接続�
   `StatusStrip.clockText` が `H:mm`、12 時間制（`DateFormat.is24HourFormat` が偽）なら AM/PM なしの `h:mm`。
   システムの書式はこの端末では「午前/午後」を付けるが、数字フォントに文字がないため。`TIME_TICK`・`TIME_CHANGED`・`TIMEZONE_CHANGED`
   で更新）と電池（右、8dp の色付きの点と数字だけ。50% 以上は緑、20〜49% は琥珀、20% 未満は赤、充電中は水色。sticky の
-  `ACTION_BATTERY_CHANGED`）を 14sp の明るめの灰色（#D9D9D9）で出す（`includeFontPadding` なしで 20dp に収める。受信は onResume〜onPause の間だけ。
+  `ACTION_BATTERY_CHANGED`）を 13sp の灰色（#B8B8B8）で出す（`includeFontPadding` なしで 20dp に収める。受信は onResume〜onPause の間だけ。
   規則は純 Java の StatusStrip）。時刻・電池の数字とシークバーの時間は Rubik（SIL OFL 1.1）の可変フォントを
   Regular（wght 400）で固定し、数字・`:`・空白だけに切り出したフォント（`tools/make_fonts.py`、google/fonts の固定したコミットから
   取得して sha256 を確認、`assets/fonts/st15i-digits.ttf`、`Typeface.createFromAsset` で一度だけ読む）。Rubik は予約フォント名を
