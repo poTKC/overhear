@@ -43,7 +43,7 @@ public class ArtColorTest {
         assertTrue("saturation " + h[1], h[1] <= ArtColor.MAX_SATURATION + 0.01f);
         assertTrue("value " + h[2], h[2] <= ArtColor.TARGET_VALUE + 0.01f);
         assertTrue("luminance " + ArtColor.luminance(c), ArtColor.luminance(c) <= ArtColor.MAX_LUMINANCE);
-        assertTrue("white on it", ArtColor.contrast(WHITE, c) >= 7.0);
+        assertTrue("white on it", ArtColor.contrast(WHITE, c) >= 5.5);
     }
 
     @Test public void aSaturatedCoverGivesItsHue() {
@@ -103,7 +103,7 @@ public class ArtColorTest {
     @Test public void aNearWhiteCoverIsNotWhite() {
         int c = ArtColor.extract(pixels(N, 0xfff8f6f4));
         assertLegible(c);
-        assertTrue(ArtColor.luminance(c) < 0.09);
+        assertTrue(ArtColor.luminance(c) <= ArtColor.MAX_LUMINANCE);
         // A white cover with a red title still gives the red.
         assertHue(0, ArtColor.extract(pixels(N - 60, 0xfffafafa, 60, 0xffd01818)));
     }
@@ -156,6 +156,29 @@ public class ArtColorTest {
         int[] reversed = pixels(50, 0xff2050e0, 50, 0xffe02020);
         assertEquals(ArtColor.extract(tie), ArtColor.extract(reversed));
         assertHue(0, ArtColor.extract(tie));
+    }
+
+    @Test public void textOverTheGradientStaysLegible() {
+        // Where the player's text sits (fractions of the 480 px height), on the
+        // gradient of the brightest legible colours: the clock (white) at the
+        // top, the title and subtitle (white), the seek times and the status
+        // line (grey #B3B3B3) lower down.
+        int[] colours = {0xffffff00, 0xff00ffff, 0xff80ff00, 0xffff00ff, 0xffff0000, 0xff0000ff, 0xfff8f8f8};
+        for (int raw : colours) {
+            int[] g = ArtColor.gradient(ArtColor.legible(raw), ArtColor.BACKGROUND);
+            assertTrue(ArtColor.contrast(WHITE, at(g, 0.02f)) >= 4.5);
+            assertTrue(ArtColor.contrast(WHITE, at(g, 0.60f)) >= 4.5);
+            assertTrue(ArtColor.contrast(WHITE, at(g, 0.65f)) >= 4.5);
+            assertTrue(ArtColor.contrast(0xffb3b3b3, at(g, 0.76f)) >= 3.0);
+            assertTrue(ArtColor.contrast(0xffb3b3b3, at(g, 0.96f)) >= 3.0);
+        }
+    }
+
+    /** The colour at fraction y of the height, as GradientDrawable draws evenly spaced stops. */
+    private static int at(int[] g, float y) {
+        float p = y * (g.length - 1);
+        int i = Math.min(g.length - 2, (int) p);
+        return ArtColor.mix(g[i], g[i + 1], p - i);
     }
 
     @Test public void gradientFadesToTheBackgroundByFadeEnd() {

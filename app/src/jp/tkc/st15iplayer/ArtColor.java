@@ -34,7 +34,7 @@ final class ArtColor {
     /** The player's own background (activity_player.xml), where the gradient ends. */
     static final int BACKGROUND = 0xff101010;
     /** When a cover has no usable pixels: the dark grey legible() gives any grey. */
-    static final int NEUTRAL = 0xff4d4d4d;
+    static final int NEUTRAL = 0xff616161;
     /** The side of the downscaled cover the Android side samples. */
     static final int SAMPLE_SIDE = 24;
 
@@ -47,13 +47,13 @@ final class ArtColor {
     static final float MIN_VIVID_FRACTION = 0.04f;
 
     static final float MAX_SATURATION = 0.65f;
-    static final float TARGET_VALUE = 0.42f;
+    static final float TARGET_VALUE = 0.52f;
     static final float GREY_SATURATION = 0.12f;
-    static final float GREY_VALUE = 0.30f;
-    static final double MAX_LUMINANCE = 0.09;
+    static final float GREY_VALUE = 0.38f;
+    static final double MAX_LUMINANCE = 0.14;
 
     /** Where the gradient reaches BACKGROUND, as a fraction of the height. */
-    static final float FADE_END = 0.58f;
+    static final float FADE_END = 0.78f;
     /** Colour stops of the gradient (GradientDrawable spaces them evenly). */
     static final int GRADIENT_STOPS = 15;
 
