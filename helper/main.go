@@ -7,6 +7,8 @@
 //	st15i-fetch [--ca FILE] [--dns a,b] get URL OUT
 //	st15i-fetch [--ca FILE] [--dns a,b] extract URL DIR
 //
+// Only https URLs are accepted, on the command line and in redirects.
+//
 // stdout carries "progress N" lines (0-100, only when the size is known),
 // "extracting" once an archive is downloaded, and a final "done". Errors go to
 // stderr with exit status 1. SIGINT/SIGTERM abort cleanly (exit 1).
@@ -25,6 +27,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -70,6 +73,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fail := func(err error) int {
 		fmt.Fprintln(stderr, "st15i-fetch:", err)
 		return 1
+	}
+	if err := checkHTTPS(rest[1]); err != nil {
+		return fail(err)
 	}
 
 	_, statErr := os.Stat("/etc/resolv.conf")
@@ -177,7 +183,32 @@ func newClient(caFile string, dns []string) (*http.Client, error) {
 		ResponseHeaderTimeout: defaultIdleTimeout,
 		ForceAttemptHTTP2:     true,
 	}
-	return &http.Client{Transport: transport}, nil
+	return &http.Client{Transport: transport, CheckRedirect: httpsRedirectsOnly}, nil
+}
+
+// checkHTTPS accepts only absolute https URLs with a host: the helper runs
+// with URLs from Soloist (artwork) and must never fall back to plain HTTP.
+func checkHTTPS(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("bad URL: %w", err)
+	}
+	if u.Scheme != "https" || u.Host == "" {
+		return fmt.Errorf("not an https URL: %s", u.Redacted())
+	}
+	return nil
+}
+
+// httpsRedirectsOnly is the client's CheckRedirect: Go's default limit of 10
+// redirects, and none to anything but https.
+func httpsRedirectsOnly(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return errors.New("stopped after 10 redirects")
+	}
+	if req.URL.Scheme != "https" {
+		return fmt.Errorf("refusing redirect to non-https URL %s", req.URL.Redacted())
+	}
+	return nil
 }
 
 type fetcher struct {

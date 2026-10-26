@@ -37,9 +37,10 @@ own sources and the build scripts) has no licence chosen yet.
   - <https://snapshot.debian.org/package/glibc/2.41-12%2Bdeb13u4/>
   - Upstream: <https://sourceware.org/glibc/>
 - Soloist loads the libraries dynamically, through the bundled
-  `ld-linux-armhf.so.3`. To use a modified glibc, put your build in
-  `runtime/build.sh` (or in `build/assets/runtime/`) and rebuild the APK with
-  `./build.sh`.
+  `ld-linux-armhf.so.3`. To use a modified glibc, change `runtime/build.sh` to
+  take your build, then rerun it (plain `./build.sh` does, but not
+  `SKIP_RUNTIME=1 ./build.sh`). The bundle's VERSION hash then changes, and the
+  app re-extracts the runtime on its next start.
 
 ## libatomic 14.2.0
 

@@ -436,3 +436,64 @@ func TestUsageErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestRejectsNonHTTPSURLs(t *testing.T) {
+	dir := t.TempDir()
+	for _, u := range []string{"http://example.com/f", "ftp://example.com/f", "file:///etc/passwd", "example.com/f", "https:///nohost", "://bad"} {
+		var stderr bytes.Buffer
+		if code := run([]string{"get", u, filepath.Join(dir, "out")}, io.Discard, &stderr); code == 0 {
+			t.Errorf("get %q succeeded, want failure", u)
+		}
+		if code := run([]string{"extract", u, filepath.Join(dir, "x")}, io.Discard, io.Discard); code == 0 {
+			t.Errorf("extract %q succeeded, want failure", u)
+		}
+	}
+	noLeftovers(t, dir)
+}
+
+func TestRedirectsMustStayHTTPS(t *testing.T) {
+	plain := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("plain"))
+	}))
+	t.Cleanup(plain.Close)
+	var tlsURL string
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/to-http":
+			http.Redirect(w, r, plain.URL+"/f", http.StatusFound)
+		case "/to-https":
+			http.Redirect(w, r, tlsURL+"/f", http.StatusFound)
+		case "/f":
+			w.Write([]byte("secure"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	tlsURL = srv.URL
+	dir := t.TempDir()
+	ca := filepath.Join(dir, "ca.pem")
+	if err := os.WriteFile(ca, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw}), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stderr bytes.Buffer
+	if code := run([]string{"--ca", ca, "get", srv.URL + "/to-http", filepath.Join(dir, "bad")}, io.Discard, &stderr); code == 0 {
+		t.Fatal("redirect to http succeeded, want failure")
+	}
+	if !strings.Contains(stderr.String(), "non-https") {
+		t.Errorf("stderr = %q, want the non-https reason", stderr.String())
+	}
+	if _, err := os.Stat(filepath.Join(dir, "bad")); !os.IsNotExist(err) {
+		t.Errorf("output exists after a refused redirect: %v", err)
+	}
+
+	out := filepath.Join(dir, "good")
+	stderr.Reset()
+	if code := run([]string{"--ca", ca, "get", srv.URL + "/to-https", out}, io.Discard, &stderr); code != 0 {
+		t.Fatalf("https redirect: exit %d, stderr: %s", code, stderr.String())
+	}
+	if b, _ := os.ReadFile(out); string(b) != "secure" {
+		t.Errorf("got %q", b)
+	}
+}
