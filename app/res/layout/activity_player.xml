@@ -24,9 +24,11 @@
             android:layout_height="20dp"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingLeft="4dp"
+            android:paddingLeft="0dp"
             android:paddingRight="4dp">
 
+            <!-- The root pads 8dp left / 4dp right, so 0dp here puts the clock and
+                 the battery number 8dp from either edge. -->
             <TextView
                 android:id="@+id/clock"
                 android:layout_width="0dp"
