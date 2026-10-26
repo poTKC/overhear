@@ -31,8 +31,17 @@
                 android:textSize="12sp" />
 
             <ImageButton
+                android:id="@+id/queue_button"
+                android:layout_width="40dp"
+                android:layout_height="36dp"
+                android:background="?android:attr/selectableItemBackground"
+                android:contentDescription="@string/queue"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_queue" />
+
+            <ImageButton
                 android:id="@+id/settings"
-                android:layout_width="36dp"
+                android:layout_width="40dp"
                 android:layout_height="36dp"
                 android:background="?android:attr/selectableItemBackground"
                 android:contentDescription="@string/settings"
@@ -57,7 +66,7 @@
         <View
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_weight="1" />
+            android:layout_weight="3" />
 
         <TextView
             android:id="@+id/title"
@@ -66,8 +75,8 @@
             android:ellipsize="marquee"
             android:gravity="center_horizontal"
             android:marqueeRepeatLimit="marquee_forever"
-            android:paddingLeft="4dp"
-            android:paddingRight="4dp"
+            android:paddingLeft="8dp"
+            android:paddingRight="8dp"
             android:singleLine="true"
             android:textColor="#ffffffff"
             android:textSize="18sp" />
@@ -76,17 +85,23 @@
             android:id="@+id/subtitle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
             android:ellipsize="end"
             android:gravity="center_horizontal"
-            android:paddingLeft="4dp"
-            android:paddingRight="4dp"
+            android:paddingLeft="8dp"
+            android:paddingRight="8dp"
             android:singleLine="true"
             android:textColor="#ffaaaaaa"
             android:textSize="13sp" />
 
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="2" />
+
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="30dp"
+            android:layout_height="28dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
@@ -115,27 +130,36 @@
                 android:textSize="11sp" />
         </LinearLayout>
 
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+        <!-- Shuffle and repeat on the sides, play/pause emphasised in the middle. -->
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="52dp"
+            android:layout_height="60dp"
             android:gravity="center"
             android:orientation="horizontal">
 
             <ImageButton
                 android:id="@+id/shuffle"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="2"
+                android:layout_width="48dp"
+                android:layout_height="56dp"
                 android:background="?android:attr/selectableItemBackground"
                 android:contentDescription="@string/shuffle"
                 android:scaleType="centerInside"
                 android:src="@drawable/ic_shuffle" />
 
-            <ImageButton
-                android:id="@+id/prev"
+            <View
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
-                android:layout_weight="3"
+                android:layout_weight="1" />
+
+            <ImageButton
+                android:id="@+id/prev"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
                 android:background="?android:attr/selectableItemBackground"
                 android:contentDescription="@string/prev"
                 android:scaleType="centerInside"
@@ -143,67 +167,43 @@
 
             <ImageButton
                 android:id="@+id/play_pause"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="3"
-                android:background="?android:attr/selectableItemBackground"
+                android:layout_width="60dp"
+                android:layout_height="60dp"
+                android:layout_marginLeft="10dp"
+                android:layout_marginRight="10dp"
+                android:background="@drawable/play_button_bg"
                 android:contentDescription="@string/play_pause"
                 android:scaleType="centerInside"
                 android:src="@android:drawable/ic_media_play" />
 
             <ImageButton
                 android:id="@+id/next"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="3"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
                 android:background="?android:attr/selectableItemBackground"
                 android:contentDescription="@string/next"
                 android:scaleType="centerInside"
                 android:src="@android:drawable/ic_media_next" />
 
-            <ImageButton
-                android:id="@+id/repeat"
+            <View
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
-                android:layout_weight="2"
+                android:layout_weight="1" />
+
+            <ImageButton
+                android:id="@+id/repeat"
+                android:layout_width="48dp"
+                android:layout_height="56dp"
                 android:background="?android:attr/selectableItemBackground"
                 android:contentDescription="@string/repeat"
                 android:scaleType="centerInside"
                 android:src="@drawable/ic_repeat" />
         </LinearLayout>
 
-        <LinearLayout
+        <View
             android:layout_width="match_parent"
-            android:layout_height="40dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <ImageView
-                android:layout_width="28dp"
-                android:layout_height="28dp"
-                android:alpha="0.7"
-                android:contentDescription="@string/volume"
-                android:scaleType="centerInside"
-                android:src="@android:drawable/ic_lock_silent_mode_off" />
-
-            <SeekBar
-                android:id="@+id/volume"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:max="100"
-                android:paddingLeft="12dp"
-                android:paddingRight="12dp" />
-
-            <ImageButton
-                android:id="@+id/queue_button"
-                android:layout_width="44dp"
-                android:layout_height="match_parent"
-                android:background="?android:attr/selectableItemBackground"
-                android:contentDescription="@string/queue"
-                android:scaleType="centerInside"
-                android:src="@drawable/ic_queue" />
-        </LinearLayout>
+            android:layout_height="0dp"
+            android:layout_weight="3" />
     </LinearLayout>
 
     <!-- The queue: slides up over the player. -->

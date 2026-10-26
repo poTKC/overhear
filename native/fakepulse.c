@@ -22,6 +22,11 @@
  *   'F' flush (drop anything buffered)
  *   'C' cork: u8 1 = pause, 0 = resume
  *
+ * Volume: pa_context_set_sink_input_volume is stored, reported by
+ * pa_context_get_sink_input_info and announced as a sink input change, but
+ * never applied: samples pass at unity gain (only clamped to s16). The app
+ * turns Soloist's volume into the Android media volume instead.
+ *
  * Locking: the main loop mutex guards every pa_* object, as in libpulse (the
  * client holds it through pa_threaded_mainloop_lock). Each sink has its own
  * mutex, always taken after the main loop one; the sink thread never takes the
@@ -803,8 +808,7 @@ struct pa_stream {
     pa_stream_notify_cb_t state_cb, started_cb, underflow_cb;
     void *state_ud, *started_ud, *underflow_ud;
     pa_buffer_attr attr;
-    pa_cvolume volume;
-    float gain;
+    pa_cvolume volume; /* what Soloist set; reported back, never applied */
     int corked;
     int started;
     uint64_t written_bytes; /* write index, in client format */
@@ -891,7 +895,6 @@ EXPORT pa_stream *pa_stream_new_with_proplist(pa_context *c, const char *name, c
     s->ctx = pa_context_ref(c);
     s->ss = *ss;
     s->state = PA_STREAM_UNCONNECTED;
-    s->gain = 1.0f;
     pa_cvolume_set(&s->volume, ss->channels, PA_VOLUME_NORM);
     c->stream = s;
     trace("stream_new %s format=%d rate=%u ch=%u", name ? name : "", ss->format, ss->rate, ss->channels);
@@ -926,19 +929,11 @@ EXPORT void pa_stream_set_underflow_callback(pa_stream *s, pa_stream_notify_cb_t
 EXPORT pa_stream_state_t pa_stream_get_state(const pa_stream *s) { return s->state; }
 EXPORT uint32_t pa_stream_get_index(const pa_stream *s) { return 1; }
 
-static void apply_volume(pa_stream *s) {
-    double v = (double)pa_cvolume_avg(&s->volume) / PA_VOLUME_NORM;
-    s->gain = (float)(v * v * v); /* PulseAudio volumes are cubic */
-}
-
 EXPORT int pa_stream_connect_playback(pa_stream *s, const char *dev, const pa_buffer_attr *attr,
                                       pa_stream_flags_t flags, const pa_cvolume *volume, pa_stream *sync) {
     if (s->state != PA_STREAM_UNCONNECTED) return -PA_ERR_BADSTATE;
     if (attr) s->attr = *attr;
-    if (volume) {
-        s->volume = *volume;
-        apply_volume(s);
-    }
+    if (volume) s->volume = *volume;
     s->corked = (flags & PA_STREAM_START_CORKED) != 0;
     trace("connect_playback tlength=%u prebuf=%u minreq=%u maxlength=%u flags=%x corked=%d", s->attr.tlength,
           s->attr.prebuf, s->attr.minreq, s->attr.maxlength, flags, s->corked);
@@ -986,9 +981,9 @@ static inline int16_t clamp16(float f) {
 
 static int16_t convert(const pa_stream *s, const void *data, size_t idx) {
     switch (s->ss.format) {
-    case PA_SAMPLE_FLOAT32LE: return clamp16(((const float *)data)[idx] * s->gain * 32767.0f);
-    case PA_SAMPLE_S16LE: return clamp16(((const int16_t *)data)[idx] * s->gain);
-    case PA_SAMPLE_S32LE: return clamp16((float)(((const int32_t *)data)[idx] >> 16) * s->gain);
+    case PA_SAMPLE_FLOAT32LE: return clamp16(((const float *)data)[idx] * 32767.0f);
+    case PA_SAMPLE_S16LE: return ((const int16_t *)data)[idx];
+    case PA_SAMPLE_S32LE: return (int16_t)(((const int32_t *)data)[idx] >> 16);
     default: return 0;
     }
 }
@@ -1108,7 +1103,9 @@ EXPORT pa_operation *pa_stream_update_timing_info(pa_stream *s, pa_stream_succes
 }
 
 /* ------------------------------------------------------------------ */
-/* Sink input introspection, used for volume. */
+/* Sink input introspection, used for volume. The volume is only stored and
+ * reported back: the gain is always 1.0 and the app maps Soloist's volume onto
+ * Android's STREAM_MUSIC volume instead (VolumeSync). */
 
 static void job_sink_input_info(job *j) {
     pa_context *ctx = j->ctx;
@@ -1145,8 +1142,7 @@ EXPORT pa_operation *pa_context_set_sink_input_volume(pa_context *c, uint32_t id
                                                       pa_context_success_cb_t cb, void *ud) {
     if (c->stream && volume) {
         c->stream->volume = *volume;
-        apply_volume(c->stream);
-        trace("set_sink_input_volume avg=%u gain=%.3f", pa_cvolume_avg(volume), c->stream->gain);
+        trace("set_sink_input_volume avg=%u (gain stays 1.0)", pa_cvolume_avg(volume));
     }
     post(c->m, job_ctx_success, c, NULL, (void *)cb, ud, 0);
     post(c->m, job_sub_event, c, NULL, NULL, NULL, 0);

@@ -51,6 +51,7 @@
     X(pa_context_connect)                                                                                              \
     X(pa_context_get_state)                                                                                            \
     X(pa_context_subscribe)                                                                                            \
+    X(pa_context_get_sink_input_info)                                                                                  \
     X(pa_context_set_sink_input_volume)                                                                                \
     X(pa_context_disconnect)                                                                                           \
     X(pa_context_unref)                                                                                                \
@@ -264,6 +265,40 @@ static float *make_signal(size_t frames) {
     return buf;
 }
 
+/* Collects pa_context_get_sink_input_info results. */
+typedef struct sink_input_query {
+    client *k;
+    int done;
+    int infos;
+    pa_volume_t avg;
+    int has_volume;
+} sink_input_query;
+
+static void sink_input_info_cb(pa_context *c, const pa_sink_input_info *i, int eol, void *ud) {
+    sink_input_query *q = ud;
+    if (eol) {
+        q->done = 1;
+        f_pa_threaded_mainloop_signal(q->k->m, 0);
+        return;
+    }
+    q->infos++;
+    q->has_volume = i->has_volume;
+    unsigned long sum = 0;
+    for (unsigned ch = 0; ch < i->volume.channels; ch++) sum += i->volume.values[ch];
+    q->avg = i->volume.channels ? (pa_volume_t)(sum / i->volume.channels) : 0;
+}
+
+/* Expects the loop locked. */
+static sink_input_query query_sink_input(client *k) {
+    sink_input_query q;
+    memset(&q, 0, sizeof q);
+    q.k = k;
+    drop(f_pa_context_get_sink_input_info(k->c, f_pa_stream_get_index(k->s), sink_input_info_cb, &q));
+    double deadline = now_s() + 2;
+    while (!q.done && now_s() < deadline) f_pa_threaded_mainloop_wait(k->m);
+    return q;
+}
+
 /* ------------------------------------------------------------------ */
 
 static void test_file(const char *out) {
@@ -294,6 +329,15 @@ static void test_file(const char *out) {
     CHECK(st == PA_STREAM_READY, "stream reaches READY (state %d)", st);
     size_t max_writable = f_pa_stream_writable_size(k.s);
     CHECK(max_writable > 0, "writable_size before any write is %zu", max_writable);
+
+    /* Soloist's 40 % (linear, as it sends it): stored and reported back, but
+     * the PCM below must still come out at full scale. */
+    pa_cvolume vol;
+    f_pa_cvolume_set(&vol, CH, 26214);
+    drop(f_pa_context_set_sink_input_volume(k.c, f_pa_stream_get_index(k.s), &vol, NULL, NULL));
+    sink_input_query q = query_sink_input(&k);
+    CHECK(q.done && q.infos == 1 && q.has_volume && q.avg == 26214,
+          "get_sink_input_info reports the volume set (%d infos, avg %u, want 26214)", q.infos, q.avg);
     drop(f_pa_stream_cork(k.s, 0, NULL, NULL));
     f_pa_threaded_mainloop_unlock(k.m);
 
@@ -323,7 +367,8 @@ static void test_file(const char *out) {
     }
     free(pcm);
     CHECK(quiet_peak == 0 && tone_peak > 16000 && tone_peak < 16500,
-          "PCM is s16: silence peak %d, tone peak %d (want 0 and ~16384)", quiet_peak, tone_peak);
+          "PCM is s16 at unity gain despite volume 40 %%: silence peak %d, tone peak %d (want 0 and ~16384)",
+          quiet_peak, tone_peak);
 
     /* The ring has run dry: one underflow, not playing, read index at the end. */
     sleep_ms(60);

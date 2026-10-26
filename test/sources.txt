@@ -16,6 +16,6 @@ app/src/jp/tkc/st15iplayer/runtime/Strays.java
 app/src/jp/tkc/st15iplayer/audio/FocusPolicy.java
 app/src/jp/tkc/st15iplayer/Supervisor.java
 app/src/jp/tkc/st15iplayer/PlayerText.java
-app/src/jp/tkc/st15iplayer/VolumeControl.java
+app/src/jp/tkc/st15iplayer/VolumeSync.java
 app/src/jp/tkc/st15iplayer/ArtworkLoader.java
 app/src/jp/tkc/st15iplayer/SeekHold.java

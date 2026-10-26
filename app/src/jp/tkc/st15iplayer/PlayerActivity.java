@@ -15,7 +15,6 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
-import android.os.SystemClock;
 import android.view.GestureDetector;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
@@ -45,10 +44,15 @@ import jp.tkc.st15iplayer.soloist.PlayerState;
 import jp.tkc.st15iplayer.soloist.SoloistClient;
 
 /**
- * The player: status line, artwork in the middle, track text, seek bar,
- * controls and volume, and a queue panel that slides up over it. State comes
- * from PlayerService (bound with flags 0, so the screen never starts or keeps
- * the service); commands go through the service's SoloistClient.
+ * The player: status line with the queue and settings buttons, artwork in
+ * the middle, track text, seek bar and controls, and a queue panel that
+ * slides up over it. State comes from PlayerService (bound with flags 0, so
+ * the screen never starts or keeps the service); commands go through the
+ * service's SoloistClient.
+ *
+ * There is no volume control on screen: the volume keys adjust the media
+ * volume (with the system panel), which PlayerService keeps in step with the
+ * phone's Spotify slider.
  *
  * The launcher entry: without an API key it hands over to SetupActivity.
  * Closing it leaves playback running; the menu (Menu key or long-press on
@@ -56,14 +60,12 @@ import jp.tkc.st15iplayer.soloist.SoloistClient;
  */
 public class PlayerActivity extends Activity {
     private static final long TICK_MS = 500;
-    private static final int VOLUME_STEP = 5;
     private static final int QUEUE_SHOWN = 10;
     private static final int ON_COLOR = 0xff33b5e5;
     private static final int MENU_SETTINGS = 1;
     private static final int MENU_SERVICE = 2;
 
     private final Handler main = new Handler(Looper.getMainLooper());
-    private final VolumeControl volume = new VolumeControl();
     private Prefs prefs;
     private ArtworkLoader<Bitmap> artwork;
     private int artPx;
@@ -81,7 +83,6 @@ public class PlayerActivity extends Activity {
     private ImageButton playPause;
     private ImageButton next;
     private ImageButton repeat;
-    private SeekBar volumeBar;
     private View queuePanel;
     private ListView queueList;
     private TextView queueEmpty;
@@ -100,7 +101,6 @@ public class PlayerActivity extends Activity {
     private boolean seeking;
     private final SeekHold seekHold = new SeekHold();
     private boolean queueOpen;
-    private boolean volumeKeyDown;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -112,7 +112,7 @@ public class PlayerActivity extends Activity {
             return;
         }
         setContentView(R.layout.activity_player);
-        setVolumeControlStream(AudioManager.STREAM_MUSIC);
+        setVolumeControlStream(AudioManager.STREAM_MUSIC); // the keys always change the media volume
         float density = getResources().getDisplayMetrics().density;
         artPx = Math.round(240 * density);
         thumbPx = Math.round(40 * density);
@@ -130,7 +130,6 @@ public class PlayerActivity extends Activity {
         playPause = (ImageButton) findViewById(R.id.play_pause);
         next = (ImageButton) findViewById(R.id.next);
         repeat = (ImageButton) findViewById(R.id.repeat);
-        volumeBar = (SeekBar) findViewById(R.id.volume);
         queuePanel = findViewById(R.id.queue_panel);
         queueList = (ListView) findViewById(R.id.queue_list);
         queueEmpty = (TextView) findViewById(R.id.queue_empty);
@@ -226,21 +225,6 @@ public class PlayerActivity extends Activity {
                 seekHold.seeked(bar.getProgress(), System.currentTimeMillis(), state.getPositionTimestampMs());
             }
         });
-        volumeBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
-                if (fromUser) changeVolume(volume.change(progress, SystemClock.uptimeMillis()));
-            }
-
-            @Override public void onStartTrackingTouch(SeekBar bar) {
-                volume.setDragging(true);
-            }
-
-            @Override public void onStopTrackingTouch(SeekBar bar) {
-                volume.setDragging(false);
-                main.removeCallbacks(sendVolume);
-                sendVolume.run();
-            }
-        });
         findViewById(R.id.queue_button).setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 if (queueOpen) closeQueue();
@@ -329,8 +313,6 @@ public class PlayerActivity extends Activity {
     protected void onPause() {
         started = false;
         main.removeCallbacks(tick);
-        main.removeCallbacks(sendVolume);
-        sendVolume.run();
         detach();
         if (bound) unbindService(connection);
         bound = false;
@@ -424,10 +406,6 @@ public class PlayerActivity extends Activity {
                 : R.drawable.ic_repeat);
         setToggle(repeat, state.getRepeat() != PlayerState.Repeat.OFF);
         seek.setEnabled(enabled && state.getDurationMs() > 0);
-        volumeBar.setEnabled(enabled && state.getVolume() >= 0);
-
-        volume.onServer(state.getVolume());
-        updateVolumeBar();
 
         List<PlayerState.QueueItem> q = connected ? state.getQueue()
                 : Collections.<PlayerState.QueueItem>emptyList();
@@ -451,11 +429,6 @@ public class PlayerActivity extends Activity {
         long pos = seekHold.position(state, System.currentTimeMillis());
         seek.setProgress((int) pos);
         setText(elapsed, PlayerText.time(pos));
-    }
-
-    private void updateVolumeBar() {
-        int v = volume.display(SystemClock.uptimeMillis());
-        if (v >= 0 && volumeBar.getProgress() != v) volumeBar.setProgress(v);
     }
 
     private void showArtwork(String url) {
@@ -494,48 +467,16 @@ public class PlayerActivity extends Activity {
         else b.clearColorFilter();
     }
 
-    // --- volume ---
-
-    private final Runnable sendVolume = new Runnable() {
-        @Override public void run() {
-            SoloistClient c = client();
-            if (c == null) return; // keep it pending: nothing could send it
-            int v = volume.flush(SystemClock.uptimeMillis());
-            if (v >= 0) c.setVolume(v);
-        }
-    };
-
-    /** wait from VolumeControl.change/step: send now, or once the interval is up. */
-    private void changeVolume(long wait) {
-        if (wait < 0) return;
-        updateVolumeBar();
-        main.removeCallbacks(sendVolume);
-        if (wait == 0) sendVolume.run();
-        else main.postDelayed(sendVolume, wait);
-    }
+    // --- keys (the volume keys are left to the system: media volume) ---
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
-            // Soloist's volume while it plays here; the system's otherwise.
-            if (PlayerText.controlsEnabled(connected, state) && state.getVolume() >= 0) {
-                int delta = keyCode == KeyEvent.KEYCODE_VOLUME_UP ? VOLUME_STEP : -VOLUME_STEP;
-                changeVolume(volume.step(delta, SystemClock.uptimeMillis()));
-                volumeKeyDown = true;
-                return true;
-            }
-        } else if (keyCode == KeyEvent.KEYCODE_MENU) {
-            return true;
-        }
+        if (keyCode == KeyEvent.KEYCODE_MENU) return true;
         return super.onKeyDown(keyCode, event);
     }
 
     @Override
     public boolean onKeyUp(int keyCode, KeyEvent event) {
-        if ((keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) && volumeKeyDown) {
-            volumeKeyDown = false;
-            return true;
-        }
         if (keyCode == KeyEvent.KEYCODE_MENU) {
             showMenu();
             return true;

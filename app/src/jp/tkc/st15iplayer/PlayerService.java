@@ -57,6 +57,10 @@ import jp.tkc.st15iplayer.soloist.SoloistClient;
  * ends the service: onDestroy stops Soloist and releases every lock), media buttons
  * through a RemoteControlClient, audio focus through AudioSink, and
  * "becoming noisy" (headphones unplugged) pauses.
+ *
+ * Volume: fakepulse plays at unity gain and VolumeSync ties Soloist's volume
+ * (the phone's Spotify slider) to the STREAM_MUSIC index both ways, while
+ * the service runs.
  */
 public final class PlayerService extends Service {
     private static final String TAG = "ST15iService";
@@ -77,6 +81,9 @@ public final class PlayerService extends Service {
     private static final int NOTIFICATION_NO_KEY = 2;
     private static final long WIFI_DEBOUNCE_MS = 2000;
     private static final long PREVIOUS_EXIT_WAIT_MS = 3000;
+    /** Hidden on API 18 but sent by AudioService for every stream volume change. */
+    private static final String VOLUME_CHANGED_ACTION = "android.media.VOLUME_CHANGED_ACTION";
+    private static final String EXTRA_VOLUME_STREAM_TYPE = "android.media.EXTRA_VOLUME_STREAM_TYPE";
 
     /** The live instance, for MediaButtonReceiver and the debug screen. Main thread. */
     private static PlayerService current;
@@ -95,6 +102,7 @@ public final class PlayerService extends Service {
     private AudioSink sink;
     private Supervisor supervisor;
     private AudioManager audioManager;
+    private VolumeSync volumeSync;
     private NotificationManager notifications;
     private ConnectivityManager connectivity;
     private WifiManager wifi;
@@ -154,6 +162,7 @@ public final class PlayerService extends Service {
         prefs = new Prefs(this);
         status = getString(R.string.status_starting_service);
         audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
+        volumeSync = new VolumeSync(audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC), volumeTarget);
         notifications = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         connectivity = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
         wifi = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
@@ -220,6 +229,7 @@ public final class PlayerService extends Service {
         wifiKey = currentWifiKey();
         registerReceiver(connectivityReceiver, new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION));
         registerReceiver(noisyReceiver, new IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY));
+        registerReceiver(volumeReceiver, new IntentFilter(VOLUME_CHANGED_ACTION));
         Log.i(TAG, "created");
     }
 
@@ -294,6 +304,8 @@ public final class PlayerService extends Service {
         sink.abandonFocus();
         unregisterReceiver(connectivityReceiver);
         unregisterReceiver(noisyReceiver);
+        unregisterReceiver(volumeReceiver);
+        volumeSync.reset();
         unregisterMedia();
         releaseLocks();
         stopForeground(true);
@@ -646,9 +658,55 @@ public final class PlayerService extends Service {
         }
     };
 
+    // --- volume ---
+
+    private int mediaIndex() {
+        return audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+    }
+
+    private final VolumeSync.Target volumeTarget = new VolumeSync.Target() {
+        @Override public int setDeviceIndex(int index) {
+            Log.i(TAG, "volume: Soloist " + state.getVolume() + " -> media " + index + "/" + volumeSync.max());
+            int before = mediaIndex();
+            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, index, 0);
+            int now = mediaIndex();
+            if (now >= index || index <= before) return now;
+            // Refused: Android 4.3's safe headphone volume. Without UI the
+            // raise would stay pending, unseen. Go as high as allowed, then
+            // show the system's warning: accepting it applies the raise (and
+            // its volume broadcast tells Soloist).
+            for (int i = index - 1; i > now; i--) {
+                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, i, 0);
+                if (mediaIndex() == i) break;
+            }
+            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, index, AudioManager.FLAG_SHOW_UI);
+            now = mediaIndex();
+            Log.i(TAG, "volume: media " + index + " refused (safe volume), at " + now);
+            return now;
+        }
+
+        @Override public void sendPercent(int percent) {
+            Log.i(TAG, "volume: media " + mediaIndex() + "/" + volumeSync.max() + " -> Soloist " + percent);
+            client.setVolume(percent);
+        }
+    };
+
+    /**
+     * Any STREAM_MUSIC change: keys, the system panel, other apps, and our own
+     * setStreamVolume. The extras may be stale by the time this runs, so the
+     * index is read back from AudioManager; VolumeSync ignores our own.
+     */
+    private final BroadcastReceiver volumeReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            if (intent.getIntExtra(EXTRA_VOLUME_STREAM_TYPE, -1) != AudioManager.STREAM_MUSIC) return;
+            volumeSync.onDevice(mediaIndex(), SystemClock.elapsedRealtime());
+        }
+    };
+
     private final SoloistClient.Listener clientListener = new SoloistClient.Listener() {
         @Override public void onState(PlayerState s) {
             state = s;
+            volumeSync.onSoloist(s.isLoggedIn(), s.getVolume(), mediaIndex(), SystemClock.elapsedRealtime());
             if (authError != null && s.isLoggedIn()) {
                 authError = null;
                 setReady();
@@ -668,6 +726,7 @@ public final class PlayerService extends Service {
                     client.pause();
                 }
             } else {
+                volumeSync.reset();
                 state = new PlayerState();
                 updateNotification();
                 updateRemoteControl();
