@@ -125,6 +125,13 @@ final class PlayerText {
         return serviceUp ? STOP : START;
     }
 
+    /** The repeat button's level in ic_repeat_levels: off, repeat (context), repeat one (track). */
+    static int repeatLevel(PlayerState.Repeat r) {
+        if (r == PlayerState.Repeat.TRACK) return 2;
+        if (r == PlayerState.Repeat.CONTEXT) return 1;
+        return 0;
+    }
+
     /** Playback controls work only on the active device. */
     static boolean controlsEnabled(boolean connected, PlayerState ps) {
         return connected && ps.isActive();

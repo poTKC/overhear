@@ -42,7 +42,7 @@
         android:background="?android:attr/selectableItemBackground"
         android:contentDescription="@string/prev"
         android:scaleType="center"
-        android:src="@android:drawable/ic_media_previous" />
+        android:src="@drawable/ic_n_prev" />
 
     <ImageButton
         android:id="@+id/n_play_pause"
@@ -51,7 +51,7 @@
         android:background="?android:attr/selectableItemBackground"
         android:contentDescription="@string/play_pause"
         android:scaleType="center"
-        android:src="@android:drawable/ic_media_play" />
+        android:src="@drawable/ic_n_play" />
 
     <ImageButton
         android:id="@+id/n_next"
@@ -60,7 +60,7 @@
         android:background="?android:attr/selectableItemBackground"
         android:contentDescription="@string/next"
         android:scaleType="center"
-        android:src="@android:drawable/ic_media_next" />
+        android:src="@drawable/ic_n_next" />
 
     <ImageButton
         android:id="@+id/n_stop"
@@ -69,5 +69,5 @@
         android:background="?android:attr/selectableItemBackground"
         android:contentDescription="@string/stop"
         android:scaleType="center"
-        android:src="@android:drawable/ic_menu_close_clear_cancel" />
+        android:src="@drawable/ic_n_close" />
 </LinearLayout>

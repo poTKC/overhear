@@ -877,14 +877,14 @@ public final class PlayerService extends Service {
         v.setViewVisibility(R.id.n_next, controls);
         if (track) {
             v.setImageViewResource(R.id.n_play_pause,
-                    playing ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play);
+                    playing ? R.drawable.ic_n_pause : R.drawable.ic_n_play);
             v.setOnClickPendingIntent(R.id.n_prev, serviceIntent(ACTION_PREV));
             v.setOnClickPendingIntent(R.id.n_play_pause, serviceIntent(ACTION_PLAY_PAUSE));
             v.setOnClickPendingIntent(R.id.n_next, serviceIntent(ACTION_NEXT));
         }
         v.setOnClickPendingIntent(R.id.n_stop, serviceIntent(ACTION_STOP));
         return new Notification.Builder(this)
-                .setSmallIcon(android.R.drawable.ic_media_play)
+                .setSmallIcon(R.drawable.ic_stat_music)
                 .setContentTitle(title)
                 .setContentText(text)
                 .setContent(v)

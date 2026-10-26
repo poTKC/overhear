@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Shuffle: grey, or green with a dot while on (View.setActivated). -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@drawable/ic_shuffle_on" android:state_activated="true" />
+    <item android:drawable="@drawable/ic_shuffle_off" />
+</selector>

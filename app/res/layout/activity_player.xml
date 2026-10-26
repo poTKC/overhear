@@ -143,10 +143,10 @@
                 android:id="@+id/shuffle"
                 android:layout_width="48dp"
                 android:layout_height="56dp"
-                android:background="?android:attr/selectableItemBackground"
+                android:background="@drawable/btn_round_bg"
                 android:contentDescription="@string/shuffle"
                 android:scaleType="centerInside"
-                android:src="@drawable/ic_shuffle" />
+                android:src="@drawable/ic_shuffle_state" />
 
             <View
                 android:layout_width="0dp"
@@ -157,10 +157,10 @@
                 android:id="@+id/prev"
                 android:layout_width="56dp"
                 android:layout_height="56dp"
-                android:background="?android:attr/selectableItemBackground"
+                android:background="@drawable/btn_round_bg"
                 android:contentDescription="@string/prev"
                 android:scaleType="centerInside"
-                android:src="@android:drawable/ic_media_previous" />
+                android:src="@drawable/ic_prev" />
 
             <ImageButton
                 android:id="@+id/play_pause"
@@ -171,16 +171,16 @@
                 android:background="@drawable/play_button_bg"
                 android:contentDescription="@string/play_pause"
                 android:scaleType="centerInside"
-                android:src="@android:drawable/ic_media_play" />
+                android:src="@drawable/ic_play" />
 
             <ImageButton
                 android:id="@+id/next"
                 android:layout_width="56dp"
                 android:layout_height="56dp"
-                android:background="?android:attr/selectableItemBackground"
+                android:background="@drawable/btn_round_bg"
                 android:contentDescription="@string/next"
                 android:scaleType="centerInside"
-                android:src="@android:drawable/ic_media_next" />
+                android:src="@drawable/ic_next" />
 
             <View
                 android:layout_width="0dp"
@@ -191,10 +191,10 @@
                 android:id="@+id/repeat"
                 android:layout_width="48dp"
                 android:layout_height="56dp"
-                android:background="?android:attr/selectableItemBackground"
+                android:background="@drawable/btn_round_bg"
                 android:contentDescription="@string/repeat"
                 android:scaleType="centerInside"
-                android:src="@drawable/ic_repeat" />
+                android:src="@drawable/ic_repeat_levels" />
         </LinearLayout>
 
         <View
@@ -242,10 +242,10 @@
                 android:id="@+id/queue_close"
                 android:layout_width="44dp"
                 android:layout_height="44dp"
-                android:background="?android:attr/selectableItemBackground"
+                android:background="@drawable/btn_round_bg"
                 android:contentDescription="@string/close"
                 android:scaleType="centerInside"
-                android:src="@android:drawable/ic_menu_close_clear_cancel" />
+                android:src="@drawable/ic_close" />
         </LinearLayout>
 
         <ListView
@@ -295,20 +295,18 @@
             android:id="@+id/queue_button"
             android:layout_width="36dp"
             android:layout_height="36dp"
-            android:background="?android:attr/selectableItemBackground"
+            android:background="@drawable/btn_round_bg"
             android:contentDescription="@string/queue"
-            android:padding="9dp"
-            android:scaleType="fitCenter"
+            android:scaleType="center"
             android:src="@drawable/ic_queue" />
 
         <ImageButton
             android:id="@+id/settings"
             android:layout_width="36dp"
             android:layout_height="36dp"
-            android:background="?android:attr/selectableItemBackground"
+            android:background="@drawable/btn_round_bg"
             android:contentDescription="@string/settings"
-            android:padding="8dp"
-            android:scaleType="fitCenter"
-            android:src="@android:drawable/ic_menu_preferences" />
+            android:scaleType="center"
+            android:src="@drawable/ic_settings" />
     </LinearLayout>
 </FrameLayout>

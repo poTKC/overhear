@@ -96,6 +96,12 @@ public class PlayerTextTest {
         assertEquals("スマホの Spotify で『ST15i』を選んでください", PlayerText.selectDevice("ST15i"));
     }
 
+    @Test public void repeatPicksTheDrawableLevel() {
+        assertEquals(0, PlayerText.repeatLevel(PlayerState.Repeat.OFF)); // grey, no dot
+        assertEquals(1, PlayerText.repeatLevel(PlayerState.Repeat.CONTEXT)); // green, dot
+        assertEquals(2, PlayerText.repeatLevel(PlayerState.Repeat.TRACK)); // repeat_one, green, dot
+    }
+
     @Test public void controlsNeedAConnectedActiveDevice() throws Exception {
         assertTrue(PlayerText.controlsEnabled(true, state(true, true)));
         assertFalse(PlayerText.controlsEnabled(false, state(true, true)));

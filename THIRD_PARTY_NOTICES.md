@@ -1,11 +1,11 @@
 # Third-party notices
 
 ST15i Player ships the third-party components below inside its APK
-(`assets/runtime/`). This file is also packaged as
+(`assets/runtime/`, and the icons in `res/`). This file is also packaged as
 `assets/licenses/THIRD_PARTY_NOTICES.txt` and shown in the app
 (設定画面の「ライセンス」). In that packaged copy, `runtime/build.sh` appends the
-full licence texts: LGPL-2.1-or-later, GPL-3.0-or-later, GCC-exception-3.1 and
-MPL-2.0 from SPDX license-list-data v3.27.0 (pinned by sha256), and Debian's
+full licence texts: LGPL-2.1-or-later, GPL-3.0-or-later, GCC-exception-3.1,
+MPL-2.0 and Apache-2.0 from SPDX license-list-data v3.27.0 (pinned by sha256), and Debian's
 copyright file for libc6. The BSD-3-Clause text for Go is reproduced below.
 In this repository copy, each entry gives the SPDX id and links to the text.
 
@@ -112,6 +112,20 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 - Source:
   - <https://snapshot.debian.org/package/pulseaudio/17.0%2Bdfsg1-3/>
   - Upstream: <https://www.freedesktop.org/wiki/Software/PulseAudio/>
+
+## Material Symbols (icons)
+
+- The player, notification and status bar icons are rasterised (by
+  `tools/make_icons.py`) from Google's Material Symbols, Rounded style:
+  play_arrow, pause, skip_previous, skip_next, shuffle, repeat, repeat_one,
+  queue_music, settings, close and music_note. Recoloured and composed (the
+  toggle dot, the artwork placeholder); otherwise unmodified.
+- Licence: Apache License 2.0 (SPDX `Apache-2.0`).
+  Copyright Google LLC.
+- Source: <https://github.com/google/material-design-icons>, commit
+  `10ecc14790612ca8fd164e3f4ffe9c16fc50d5b7` (`symbols/web/*/materialsymbolsrounded/`;
+  each SVG is checked by sha256 in `tools/make_icons.py`).
+- Licence text: <https://spdx.org/licenses/Apache-2.0.html>
 
 ## Zig toolchain runtime
 

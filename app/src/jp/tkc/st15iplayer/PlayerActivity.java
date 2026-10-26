@@ -11,7 +11,6 @@ import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.content.pm.ApplicationInfo;
 import android.graphics.Bitmap;
-import android.graphics.PorterDuff;
 import android.graphics.drawable.GradientDrawable;
 import android.media.AudioManager;
 import android.os.Bundle;
@@ -75,7 +74,6 @@ import jp.tkc.st15iplayer.soloist.SoloistClient;
 public class PlayerActivity extends Activity {
     private static final long TICK_MS = 500;
     private static final int QUEUE_SHOWN = 10;
-    private static final int ON_COLOR = 0xff33b5e5;
     private static final int MENU_SETTINGS = 1;
     private static final int MENU_SERVICE = 2;
 
@@ -485,16 +483,14 @@ public class PlayerActivity extends Activity {
         boolean enabled = PlayerText.controlsEnabled(connected, state);
         PlayerState.Status ps = state.getStatus();
         boolean playing = ps == PlayerState.Status.PLAYING || ps == PlayerState.Status.BUFFERING;
-        playPause.setImageResource(playing ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play);
+        setImage(playPause, playing ? R.drawable.ic_pause : R.drawable.ic_play);
         setEnabled(playPause, enabled);
         setEnabled(prev, enabled);
         setEnabled(next, enabled);
         setEnabled(shuffle, enabled);
         setEnabled(repeat, enabled);
-        setToggle(shuffle, state.isShuffle());
-        repeat.setImageResource(state.getRepeat() == PlayerState.Repeat.TRACK ? R.drawable.ic_repeat_one
-                : R.drawable.ic_repeat);
-        setToggle(repeat, state.getRepeat() != PlayerState.Repeat.OFF);
+        shuffle.setActivated(state.isShuffle()); // ic_shuffle_state: green with a dot
+        repeat.setImageLevel(PlayerText.repeatLevel(state.getRepeat())); // ic_repeat_levels
         seek.setEnabled(enabled && state.getDurationMs() > 0);
 
         List<PlayerState.QueueItem> q = connected ? state.getQueue()
@@ -546,15 +542,14 @@ public class PlayerActivity extends Activity {
     private static void setEnabled(View v, boolean enabled) {
         if (v.isEnabled() == enabled) return;
         v.setEnabled(enabled);
-        v.setAlpha(enabled ? 1f : 0.35f);
+        v.setAlpha(enabled ? 1f : 0.4f);
     }
 
-    /** Tints b when on; the state is kept in its tag so unchanged renders do nothing. */
-    private static void setToggle(ImageButton b, boolean on) {
-        if (Boolean.valueOf(on).equals(b.getTag())) return;
-        b.setTag(on);
-        if (on) b.setColorFilter(ON_COLOR, PorterDuff.Mode.SRC_IN);
-        else b.clearColorFilter();
+    /** Sets the image only when it changes (the resource id is kept in the tag). */
+    private static void setImage(ImageButton b, int res) {
+        if (Integer.valueOf(res).equals(b.getTag())) return;
+        b.setTag(res);
+        b.setImageResource(res);
     }
 
     // --- keys (the volume keys are left to the system: media volume) ---

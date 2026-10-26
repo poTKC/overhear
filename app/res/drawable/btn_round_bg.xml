@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Icon buttons: a faint round highlight while pressed (no ripple on API 18). -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android" android:exitFadeDuration="150">
+    <item android:state_pressed="true">
+        <shape android:shape="oval">
+            <solid android:color="#26ffffff" />
+        </shape>
+    </item>
+    <item android:drawable="@android:color/transparent" />
+</selector>
