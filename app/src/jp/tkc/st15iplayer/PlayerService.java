@@ -59,6 +59,9 @@ import jp.tkc.st15iplayer.soloist.SoloistClient;
  * through a RemoteControlClient, audio focus through AudioSink, and
  * "becoming noisy" (headphones unplugged) pauses.
  *
+ * Queue jumps: QueueJump steps skip_next to a tapped queue entry with the
+ * track muted (AudioSink.setJumpMuted); any control pressed meanwhile ends it.
+ *
  * Volume: fakepulse plays at unity gain and VolumeSync ties Soloist's volume
  * (the phone's Spotify slider) to the STREAM_MUSIC index both ways, while
  * the service runs.
@@ -139,6 +142,11 @@ public final class PlayerService extends Service {
     private int lastPlayState = -1;
     private PlayerState state = new PlayerState();
     private boolean connected;
+    /** The queue jump in progress, or null. */
+    private QueueJump jump;
+    /** Jumps finished so far, and whether the last one reached its target (for the player screen). */
+    private int jumpsFinished;
+    private boolean lastJumpOk;
     private final IBinder binder = new LocalBinder();
     private final CopyOnWriteArrayList<Runnable> uiListeners = new CopyOnWriteArrayList<Runnable>();
 
@@ -264,10 +272,13 @@ public final class PlayerService extends Service {
             Log.i(TAG, "ignoring " + action + " while not started");
             stopSelf(startId);
         } else if (ACTION_PLAY_PAUSE.equals(action)) {
+            userInput();
             playPause();
         } else if (ACTION_PREV.equals(action)) {
+            userInput();
             client.prev();
         } else if (ACTION_NEXT.equals(action)) {
+            userInput();
             client.next();
         } else if (ACTION_MEDIA_KEY.equals(action)) {
             mediaKey(intent.getIntExtra(EXTRA_KEYCODE, 0));
@@ -315,6 +326,7 @@ public final class PlayerService extends Service {
         worker.removeCallbacksAndMessages(null);
         workerThread.quit();
         main.removeCallbacksAndMessages(null);
+        jump = null; // the sink goes with it
         client.removeListener(clientListener);
         client.stop();
         sink.setFocusHandler(null);
@@ -392,7 +404,103 @@ public final class PlayerService extends Service {
 
     /** Pause while playing or buffering, else play. */
     void togglePlayPause() {
+        userInput();
         playPause();
+    }
+
+    /** A control was pressed (here, in the notification or by a media key): a queue jump ends. */
+    void userInput() {
+        if (jump != null) jump.onUserInput();
+    }
+
+    // --- queue jump ---
+
+    /**
+     * Starts skipping to entry index of the upcoming queue (item as the
+     * screen shows it). False if a jump runs, the API is down, or the entry
+     * is no longer there.
+     */
+    boolean jumpTo(int index, PlayerState.QueueItem item) {
+        if (jump != null || !connected || item.uri == null) return false;
+        QueueJump j = new QueueJump(index, item.uid, item.uri, jumpClock, QueueJump.DEFAULT_TIMEOUT_MS,
+                jumpEffects);
+        jump = j;
+        if (!j.start(state)) {
+            jump = null;
+            Log.i(TAG, "queue jump: entry " + index + " is no longer in the queue");
+            return false;
+        }
+        Log.i(TAG, "queue jump: to entry " + index + " (" + (index + 1) + " skips) " + item.uri + ", "
+                + (j.wasPlaying() ? "playing" : "paused"));
+        scheduleJumpTimer();
+        notifyUi();
+        return true;
+    }
+
+    /** The running queue jump, or null. */
+    QueueJump getJump() {
+        return jump;
+    }
+
+    int getJumpsFinished() {
+        return jumpsFinished;
+    }
+
+    boolean lastJumpOk() {
+        return lastJumpOk;
+    }
+
+    private final QueueJump.Clock jumpClock = new QueueJump.Clock() {
+        @Override public long nowMs() {
+            return SystemClock.elapsedRealtime();
+        }
+    };
+
+    private final QueueJump.Effects jumpEffects = new QueueJump.Effects() {
+        private int skips;
+
+        @Override public void skip() {
+            Log.i(TAG, "queue jump: skip_next " + (++skips));
+            client.next();
+        }
+
+        @Override public void mute() {
+            skips = 0;
+            sink.setJumpMuted(true);
+        }
+
+        @Override public void unmute() {
+            sink.setJumpMuted(false);
+        }
+
+        @Override public void play() {
+            Log.i(TAG, "queue jump: play (the target always plays)");
+            client.play();
+        }
+
+        @Override public void finished(boolean ok, String why) {
+            if (ok) Log.i(TAG, "queue jump: done, " + why);
+            else Log.w(TAG, "queue jump: gave up, " + why);
+            jump = null;
+            jumpsFinished++;
+            lastJumpOk = ok;
+            main.removeCallbacks(jumpTimer);
+            // The caller notifies the UI (onState, onConnected, the timer).
+        }
+    };
+
+    private final Runnable jumpTimer = new Runnable() {
+        @Override public void run() {
+            if (jump == null) return;
+            jump.onTimer();
+            scheduleJumpTimer();
+            notifyUi();
+        }
+    };
+
+    private void scheduleJumpTimer() {
+        main.removeCallbacks(jumpTimer);
+        if (jump != null) main.postDelayed(jumpTimer, jump.msUntilDeadline());
     }
 
     /** The user asked to try again (status line), or settings changed. */
@@ -668,6 +776,7 @@ public final class PlayerService extends Service {
             default:
                 return;
         }
+        userInput(); // keys handled above only
         Log.i(TAG, "media key " + keyCode);
     }
 
@@ -781,6 +890,10 @@ public final class PlayerService extends Service {
     private final SoloistClient.Listener clientListener = new SoloistClient.Listener() {
         @Override public void onState(PlayerState s) {
             state = s;
+            if (jump != null) {
+                jump.onState(s);
+                scheduleJumpTimer();
+            }
             volumeSync.onSoloist(s.isLoggedIn(), s.getVolume(), mediaIndex(), SystemClock.elapsedRealtime());
             if (authError != null && s.isLoggedIn()) {
                 authError = null;
@@ -801,6 +914,7 @@ public final class PlayerService extends Service {
                     client.pause();
                 }
             } else {
+                if (jump != null) jump.onDisconnected();
                 volumeSync.reset();
                 state = new PlayerState();
                 updateNotification();
@@ -957,6 +1071,8 @@ public final class PlayerService extends Service {
         sb.append("locks: mc=").append(multicastLock.isHeld()).append(" wifi=").append(wifiLock.isHeld())
                 .append(" wake=").append(wakeLock.isHeld()).append('\n');
         if (sink.isFocusMuted()) sb.append("muted (audio focus)\n");
+        if (jump != null) sb.append("queue jump to entry ").append(jump.getIndex()).append(", ")
+                .append(jump.getSteps()).append(" skips done\n");
         sb.append("fakepulse underflows: ").append(soloist.getUnderflowCount())
                 .append(traceAudio ? " (tracing)" : " (trace off)");
         return sb.toString();

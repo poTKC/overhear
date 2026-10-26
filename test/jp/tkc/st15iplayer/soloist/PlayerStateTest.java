@@ -19,7 +19,7 @@ import org.junit.Test;
 
 /** Fixtures in test/fixtures were captured from Soloist 1.3.10 on the device. */
 public class PlayerStateTest {
-    static JSONObject fixture(String name) {
+    public static JSONObject fixture(String name) {
         InputStream in = PlayerStateTest.class.getResourceAsStream("/" + name + ".json");
         if (in == null) throw new AssertionError("missing fixture " + name);
         try {

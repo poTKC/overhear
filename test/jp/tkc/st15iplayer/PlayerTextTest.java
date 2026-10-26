@@ -142,6 +142,13 @@ public class PlayerTextTest {
         assertFalse(PlayerText.controlsEnabled(true, state(true, false)));
     }
 
+    @Test public void queueRowsTakeTapsLikeTheControlsButNotDuringAJump() throws Exception {
+        assertTrue(PlayerText.queueTappable(true, state(true, true), false));
+        assertFalse(PlayerText.queueTappable(true, state(true, true), true));
+        assertFalse(PlayerText.queueTappable(false, state(true, true), false));
+        assertFalse(PlayerText.queueTappable(true, state(true, false), false));
+    }
+
     @Test public void subtitleJoinsArtistsAndAlbum() {
         assertEquals("A, B · Album", PlayerText.subtitle(Arrays.asList("A", "B"), "Album"));
         assertEquals("A", PlayerText.subtitle(Arrays.asList("A"), null));

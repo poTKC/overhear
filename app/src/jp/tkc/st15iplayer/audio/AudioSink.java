@@ -34,6 +34,10 @@ import java.io.InputStream;
  * pause. Focus changes go through FocusPolicy; pausing and resuming is
  * Soloist's job (FocusHandler sends the commands), so the socket is always
  * drained, and ducking lowers the track volume here.
+ *
+ * The jump mute (setJumpMuted, for QueueJump's skips) silences the track on
+ * the same volume path, independently of focus: either one muting wins.
+ * Neither touches the media volume.
  */
 public final class AudioSink {
     public static final String SOCKET_NAME = "st15i-player-audio";
@@ -71,6 +75,8 @@ public final class AudioSink {
     private volatile FocusHandler focusHandler;
     /** Audio is being written (the last onPlaying value). */
     private volatile boolean playing;
+    /** Silent while a queue jump skips through tracks. */
+    private volatile boolean jumpMuted;
 
     private final Object lock = new Object();
     // Guarded by lock.
@@ -191,9 +197,24 @@ public final class AudioSink {
         audioManager.abandonAudioFocus(focusListener);
     }
 
+    /**
+     * Mutes or unmutes the track for a queue jump, on top of the focus
+     * volume (a duck or focus mute still applies after unmuting). Any thread.
+     */
+    public void setJumpMuted(boolean muted) {
+        if (jumpMuted == muted) return;
+        jumpMuted = muted;
+        Log.i(TAG, muted ? "jump mute on" : "jump mute off");
+        applyVolume();
+    }
+
+    public boolean isJumpMuted() {
+        return jumpMuted;
+    }
+
     private void applyVolume() {
-        float v = focusPolicy.volume() * AudioTrack.getMaxVolume();
-        synchronized (trackLock) {
+        synchronized (trackLock) { // read under the lock: the last caller sets the latest value
+            float v = (jumpMuted ? 0f : focusPolicy.volume()) * AudioTrack.getMaxVolume();
             if (currentTrack != null) currentTrack.setStereoVolume(v, v);
         }
     }

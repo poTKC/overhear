@@ -269,6 +269,7 @@
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
+            android:listSelector="@drawable/holo_g_list_selector_holo_dark"
             android:divider="#22ffffff"
             android:dividerHeight="1px"
             android:fadingEdge="vertical" />

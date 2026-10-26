@@ -7,12 +7,27 @@
     android:paddingLeft="12dp"
     android:paddingRight="12dp">
 
-    <ImageView
-        android:id="@+id/thumb"
+    <FrameLayout
         android:layout_width="40dp"
-        android:layout_height="40dp"
-        android:contentDescription="@string/artwork"
-        android:scaleType="fitXY" />
+        android:layout_height="40dp">
+
+        <ImageView
+            android:id="@+id/thumb"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="@string/artwork"
+            android:scaleType="fitXY" />
+
+        <!-- While a queue jump heads for this entry. -->
+        <ProgressBar
+            android:id="@+id/busy"
+            style="?android:attr/progressBarStyleSmall"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:layout_gravity="center"
+            android:indeterminate="true"
+            android:visibility="gone" />
+    </FrameLayout>
 
     <LinearLayout
         android:layout_width="0dp"

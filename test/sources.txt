@@ -21,3 +21,4 @@ app/src/jp/tkc/st15iplayer/ArtworkLoader.java
 app/src/jp/tkc/st15iplayer/SeekHold.java
 app/src/jp/tkc/st15iplayer/SetupValues.java
 app/src/jp/tkc/st15iplayer/StatusStrip.java
+app/src/jp/tkc/st15iplayer/QueueJump.java

@@ -136,6 +136,11 @@ final class PlayerText {
         return 0;
     }
 
+    /** Queue entries take a tap (a jump) when the controls work and no jump runs. */
+    static boolean queueTappable(boolean connected, PlayerState ps, boolean jumping) {
+        return controlsEnabled(connected, ps) && !jumping;
+    }
+
     /** Playback controls work only on the active device. */
     static boolean controlsEnabled(boolean connected, PlayerState ps) {
         return connected && ps.isActive();

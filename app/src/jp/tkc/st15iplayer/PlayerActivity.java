@@ -32,6 +32,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.widget.AdapterView;
 import android.widget.BaseAdapter;
 import android.widget.ImageButton;
 import android.widget.ImageView;
@@ -127,6 +128,8 @@ public class PlayerActivity extends Activity {
     private boolean seeking;
     private final SeekHold seekHold = new SeekHold();
     private boolean queueOpen;
+    /** The service's finished-jump count when this screen started one; -1 when none is awaited. */
+    private int awaitedJump = -1;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -219,25 +222,25 @@ public class PlayerActivity extends Activity {
         });
         prev.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
-                SoloistClient c = client();
+                SoloistClient c = control();
                 if (c != null) c.prev();
             }
         });
         next.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
-                SoloistClient c = client();
+                SoloistClient c = control();
                 if (c != null) c.next();
             }
         });
         shuffle.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
-                SoloistClient c = client();
+                SoloistClient c = control();
                 if (c != null) c.setShuffle(!state.isShuffle());
             }
         });
         repeat.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
-                SoloistClient c = client();
+                SoloistClient c = control();
                 if (c == null) return;
                 // off -> context -> track -> off, like Spotify.
                 switch (state.getRepeat()) {
@@ -266,7 +269,7 @@ public class PlayerActivity extends Activity {
             @Override public void onStopTrackingTouch(SeekBar bar) {
                 seeking = false;
                 setSeekProgressColor(0);
-                SoloistClient c = client();
+                SoloistClient c = control();
                 if (c == null) return;
                 c.seek(bar.getProgress());
                 seekHold.seeked(bar.getProgress(), System.currentTimeMillis(), state.getPositionTimestampMs());
@@ -281,6 +284,11 @@ public class PlayerActivity extends Activity {
         findViewById(R.id.queue_close).setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 closeQueue();
+            }
+        });
+        queueList.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override public void onItemClick(AdapterView<?> parent, View v, int position, long id) {
+                jumpTo(position);
             }
         });
     }
@@ -490,6 +498,12 @@ public class PlayerActivity extends Activity {
         return service != null && connected ? service.client() : null;
     }
 
+    /** client() for a control the user pressed: it ends a queue jump first. */
+    private SoloistClient control() {
+        if (service != null) service.userInput();
+        return client();
+    }
+
     // --- rendering ---
 
     private void render() {
@@ -512,7 +526,10 @@ public class PlayerActivity extends Activity {
         setText(subtitle, hasTrack ? PlayerText.subtitle(state.getArtists(), state.getAlbum()) : "");
         showArtwork(hasTrack ? state.getMediumCoverUrl() : null);
 
-        boolean enabled = PlayerText.controlsEnabled(connected, state);
+        QueueJump jump = service == null ? null : service.getJump();
+        boolean jumping = jump != null;
+        // While a jump skips, the controls rest (and the queue takes no other tap).
+        boolean enabled = PlayerText.controlsEnabled(connected, state) && !jumping;
         PlayerState.Status ps = state.getStatus();
         boolean playing = ps == PlayerState.Status.PLAYING || ps == PlayerState.Status.BUFFERING;
         setImage(playPause, playing ? R.drawable.ic_pause_button : R.drawable.ic_play_button);
@@ -521,17 +538,23 @@ public class PlayerActivity extends Activity {
         setEnabled(next, enabled);
         // Faded and untappable where Soloist does not allow them (radio ...);
         // an option that is on stays green, just faded.
-        setEnabled(shuffle, PlayerText.shuffleEnabled(connected, state));
-        setEnabled(repeat, PlayerText.repeatEnabled(connected, state));
+        setEnabled(shuffle, PlayerText.shuffleEnabled(connected, state) && !jumping);
+        setEnabled(repeat, PlayerText.repeatEnabled(connected, state) && !jumping);
         shuffle.setActivated(state.isShuffle()); // ic_shuffle_state: green with a dot
         repeat.setImageLevel(PlayerText.repeatLevel(state.getRepeat())); // ic_repeat_levels
         setEnabled(seek, enabled && state.getDurationMs() > 0);
 
         List<PlayerState.QueueItem> q = connected ? state.getQueue()
                 : Collections.<PlayerState.QueueItem>emptyList();
-        queueAdapter.setItems(q.size() > QUEUE_SHOWN ? q.subList(0, QUEUE_SHOWN) : q);
+        queueAdapter.setItems(q.size() > QUEUE_SHOWN ? q.subList(0, QUEUE_SHOWN) : q,
+                PlayerText.queueTappable(connected, state, jumping), jump);
         queueList.setVisibility(q.isEmpty() ? View.GONE : View.VISIBLE);
         queueEmpty.setVisibility(q.isEmpty() ? View.VISIBLE : View.GONE);
+        if (awaitedJump >= 0 && (service == null || service.getJumpsFinished() > awaitedJump)) {
+            // A successful jump closes the queue; a failed one leaves it open to try again.
+            if (service != null && service.lastJumpOk()) closeQueue();
+            awaitedJump = -1;
+        }
 
         updatePosition();
     }
@@ -620,6 +643,16 @@ public class PlayerActivity extends Activity {
 
     // --- queue panel ---
 
+    /** A tap on queue entry position: skip there (PlayerService, QueueJump). */
+    private void jumpTo(int position) {
+        if (service == null || !connected || position >= queueAdapter.getCount()) return;
+        int before = service.getJumpsFinished();
+        if (service.jumpTo(position, (PlayerState.QueueItem) queueAdapter.getItem(position))) {
+            awaitedJump = before;
+        }
+        render();
+    }
+
     private void openQueue() {
         if (queueOpen) return;
         queueOpen = true;
@@ -656,11 +689,33 @@ public class PlayerActivity extends Activity {
 
     private final class QueueAdapter extends BaseAdapter {
         private List<PlayerState.QueueItem> items = Collections.emptyList();
+        private boolean tappable;
+        /** The entry a jump is heading for (by uid; by place before the first skip without one). */
+        private String busyUid;
+        private String busyUri;
+        private int busyIndex = -1;
 
-        void setItems(List<PlayerState.QueueItem> list) {
-            if (sameItems(items, list)) return;
+        void setItems(List<PlayerState.QueueItem> list, boolean tap, QueueJump jump) {
+            String uid = jump == null ? null : jump.getUid();
+            String uri = jump == null ? null : jump.getUri();
+            int index = jump == null ? -1 : jump.getIndex() - jump.getSteps();
+            if (sameItems(items, list) && tap == tappable && eq(uid, busyUid) && eq(uri, busyUri)
+                    && index == busyIndex) {
+                return;
+            }
             items = list;
+            tappable = tap;
+            busyUid = uid;
+            busyUri = uri;
+            busyIndex = index;
             notifyDataSetChanged();
+        }
+
+        private boolean isBusy(int position) {
+            if (busyUri == null) return false;
+            PlayerState.QueueItem item = items.get(position);
+            if (busyUid != null) return busyUid.equals(item.uid);
+            return position == busyIndex && busyUri.equals(item.uri);
         }
 
         @Override public int getCount() {
@@ -675,8 +730,12 @@ public class PlayerActivity extends Activity {
             return position;
         }
 
+        @Override public boolean areAllItemsEnabled() {
+            return tappable;
+        }
+
         @Override public boolean isEnabled(int position) {
-            return false; // display only: there is no command to jump to an entry
+            return tappable; // a tap skips there; none while a jump runs or the controls are off
         }
 
         @Override public View getView(int position, View convertView, ViewGroup parent) {
@@ -686,6 +745,9 @@ public class PlayerActivity extends Activity {
             ((TextView) v.findViewById(R.id.item_title)).setText(item.title == null ? "" : item.title);
             ((TextView) v.findViewById(R.id.item_artists)).setText(PlayerText.subtitle(item.artists, null));
             final ImageView thumb = (ImageView) v.findViewById(R.id.thumb);
+            boolean busy = isBusy(position);
+            v.findViewById(R.id.busy).setVisibility(busy ? View.VISIBLE : View.GONE);
+            thumb.setAlpha(busy ? 0.3f : 1f);
             final String url = item.smallCoverUrl;
             thumb.setTag(url);
             Bitmap hit = url == null ? null : artwork.get(url, thumbPx);
@@ -708,6 +770,10 @@ public class PlayerActivity extends Activity {
             }
             return v;
         }
+    }
+
+    private static boolean eq(String a, String b) {
+        return a == null ? b == null : a.equals(b);
     }
 
     private static boolean sameItems(List<PlayerState.QueueItem> a, List<PlayerState.QueueItem> b) {

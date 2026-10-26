@@ -125,6 +125,8 @@ public final class PlayerState {
     private List<QueueItem> queue = Collections.emptyList();
     /** playback_state's available_actions (immutable), or null until one has been seen. */
     private Set<String> actions;
+    /** track_changed events folded so far (not playback_state's item). */
+    private int trackChanges;
 
     public PlayerState copy() {
         PlayerState c = new PlayerState();
@@ -143,6 +145,7 @@ public final class PlayerState {
         c.repeat = repeat;
         c.queue = queue;
         c.actions = actions;
+        c.trackChanges = trackChanges;
         return c;
     }
 
@@ -167,6 +170,7 @@ public final class PlayerState {
             setActions(e.optJSONObject("available_actions"));
         } else if ("track_changed".equals(type)) {
             setTrack(e.optJSONObject("item"));
+            trackChanges++;
         } else if ("playback_changed".equals(type)) {
             if (e.has("status")) status = Status.parse(str(e, "status"));
         } else if ("volume_changed".equals(type)) {
@@ -324,7 +328,14 @@ public final class PlayerState {
 
     public Repeat getRepeat() { return repeat; }
 
-    /** Upcoming tracks, unmodifiable. */
+    /**
+     * How many track_changed events this state has folded. Counts every
+     * change, also to the same URI (a duplicate in the queue), which the URI
+     * alone cannot show; a new connection starts again at 0.
+     */
+    public int getTrackChanges() { return trackChanges; }
+
+    /** Upcoming tracks, unmodifiable. A new list on every queue_changed. */
     public List<QueueItem> getQueue() { return queue; }
 
     // --- JSON helpers (Android's optString turns JSON null into "null") ---
