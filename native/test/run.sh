@@ -1,11 +1,21 @@
 #!/usr/bin/env bash
-# Builds the host fakepulse and runs the harness against it.
+# Runs the harness against the host fakepulse from native/build.sh, then again
+# with both built under AddressSanitizer (Apple clang: zig has no ASan runtime
+# for macOS).
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 native/build.sh host
 out=build/native/test
 mkdir -p "$out"
-zig cc -target aarch64-macos -std=c11 -D_DEFAULT_SOURCE -Wall -Wextra -Wno-unused-parameter -Werror -O1 \
-    -Inative/include -o "$out/harness" native/test/harness.c
+WARN=(-std=c11 -D_DEFAULT_SOURCE -Wall -Wextra -Wno-unused-parameter -Werror -Inative/include)
+
+echo "== host build"
+zig cc -target aarch64-macos -O1 "${WARN[@]}" -o "$out/harness" native/test/harness.c
 "$out/harness" build/native/host/libpulse.so.0 native/test/symbols.txt "$out/out.raw"
+
+echo "== AddressSanitizer build"
+ASAN=(-fsanitize=address -fno-omit-frame-pointer -g -O1)
+clang "${ASAN[@]}" "${WARN[@]}" -shared -fvisibility=hidden -o "$out/libpulse-asan.so.0" native/fakepulse.c
+clang "${ASAN[@]}" "${WARN[@]}" -o "$out/harness-asan" native/test/harness.c
+ASAN_OPTIONS=abort_on_error=1 "$out/harness-asan" "$out/libpulse-asan.so.0" native/test/symbols.txt "$out/out.raw"
