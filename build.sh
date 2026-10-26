@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Builds build/st15i-player.apk without Gradle.
-# Overrides: ANDROID_HOME, BUILD_TOOLS (build-tools dir), ANDROID_PLATFORM_JAR.
+# Overrides: ANDROID_HOME, BUILD_TOOLS (build-tools dir), ANDROID_PLATFORM_JAR,
+# DEBUGGABLE=0 to leave out android:debuggable (on by default for the debug key).
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -25,11 +26,13 @@ mkdir -p build/gen build/classes build/dex
 
 "$BT/aapt2" compile --dir app/res -o build/res.zip
 
-assets=()
-[ -d build/assets ] && assets=(-A build/assets)
+link_opts=()
+[ -d build/assets ] && link_opts=(-A build/assets)
+# Debuggable builds also accept audio from Soloist run as the shell user.
+[ "${DEBUGGABLE:-1}" = 1 ] && link_opts+=(--debug-mode)
 "$BT/aapt2" link -I "$JAR" --manifest app/AndroidManifest.xml \
     --min-sdk-version 16 --target-sdk-version 18 \
-    ${assets[@]+"${assets[@]}"} --java build/gen -o build/base.apk build/res.zip
+    ${link_opts[@]+"${link_opts[@]}"} --java build/gen -o build/base.apk build/res.zip
 
 # Compile against the Android jar (not --release) so only Android APIs resolve.
 find app/src build/gen -name '*.java' > build/sources.txt

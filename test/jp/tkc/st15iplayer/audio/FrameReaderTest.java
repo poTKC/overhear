@@ -54,7 +54,7 @@ public class FrameReaderTest {
             out.write(payload, 0, payload.length);
             return this;
         }
-        Frames header(int rate, int ch) {
+        Frames header(long rate, long ch) {
             Frames f = new Frames();
             f.writeU32(rate);
             f.writeU32(ch);
@@ -166,6 +166,13 @@ public class FrameReaderTest {
         expectProtocolError(new Frames().frame('F', new byte[1]).bytes(), 0);
         expectProtocolError(new Frames().frame('C', new byte[0]).bytes(), 0);
         expectProtocolError(new Frames().frame('C', new byte[] {2}).bytes(), 0);
+    }
+
+    @Test public void badHeaderValuesAreProtocolErrors() throws IOException {
+        expectProtocolError(new Frames().header(0, 2).bytes(), 0);
+        expectProtocolError(new Frames().header(44100, 0).bytes(), 0);
+        expectProtocolError(new Frames().header(0x80000000, 2).bytes(), 0);
+        expectProtocolError(new Frames().header(44100, 0xffffffff).bytes(), 0);
     }
 
     @Test public void runStopsAtCleanEof() throws IOException {
