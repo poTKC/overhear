@@ -57,25 +57,25 @@ public class PlayerTextTest {
         assertEquals("Login error \u2014 tap", s.text);
     }
 
-    @Test public void connectedButNotActiveAsksToSelectTheDevice() throws Exception {
+    @Test public void connectedButNotActiveIsWaiting() throws Exception {
         PlayerText.Status s = PlayerText.status(true, Supervisor.State.RUNNING, false, PlayerText.Phase.READY, 0,
                 null, true, state(false, false), "ST15i");
         assertEquals(PlayerText.Action.NONE, s.action);
-        assertEquals("Select \"ST15i\" in Spotify", s.text);
-        // Logged in but another device plays: the same, with the configured name.
+        assertEquals("Waiting\u2026", s.text);
+        // Logged in but another device plays: the same.
         s = PlayerText.status(true, Supervisor.State.RUNNING, false, PlayerText.Phase.READY, 0, null, true,
                 state(true, false), "Kitchen");
-        assertEquals("Select \"Kitchen\" in Spotify", s.text);
+        assertEquals("Waiting\u2026", s.text);
     }
 
-    @Test public void activeIsConnectedAndSaysWhenPaused() throws Exception {
+    @Test public void activeIsConnectedWhetherPlayingOrPaused() throws Exception {
         PlayerText.Status s = PlayerText.status(true, Supervisor.State.RUNNING, false, PlayerText.Phase.READY, 0,
                 null, true, playing("playing"), "ST15i");
         assertEquals("Connected", s.text);
         assertEquals(PlayerText.Action.NONE, s.action);
         s = PlayerText.status(true, Supervisor.State.RUNNING, false, PlayerText.Phase.READY, 0, null, true,
                 playing("paused"), "ST15i");
-        assertEquals("Connected \u00b7 Paused", s.text);
+        assertEquals("Connected", s.text);
     }
 
     @Test public void otherwiseThePhaseInEnglish() {

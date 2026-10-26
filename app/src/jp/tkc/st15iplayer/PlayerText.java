@@ -30,7 +30,7 @@ final class PlayerText {
 
     // The on-screen status line, short and in English (bottom-left of the player).
     static final String CONNECTED = "Connected";
-    static final String PAUSED = " \u00b7 Paused";
+    static final String WAITING = "Waiting\u2026";
     static final String TAP_TO_START = "Stopped \u2014 tap to start";
     static final String TAP_TO_RETRY = "Failed \u2014 tap to retry";
     static final String CHECK_KEY = "Check API key \u2014 tap";
@@ -53,10 +53,6 @@ final class PlayerText {
                 + "』を選んでください";
     }
 
-    /** For the screen: Select "name" in Spotify */
-    static String selectDeviceShort(String name) {
-        return "Select \"" + name + "\" in Spotify";
-    }
 
     /**
      * The status line.
@@ -68,7 +64,7 @@ final class PlayerText {
      * @param value the phase's number: download percent, seconds to the restart
      * @param authError the last login/key error from Soloist, or null
      * @param connected whether the service's client is connected to Soloist
-     * @param deviceName the configured device name
+     * @param deviceName the configured device name (no longer shown on the screen)
      */
     static Status status(boolean serviceUp, Supervisor.State state, boolean needsSetup, Phase phase, int value,
             String authError, boolean connected, PlayerState ps, String deviceName) {
@@ -77,11 +73,9 @@ final class PlayerText {
         if (state == Supervisor.State.FAILED) return new Status(TAP_TO_RETRY, Action.RETRY);
         if (authError != null) return new Status(LOGIN_ERROR, Action.SETUP);
         if (connected) {
-            if (ps.isLoggedIn() && ps.isActive()) {
-                boolean paused = ps.getStatus() == PlayerState.Status.PAUSED;
-                return new Status(paused ? CONNECTED + PAUSED : CONNECTED, Action.NONE);
-            }
-            return new Status(selectDeviceShort(deviceName), Action.NONE);
+            // Playing and paused both read "Connected"; the play button shows which.
+            if (ps.isLoggedIn() && ps.isActive()) return new Status(CONNECTED, Action.NONE);
+            return new Status(WAITING, Action.NONE);
         }
         return new Status(phaseText(phase, value), Action.NONE);
     }

@@ -210,7 +210,7 @@ SoloistClient は切断時に 1s、2s、5s（以降 5s）の間隔で再接続�
 
 - ステータス行（最下段の左）は短い英語で、タップで状態に応じた操作をする: 開始（`Stopped — tap to start`）、
   再試行（`Failed — tap to retry`）、設定（`Check API key — tap`、`Login error — tap`）。ほかに `Connected`
-  （一時停止中は `Connected · Paused`）、`Select "<デバイス名>" in Spotify`、`Starting…`、`Updating…`、`Downloading 62%`、
+  （再生中・一時停止中とも同じ）、`Waiting…`（スマホで再生先に選ばれるのを待っている）、`Starting…`、`Updating…`、`Downloading 62%`、
   `Unpacking…`、`Restarting in 4 s`、`Wi-Fi off`、`Start failed`、`Reconnecting…`。サービスは通知用の日本語の文言と一緒に
   状態（PlayerText.Phase と数値）を持ち、画面は PlayerText がそれを英語に変える（純 Java でホストテストするため、文言はリソースではなく
   PlayerText の定数）。通知とメニューは日本語のまま。文字は灰色（#B3B3B3）で、押下時のハイライトは付けない（背景は透明。
