@@ -77,6 +77,8 @@ public final class PlayerService extends Service {
     private static PlayerService current;
     /** The previous instance's Soloist, which may still be shutting down. */
     private static volatile SoloistProcess previousSoloist;
+    /** Serialises installs and downloads across service instances. */
+    private static final Object INSTALL_LOCK = new Object();
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private HandlerThread workerThread;
@@ -97,6 +99,10 @@ public final class PlayerService extends Service {
     private ComponentName mediaButtons;
     private RemoteControlClient rcc;
     private boolean begun;
+    private boolean mediaRegistered;
+    /** The generation of the last Effects.start (main thread). */
+    private int runGen;
+    private PowerManager.WakeLock debounceLock;
     private boolean destroyed;
     private volatile boolean traceAudio;
     /** The Wi-Fi network last seen up ("" when down): a change means a new network. */
@@ -140,6 +146,9 @@ public final class PlayerService extends Service {
         wakeLock = ((PowerManager) getSystemService(POWER_SERVICE))
                 .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "st15i-player");
         wakeLock.setReferenceCounted(false);
+        debounceLock = ((PowerManager) getSystemService(POWER_SERVICE))
+                .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "st15i-player-wifi");
+        debounceLock.setReferenceCounted(false);
 
         startForeground(NOTIFICATION_ID, buildNotification());
 
@@ -148,10 +157,11 @@ public final class PlayerService extends Service {
         worker = new Handler(workerThread.getLooper());
         installer = new RuntimeInstaller(this);
         soloist = new SoloistProcess(installer, new SoloistProcess.Listener() {
-            @Override public void onExit(final int code, final boolean expired, final boolean requested) {
+            @Override public void onExit(final int tag, final int code, final boolean expired,
+                    final boolean requested) {
                 main.post(new Runnable() {
                     @Override public void run() {
-                        onSoloistExit(code, expired, requested);
+                        onSoloistExit(tag, code, expired, requested);
                     }
                 });
             }
@@ -169,9 +179,10 @@ public final class PlayerService extends Service {
 
         sink = new AudioSink(this, null);
         sink.setFocusHandler(new AudioSink.FocusHandler() {
-            @Override public void pausePlayback() {
+            @Override public boolean pausePlayback() {
                 Log.i(TAG, "audio focus lost: pause");
                 client.pause();
+                return client.isConnected();
             }
 
             @Override public void resumePlayback() {
@@ -182,14 +193,11 @@ public final class PlayerService extends Service {
         sink.start();
 
         mediaButtons = new ComponentName(this, MediaButtonReceiver.class);
-        audioManager.registerMediaButtonEventReceiver(mediaButtons);
         Intent mb = new Intent(Intent.ACTION_MEDIA_BUTTON).setComponent(mediaButtons);
         rcc = new RemoteControlClient(PendingIntent.getBroadcast(this, 0, mb, 0));
         rcc.setTransportControlFlags(RemoteControlClient.FLAG_KEY_MEDIA_PLAY
                 | RemoteControlClient.FLAG_KEY_MEDIA_PAUSE | RemoteControlClient.FLAG_KEY_MEDIA_PLAY_PAUSE
                 | RemoteControlClient.FLAG_KEY_MEDIA_NEXT | RemoteControlClient.FLAG_KEY_MEDIA_PREVIOUS);
-        audioManager.registerRemoteControlClient(rcc);
-        updateRemoteControl();
 
         wifiKey = currentWifiKey();
         registerReceiver(connectivityReceiver, new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION));
@@ -220,6 +228,7 @@ public final class PlayerService extends Service {
         } else if (ACTION_RESTART_SOLOIST.equals(action)) {
             traceAudio = intent.getBooleanExtra(EXTRA_TRACE_AUDIO, false);
             Log.i(TAG, "restart requested" + (traceAudio ? " with audio trace" : ""));
+            registerMedia(); // a retry after giving up wants the keys back
             supervisor.restart();
         }
         return START_STICKY;
@@ -242,7 +251,8 @@ public final class PlayerService extends Service {
         notifications.cancel(NOTIFICATION_NO_KEY);
         if (!begun) Log.i(TAG, "starting");
         begun = true;
-        acquireLocks();
+        acquireWifiLocks();
+        registerMedia();
         supervisor.begin(isWifiUp());
         if (supervisor.state() == Supervisor.State.WAIT_WIFI) setStatus("Waiting for Wi-Fi");
     }
@@ -266,8 +276,7 @@ public final class PlayerService extends Service {
         sink.abandonFocus();
         unregisterReceiver(connectivityReceiver);
         unregisterReceiver(noisyReceiver);
-        audioManager.unregisterRemoteControlClient(rcc);
-        audioManager.unregisterMediaButtonEventReceiver(mediaButtons);
+        unregisterMedia();
         releaseLocks();
         stopForeground(true);
         super.onDestroy();
@@ -287,18 +296,35 @@ public final class PlayerService extends Service {
     };
 
     private final Supervisor.Effects effects = new Supervisor.Effects() {
-        @Override public void start(final boolean refresh) {
+        @Override public void start(final int gen, final boolean refresh) {
+            runGen = gen;
             setStatus(refresh ? "Updating Soloist" : "Starting Soloist");
             final boolean trace = traceAudio;
             worker.post(new Runnable() {
                 @Override public void run() {
-                    startOnWorker(refresh, trace);
+                    startOnWorker(gen, refresh, trace);
                 }
             });
         }
 
         @Override public void stop() {
             soloist.stop();
+            if (!soloist.isRunning()) {
+                // Already gone (its exit may be queued too; the Supervisor
+                // takes the first): complete the stop so nothing waits forever.
+                final int gen = runGen;
+                main.post(new Runnable() {
+                    @Override public void run() {
+                        onSoloistExit(gen, -1, false, true);
+                    }
+                });
+            }
+        }
+
+        @Override public void setActive(boolean active) {
+            Log.i(TAG, active ? "active: holding the wake lock" : "inactive: wake lock released");
+            if (active) wakeLock.acquire();
+            else if (wakeLock.isHeld()) wakeLock.release();
         }
 
         @Override public void schedule(long delayMs) {
@@ -315,40 +341,50 @@ public final class PlayerService extends Service {
         @Override public void failed(String reason) {
             Log.w(TAG, "giving up: " + reason);
             setStatus("Stopped: " + reason);
-            releaseLocks();
+            // Let other players have the media keys while we cannot play.
+            unregisterMedia();
         }
     };
 
     /** Worker thread: install, download if needed, start. Reports to the Supervisor on main. */
-    private void startOnWorker(boolean refresh, boolean trace) {
+    private void startOnWorker(final int gen, boolean refresh, boolean trace) {
         String error = null;
         boolean retry = true;
         try {
-            waitForPreviousSoloist();
+            boolean previousRunning = waitForPreviousSoloist();
             if (!prefs.hasApiKey()) {
                 error = "no API key";
                 retry = false;
             } else {
-                installer.ensureBundle();
-                ProgressListener progress = new ProgressListener() {
-                    @Override public void onProgress(int percent) {
-                        postStatus("Downloading Soloist " + percent + "%");
-                    }
+                RuntimeInstaller.Result r;
+                // One install at a time across service instances: a previous
+                // instance's worker may still be finishing (it was cancelled).
+                synchronized (INSTALL_LOCK) {
+                    installer.ensureBundle();
+                    ProgressListener progress = new ProgressListener() {
+                        @Override public void onProgress(int percent) {
+                            postStatus("Downloading Soloist " + percent + "%");
+                        }
 
-                    @Override public void onExtracting() {
-                        postStatus("Extracting Soloist");
-                    }
-                };
-                RuntimeInstaller.Result r = installer.ensureSoloist(refresh, progress);
-                if (!r.ok && r.noSpace) {
-                    // Soloist is not running here, so its cache is fair game.
-                    installer.clearSoloistCache();
+                        @Override public void onExtracting() {
+                            postStatus("Extracting Soloist");
+                        }
+                    };
                     r = installer.ensureSoloist(refresh, progress);
+                    if (!r.ok && r.noSpace) {
+                        if (previousRunning) {
+                            Log.w(TAG, "low storage, but the previous Soloist still runs: not clearing its cache");
+                        } else {
+                            // No Soloist is running, so its cache is fair game.
+                            installer.clearSoloistCache();
+                            r = installer.ensureSoloist(refresh, progress);
+                        }
+                    }
                 }
                 if (!r.ok) {
                     error = r.message;
                 } else {
-                    soloist.start(prefs.getDeviceName(), prefs.getApiKey(), false, trace);
+                    soloist.start(prefs.getDeviceName(), prefs.getApiKey(), false, trace, gen);
                 }
             }
         } catch (IOException e) {
@@ -367,29 +403,32 @@ public final class PlayerService extends Service {
             @Override public void run() {
                 if (destroyed) return;
                 if (err == null) {
-                    setStatus("Ready: select \"" + prefs.getDeviceName() + "\" in Spotify");
-                    supervisor.onStarted(now);
+                    setStatus("Soloist started, connecting");
+                    supervisor.onStarted(gen, now);
                 } else {
                     Log.w(TAG, "start failed: " + err);
                     setStatus("Start failed: " + err);
-                    supervisor.onStartFailed(err, again);
+                    supervisor.onStartFailed(gen, err, again);
                 }
             }
         });
     }
 
-    private static void waitForPreviousSoloist() {
+    /** Waits a little for the previous instance's Soloist; true if it still runs. */
+    private static boolean waitForPreviousSoloist() {
         SoloistProcess prev = previousSoloist;
-        if (prev == null) return;
+        if (prev == null) return false;
         long deadline = SystemClock.elapsedRealtime() + PREVIOUS_EXIT_WAIT_MS;
         while (prev.isRunning() && SystemClock.elapsedRealtime() < deadline) SystemClock.sleep(50);
+        if (prev.isRunning()) return true;
         previousSoloist = null;
+        return false;
     }
 
-    private void onSoloistExit(int code, boolean expired, boolean requested) {
+    private void onSoloistExit(int gen, int code, boolean expired, boolean requested) {
         if (destroyed) return;
         if (!requested) Log.w(TAG, "Soloist exited with " + code + (expired ? " (expired)" : ""));
-        supervisor.onExit(code, expired, requested, SystemClock.elapsedRealtime());
+        supervisor.onExit(gen, code, expired, requested, SystemClock.elapsedRealtime());
         if (supervisor.state() == Supervisor.State.WAIT_WIFI) setStatus("Waiting for Wi-Fi");
     }
 
@@ -397,6 +436,8 @@ public final class PlayerService extends Service {
 
     private final BroadcastReceiver connectivityReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
+            // Stay awake until the debounced check has run, even with the screen off.
+            debounceLock.acquire(WIFI_DEBOUNCE_MS + 1000);
             main.removeCallbacks(wifiCheck);
             main.postDelayed(wifiCheck, WIFI_DEBOUNCE_MS);
         }
@@ -411,7 +452,7 @@ public final class PlayerService extends Service {
             boolean changed = !key.isEmpty() && !wifiKey.isEmpty();
             wifiKey = key;
             if (changed) supervisor.onWifi(false); // another network: restart as if it had dropped
-            if (!key.isEmpty() && begun && supervisor.state() != Supervisor.State.FAILED) {
+            if (!key.isEmpty() && begun) {
                 // The driver may have dropped the multicast filter exemption.
                 multicastLock.release();
                 multicastLock.acquire();
@@ -431,19 +472,42 @@ public final class PlayerService extends Service {
         if (!isWifiUp()) return "";
         WifiInfo info = wifi.getConnectionInfo();
         if (info == null) return "wifi";
-        return info.getSSID() + "/" + info.getBSSID() + "/" + info.getIpAddress();
+        // Not the BSSID: roaming between access points of one network must not restart Soloist.
+        return info.getSSID() + "/" + info.getIpAddress();
     }
 
-    private void acquireLocks() {
+    /**
+     * The multicast and Wi-Fi locks are held for the whole started service,
+     * even with Wi-Fi down (so the sleep policy never turns Wi-Fi off; they
+     * cost no CPU). The wake lock follows Supervisor activity (setActive).
+     */
+    private void acquireWifiLocks() {
         multicastLock.acquire();
         wifiLock.acquire();
-        wakeLock.acquire();
     }
 
     private void releaseLocks() {
         if (multicastLock.isHeld()) multicastLock.release();
         if (wifiLock.isHeld()) wifiLock.release();
         if (wakeLock.isHeld()) wakeLock.release();
+        if (debounceLock.isHeld()) debounceLock.release();
+    }
+
+    private void registerMedia() {
+        if (mediaRegistered) return;
+        mediaRegistered = true;
+        audioManager.registerMediaButtonEventReceiver(mediaButtons);
+        audioManager.registerRemoteControlClient(rcc);
+        lastPlayState = -1;
+        lastMetadata = null;
+        updateRemoteControl();
+    }
+
+    private void unregisterMedia() {
+        if (!mediaRegistered) return;
+        mediaRegistered = false;
+        audioManager.unregisterRemoteControlClient(rcc);
+        audioManager.unregisterMediaButtonEventReceiver(mediaButtons);
     }
 
     // --- controls ---
@@ -481,7 +545,9 @@ public final class PlayerService extends Service {
 
     /** Called by MediaButtonReceiver; false when no service is running. */
     static boolean dispatchMediaKey(Context c, int keyCode) {
-        if (current == null || !current.begun) return false;
+        if (current == null || !current.begun || current.supervisor.state() == Supervisor.State.FAILED) {
+            return false;
+        }
         c.startService(new Intent(c, PlayerService.class).setAction(ACTION_MEDIA_KEY)
                 .putExtra(EXTRA_KEYCODE, keyCode));
         return true;
@@ -502,7 +568,13 @@ public final class PlayerService extends Service {
         }
 
         @Override public void onConnected(boolean connected) {
-            if (!connected) {
+            if (connected) {
+                setStatus("Ready: select \"" + prefs.getDeviceName() + "\" in Spotify");
+                if (sink.isFocusMuted()) {
+                    Log.i(TAG, "reconnected while muted for a focus loss: pause");
+                    client.pause();
+                }
+            } else {
                 state = new PlayerState();
                 updateNotification();
                 updateRemoteControl();
@@ -511,6 +583,7 @@ public final class PlayerService extends Service {
 
         @Override public void onError(String message) {
             Log.w(TAG, "Soloist: " + message);
+            if (Supervisor.isAuthError(message)) setStatus("Soloist: " + message);
         }
     };
 
@@ -578,7 +651,7 @@ public final class PlayerService extends Service {
     }
 
     private void updateRemoteControl() {
-        if (rcc == null) return;
+        if (rcc == null || !mediaRegistered) return;
         int ps;
         switch (client.isConnected() ? state.getStatus() : PlayerState.Status.IDLE) {
             case PLAYING:

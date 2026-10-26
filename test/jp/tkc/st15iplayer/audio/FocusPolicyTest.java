@@ -98,4 +98,33 @@ public class FocusPolicyTest {
         assertEquals(NONE, p.onChange(0, true));
         assertEquals(NONE, p.onChange(7, false));
     }
+
+    @Test public void volumeFollowsDuckAndMute() {
+        FocusPolicy p = new FocusPolicy();
+        assertEquals(1f, p.volume(), 0f);
+        p.onChange(LOSS_TRANSIENT_CAN_DUCK, true);
+        assertEquals(FocusPolicy.DUCK_VOLUME, p.volume(), 0f);
+        p.onChange(GAIN, true);
+        assertEquals(1f, p.volume(), 0f);
+    }
+
+    @Test public void failedPauseMutesUntilFocusReturns() {
+        // Soloist's API is down, so the pause could not be sent: go silent.
+        FocusPolicy p = new FocusPolicy();
+        assertEquals(PAUSE, p.onChange(LOSS, true));
+        p.onPauseFailed();
+        assertTrue(p.isMuted());
+        assertEquals(0f, p.volume(), 0f);
+        p.onGranted(); // played again on our own: audible again
+        assertFalse(p.isMuted());
+        assertEquals(1f, p.volume(), 0f);
+    }
+
+    @Test public void failedTransientPauseUnmutesAndResumesOnGain() {
+        FocusPolicy p = new FocusPolicy();
+        assertEquals(PAUSE, p.onChange(LOSS_TRANSIENT, true));
+        p.onPauseFailed();
+        assertEquals(RESUME, p.onChange(GAIN, true));
+        assertFalse(p.isMuted());
+    }
 }

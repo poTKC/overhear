@@ -39,7 +39,6 @@ public final class AudioSink {
     public static final String SOCKET_NAME = "st15i-player-audio";
     private static final String TAG = "ST15iAudio";
     private static final long BIND_RETRY_MS = 1000;
-    private static final float DUCK_VOLUME = 0.2f;
 
     /**
      * Sink state for the service and UI. Callbacks run on the audio read
@@ -60,7 +59,8 @@ public final class AudioSink {
      * block briefly, unlike Listener). Usually routed to SoloistClient.
      */
     public interface FocusHandler {
-        void pausePlayback();
+        /** @return false if the pause could not be sent (the track is then muted) */
+        boolean pausePlayback();
 
         void resumePlayback();
     }
@@ -94,9 +94,14 @@ public final class AudioSink {
                     FocusHandler h = focusHandler;
                     switch (a) {
                         case PAUSE:
-                            if (h != null) h.pausePlayback();
+                            if (h == null || !h.pausePlayback()) {
+                                Log.w(TAG, "could not pause Soloist: muting until focus returns");
+                                focusPolicy.onPauseFailed();
+                                applyVolume();
+                            }
                             break;
                         case RESUME:
+                            applyVolume(); // may have been muted
                             if (h != null) h.resumePlayback();
                             break;
                         case DUCK:
@@ -176,13 +181,18 @@ public final class AudioSink {
         focusHandler = h;
     }
 
+    /** True while muted because a focus-loss pause could not be sent. */
+    public boolean isFocusMuted() {
+        return focusPolicy.isMuted();
+    }
+
     /** Gives up audio focus, e.g. when the owner is being destroyed. */
     public void abandonFocus() {
         audioManager.abandonAudioFocus(focusListener);
     }
 
     private void applyVolume() {
-        float v = focusPolicy.isDucked() ? DUCK_VOLUME : AudioTrack.getMaxVolume();
+        float v = focusPolicy.volume() * AudioTrack.getMaxVolume();
         synchronized (trackLock) {
             if (currentTrack != null) currentTrack.setStereoVolume(v, v);
         }

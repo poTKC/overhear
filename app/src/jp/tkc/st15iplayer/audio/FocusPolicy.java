@@ -13,6 +13,9 @@ package jp.tkc.st15iplayer.audio;
  *   ..._CAN_DUCK    lower the volume until GAIN; keeps playing
  *   GAIN            resume if we paused, restore the volume
  *
+ * If a pause cannot be sent (Soloist's API is down), onPauseFailed mutes
+ * the track instead until focus returns.
+ *
  * The audio socket is never paused here: pausing goes through Soloist, which
  * corks fakepulse, so the reader keeps draining. Thread-safe.
  */
@@ -37,8 +40,12 @@ public final class FocusPolicy {
         ABANDON
     }
 
+    /** Track volume while ducked. */
+    public static final float DUCK_VOLUME = 0.2f;
+
     private boolean pausedByUs;
     private boolean ducked;
+    private boolean muted;
 
     /** @param playing audio is being written (AudioSink.Listener.onPlaying) */
     public synchronized Action onChange(int change, boolean playing) {
@@ -55,8 +62,9 @@ public final class FocusPolicy {
                 ducked = true;
                 return Action.DUCK;
             case GAIN:
-                boolean wasDucked = ducked;
+                boolean wasDucked = ducked || muted;
                 ducked = false;
+                muted = false;
                 if (pausedByUs) {
                     pausedByUs = false;
                     return Action.RESUME;
@@ -73,15 +81,33 @@ public final class FocusPolicy {
      * ducked (restore the volume).
      */
     public synchronized boolean onGranted() {
-        boolean wasDucked = ducked;
+        boolean wasDucked = ducked || muted;
         pausedByUs = false;
         ducked = false;
+        muted = false;
         return wasDucked;
     }
 
     /** True while paused for a transient loss: do not abandon focus on cork. */
     public synchronized boolean holdOnPause() {
         return pausedByUs;
+    }
+
+    /**
+     * A PAUSE could not be sent (Soloist's API is not connected): the track
+     * is muted instead, until focus comes back or we play again on our own.
+     */
+    public synchronized void onPauseFailed() {
+        muted = true;
+    }
+
+    public synchronized boolean isMuted() {
+        return muted;
+    }
+
+    /** The track volume for the current focus state: 0 muted, DUCK_VOLUME ducked, else 1. */
+    public synchronized float volume() {
+        return muted ? 0f : ducked ? DUCK_VOLUME : 1f;
     }
 
     public synchronized boolean isDucked() {

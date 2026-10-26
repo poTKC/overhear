@@ -1,6 +1,7 @@
 package jp.tkc.st15iplayer;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import java.util.ArrayList;
@@ -13,8 +14,15 @@ public class SupervisorTest {
     private final List<String> calls = new ArrayList<String>();
     private Supervisor s;
 
+    private final List<Boolean> active = new ArrayList<Boolean>();
+    private int gen = -1;
+
     private final Supervisor.Effects fx = new Supervisor.Effects() {
-        @Override public void start(boolean refresh) { calls.add(refresh ? "start refresh" : "start"); }
+        @Override public void start(int g, boolean refresh) {
+            gen = g;
+            calls.add(refresh ? "start refresh" : "start");
+        }
+        @Override public void setActive(boolean a) { active.add(a); }
         @Override public void stop() { calls.add("stop"); }
         @Override public void schedule(long delayMs) { calls.add("schedule " + delayMs); }
         @Override public void cancelTimer() { calls.add("cancel"); }
@@ -25,6 +33,12 @@ public class SupervisorTest {
         s = new Supervisor(fx);
     }
 
+    private void started(long now) { s.onStarted(gen, now); }
+    private void exit(int code, boolean expired, boolean requested, long now) {
+        s.onExit(gen, code, expired, requested, now);
+    }
+    private void startFailed(String reason, boolean retry) { s.onStartFailed(gen, reason, retry); }
+
     private String take() {
         String all = calls.toString();
         calls.clear();
@@ -33,7 +47,7 @@ public class SupervisorTest {
 
     private void running(long now) {
         s.begin(true);
-        s.onStarted(now);
+        started(now);
         calls.clear();
     }
 
@@ -50,7 +64,7 @@ public class SupervisorTest {
         s.begin(true);
         assertEquals("[start]", take());
         assertEquals(Supervisor.State.STARTING, s.state());
-        s.onStarted(0);
+        started(0);
         assertEquals(Supervisor.State.RUNNING, s.state());
         s.begin(true); // already going
         assertEquals("[]", take());
@@ -66,49 +80,49 @@ public class SupervisorTest {
 
     @Test public void crashesBackOffAndResetAfterAStableRun() {
         running(0);
-        s.onExit(139, false, false, 5000);
+        exit(139, false, false, 5000);
         assertEquals("[schedule 1000]", take());
         assertEquals(Supervisor.State.BACKOFF, s.state());
         s.onTimer();
         assertEquals("[start]", take());
-        s.onStarted(10000);
-        s.onExit(139, false, false, 11000);
+        started(10000);
+        exit(139, false, false, 11000);
         assertEquals("[schedule 2000]", take());
         s.onTimer();
         assertEquals("[start]", take());
-        s.onStarted(20000);
-        s.onExit(139, false, false, 21000);
+        started(20000);
+        exit(139, false, false, 21000);
         assertEquals("[schedule 4000]", take());
         s.onTimer();
         assertEquals("[start]", take());
-        s.onStarted(30000);
+        started(30000);
         // Ran 60 s: back to 1 s.
-        s.onExit(139, false, false, 90000);
+        exit(139, false, false, 90000);
         assertEquals("[schedule 1000]", take());
     }
 
     @Test public void requestedExitDoesNotRestart() {
         running(0);
-        s.onExit(0, false, true, 5000);
+        exit(0, false, true, 5000);
         assertEquals("[]", take());
     }
 
     @Test public void expiredRefreshesAtOnceThenBacksOffThenGivesUp() {
         running(0);
-        s.onExit(10, true, false, 1000);
+        exit(10, true, false, 1000);
         assertEquals("[start refresh]", take());
-        s.onStarted(2000);
-        s.onExit(10, true, false, 3000);
+        started(2000);
+        exit(10, true, false, 3000);
         assertEquals("[schedule 1000]", take());
         s.onTimer();
         assertEquals("[start refresh]", take());
-        s.onStarted(5000);
-        s.onExit(10, true, false, 6000);
+        started(5000);
+        exit(10, true, false, 6000);
         assertEquals("[schedule 2000]", take());
         s.onTimer();
         assertEquals("[start refresh]", take());
-        s.onStarted(9000);
-        s.onExit(10, true, false, 9500);
+        started(9000);
+        exit(10, true, false, 9500);
         String c = take();
         assertTrue(c, c.startsWith("[failed "));
         assertEquals(Supervisor.State.FAILED, s.state());
@@ -120,32 +134,32 @@ public class SupervisorTest {
 
     @Test public void expiredAfterAStableRunRefreshesAgain() {
         running(0);
-        s.onExit(10, true, false, 1000);
-        s.onStarted(2000);
-        s.onExit(10, true, false, 3000);
+        exit(10, true, false, 1000);
+        started(2000);
+        exit(10, true, false, 3000);
         s.onTimer();
-        s.onStarted(5000);
+        started(5000);
         take();
-        s.onExit(10, true, false, 5000 + 90L * 24 * 3600 * 1000);
+        exit(10, true, false, 5000 + 90L * 24 * 3600 * 1000);
         assertEquals("[start refresh]", take());
     }
 
     @Test public void failedStartRetriesWithBackoffKeepingRefresh() {
         running(0);
-        s.onExit(10, true, false, 1000);
+        exit(10, true, false, 1000);
         take();
-        s.onStartFailed("download failed", true);
+        startFailed("download failed", true);
         assertEquals("[schedule 1000]", take());
         s.onTimer();
         assertEquals("[start refresh]", take());
-        s.onStartFailed("download failed", true);
+        startFailed("download failed", true);
         assertEquals("[schedule 2000]", take());
     }
 
     @Test public void fatalStartFailureGivesUp() {
         s.begin(true);
         take();
-        s.onStartFailed("no API key", false);
+        startFailed("no API key", false);
         assertEquals("[failed no API key]", take());
         assertEquals(Supervisor.State.FAILED, s.state());
     }
@@ -154,7 +168,7 @@ public class SupervisorTest {
         running(0);
         s.onWifi(false);
         assertEquals("[]", take()); // a running Soloist is left alone
-        s.onExit(139, false, false, 5000);
+        exit(139, false, false, 5000);
         assertEquals("[]", take());
         assertEquals(Supervisor.State.WAIT_WIFI, s.state());
         s.onWifi(true);
@@ -163,7 +177,7 @@ public class SupervisorTest {
 
     @Test public void wifiDownDuringBackoffCancelsTheTimer() {
         running(0);
-        s.onExit(139, false, false, 5000);
+        exit(139, false, false, 5000);
         take();
         s.onWifi(false);
         assertEquals("[cancel]", take());
@@ -182,7 +196,7 @@ public class SupervisorTest {
         assertEquals(Supervisor.State.RESTARTING, s.state());
         s.onWifi(true); // no change
         assertEquals("[]", take());
-        s.onExit(143, false, true, 5000);
+        exit(143, false, true, 5000);
         assertEquals("[start]", take());
     }
 
@@ -191,7 +205,7 @@ public class SupervisorTest {
         s.onWifi(false);
         s.onWifi(true);
         take();
-        s.onExit(139, false, false, 5000); // crashed before the SIGTERM landed
+        exit(139, false, false, 5000); // crashed before the SIGTERM landed
         assertEquals("[start]", take());
     }
 
@@ -200,11 +214,11 @@ public class SupervisorTest {
         s.onWifi(false);
         s.onWifi(true);
         assertEquals("[start]", take());
-        s.onStarted(1000);
+        started(1000);
         assertEquals("[stop]", take());
-        s.onExit(143, false, true, 2000);
+        exit(143, false, true, 2000);
         assertEquals("[start]", take());
-        s.onStarted(3000);
+        started(3000);
         assertEquals("[]", take());
         assertEquals(Supervisor.State.RUNNING, s.state());
     }
@@ -214,13 +228,13 @@ public class SupervisorTest {
         s.onWifi(false);
         s.onWifi(true);
         take();
-        s.onStartFailed("dns", true);
+        startFailed("dns", true);
         assertEquals("[start]", take());
     }
 
     @Test public void wifiBackDuringBackoffStartsAtOnce() {
         running(0);
-        s.onExit(139, false, false, 5000);
+        exit(139, false, false, 5000);
         take();
         s.onWifi(false);
         s.onWifi(true);
@@ -229,7 +243,7 @@ public class SupervisorTest {
 
     @Test public void retryAfterFailureRestartsTheSupervisor() {
         s.begin(true);
-        s.onStartFailed("no API key", false);
+        startFailed("no API key", false);
         take();
         s.begin(true);
         assertEquals("[start]", take());
@@ -239,8 +253,8 @@ public class SupervisorTest {
         running(0);
         s.shutdown();
         assertEquals("[cancel, stop]", take());
-        s.onExit(139, false, true, 5000);
-        s.onStartFailed("x", true);
+        exit(139, false, true, 5000);
+        startFailed("x", true);
         s.onTimer();
         s.onWifi(false);
         s.onWifi(true);
@@ -253,7 +267,7 @@ public class SupervisorTest {
         s.begin(true);
         s.shutdown();
         take();
-        s.onStarted(1000); // the worker finished the fork after shutdown
+        started(1000); // the worker finished the fork after shutdown
         assertEquals("[stop]", take());
     }
 
@@ -261,17 +275,17 @@ public class SupervisorTest {
         running(0);
         s.restart();
         assertEquals("[stop]", take());
-        s.onExit(143, false, true, 1000);
+        exit(143, false, true, 1000);
         assertEquals("[start]", take());
     }
 
     @Test public void restartCutsBackoffShortAndRetriesAFailure() {
         running(0);
-        s.onExit(139, false, false, 1000);
+        exit(139, false, false, 1000);
         take();
         s.restart();
         assertEquals("[cancel, start]", take());
-        s.onStartFailed("no API key", false);
+        startFailed("no API key", false);
         take();
         s.restart();
         assertEquals("[start]", take());
@@ -282,5 +296,198 @@ public class SupervisorTest {
         s.restart();
         assertEquals("[]", take());
         assertEquals(Supervisor.State.WAIT_WIFI, s.state());
+    }
+
+    // --- exits racing the start (C1) ---
+
+    @Test public void exitBeforeStartedBacksOff() {
+        s.begin(true);
+        take();
+        exit(139, false, false, 500); // crashed before the worker reported the start
+        assertEquals("[]", take());
+        started(1000);
+        assertEquals("[schedule 1000]", take());
+        assertEquals(Supervisor.State.BACKOFF, s.state());
+    }
+
+    @Test public void expiredBeforeStartedRefreshes() {
+        s.begin(true);
+        take();
+        exit(10, true, false, 500);
+        started(1000);
+        assertEquals("[start refresh]", take());
+    }
+
+    @Test public void exitBeforeStartedWithPendingRestartStartsAgain() {
+        s.begin(true);
+        s.onWifi(false);
+        s.onWifi(true); // restart wanted once started
+        take();
+        exit(143, false, false, 500);
+        started(1000);
+        assertEquals("[start]", take());
+        assertEquals(Supervisor.State.STARTING, s.state());
+    }
+
+    @Test public void staleExitsAreIgnored() {
+        running(0);
+        int old = gen;
+        s.restart();
+        s.onExit(old, 143, false, true, 1000);
+        assertEquals("[stop, start]", take());
+        s.onExit(old, 139, false, false, 2000); // the same run reported twice
+        s.onStarted(old, 2000);
+        assertEquals("[]", take());
+        assertEquals(Supervisor.State.STARTING, s.state());
+        started(3000);
+        assertEquals(Supervisor.State.RUNNING, s.state());
+    }
+
+    @Test public void restartWhileRestartingWaitsForTheExit() {
+        running(0);
+        s.restart();
+        s.restart();
+        assertEquals("[stop]", take());
+        exit(143, false, true, 1000);
+        assertEquals("[start]", take());
+    }
+
+    @Test public void restartWhileWaitingForWifiKeepsWaiting() {
+        s.begin(false);
+        s.restart();
+        s.restart();
+        assertEquals("[]", take());
+        assertEquals(Supervisor.State.WAIT_WIFI, s.state());
+        s.onWifi(true);
+        assertEquals("[start]", take());
+    }
+
+    // --- active (locks) ---
+
+    @Test public void activeFollowsStateAndWifi() {
+        s.begin(true);
+        assertEquals("[true]", active.toString());
+        started(0);
+        s.onWifi(false); // Wi-Fi down while RUNNING
+        assertEquals("[true, false]", active.toString());
+        s.onWifi(true); // restart
+        assertEquals("[true, false, true]", active.toString());
+        exit(143, false, true, 1000);
+        started(2000);
+        exit(139, false, false, 3000); // backoff is still active
+        assertEquals("[true, false, true]", active.toString());
+        s.shutdown();
+        assertEquals("[true, false, true, false]", active.toString());
+    }
+
+    @Test public void failedIsInactiveAndDebugRestartReactivates() {
+        s.begin(true);
+        startFailed("no API key", false);
+        assertEquals("[true, false]", active.toString());
+        s.restart();
+        assertEquals("[true, false, true]", active.toString());
+    }
+
+    @Test public void waitingForWifiIsInactive() {
+        s.begin(false);
+        assertEquals("[]", active.toString());
+        s.onWifi(true);
+        assertEquals("[true]", active.toString());
+    }
+
+    // --- endless crash loops (I4) ---
+
+    @Test public void givesUpAfterTenShortRuns() {
+        s.begin(true);
+        long t = 0;
+        for (int i = 0; i < 9; i++) {
+            started(t);
+            exit(1, false, false, t + 2000);
+            s.onTimer();
+            t += 100000;
+        }
+        take();
+        started(t);
+        exit(1, false, false, t + 2000);
+        String c = take();
+        assertTrue(c, c.startsWith("[failed Soloist keeps exiting"));
+        assertEquals(Supervisor.State.FAILED, s.state());
+    }
+
+    @Test public void aLongerRunResetsTheShortRunCount() {
+        s.begin(true);
+        long t = 0;
+        for (int i = 0; i < 9; i++) {
+            started(t);
+            exit(1, false, false, t + 2000);
+            s.onTimer();
+            t += 100000;
+        }
+        started(t);
+        exit(1, false, false, t + 20000); // 20 s: not short
+        s.onTimer();
+        t += 100000;
+        for (int i = 0; i < 9; i++) {
+            started(t);
+            exit(1, false, false, t + 2000);
+            s.onTimer();
+            t += 100000;
+        }
+        assertEquals(Supervisor.State.STARTING, s.state());
+    }
+
+    @Test public void debugRestartResetsTheShortRunCount() {
+        s.begin(true);
+        long t = 0;
+        for (int i = 0; i < 9; i++) {
+            started(t);
+            exit(1, false, false, t + 2000);
+            s.onTimer();
+            t += 100000;
+        }
+        started(t);
+        s.restart();
+        exit(143, false, true, t + 1000);
+        started(t + 2000);
+        exit(1, false, false, t + 3000);
+        assertEquals(Supervisor.State.BACKOFF, s.state());
+    }
+
+    // --- refresh cap (M1) ---
+
+    @Test public void refreshesAreCappedPerDayEvenWithStableRuns() {
+        running(0);
+        long t = 0;
+        String last = "";
+        for (int i = 0; i < 4; i++) {
+            t += 120000; // each run is stable (2 min)
+            exit(10, true, false, t);
+            last = take();
+            s.onTimer();
+            started(t + 1000);
+            take();
+        }
+        assertTrue(last, last.startsWith("[failed "));
+    }
+
+    @Test public void refreshesSpreadOverDaysNeverGiveUp() {
+        running(0);
+        long t = 0;
+        for (int i = 0; i < 6; i++) {
+            t += 25L * 3600 * 1000;
+            exit(10, true, false, t);
+            assertEquals("[start refresh]", take());
+            started(t + 1000);
+        }
+    }
+
+    // --- errors (I4) ---
+
+    @Test public void recognisesAuthErrorsButNotTheStartupNoise() {
+        assertTrue(Supervisor.isAuthError("login failed: bad credentials"));
+        assertTrue(Supervisor.isAuthError("Invalid API key"));
+        assertTrue(Supervisor.isAuthError("unauthorized"));
+        assertFalse(Supervisor.isAuthError("command requires authentication"));
+        assertFalse(Supervisor.isAuthError("track unavailable"));
     }
 }

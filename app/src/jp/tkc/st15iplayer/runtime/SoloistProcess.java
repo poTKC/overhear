@@ -59,6 +59,7 @@ public final class SoloistProcess {
          * The process started by a start() call exited. Runs on that run's
          * reader thread and must return quickly (post to a Handler).
          *
+         * @param runTag    the tag passed to that start() call
          * @param exitCode  Soloist's exit status (a signal shows as its number
          *                  on Android 4.3, e.g. 9 for SIGKILL); -1 if unknown
          * @param expired   exitCode == SoloistCommand.EXIT_EXPIRED and no stop
@@ -67,7 +68,7 @@ public final class SoloistProcess {
          * @param requested the exit followed stop() or release(); judge
          *                  crashes by this flag, not by the exit code
          */
-        void onExit(int exitCode, boolean expired, boolean requested);
+        void onExit(int runTag, int exitCode, boolean expired, boolean requested);
     }
 
     /** One started process. */
@@ -75,13 +76,15 @@ public final class SoloistProcess {
         final Process process;
         final String secret;
         final String loaderPath;
+        final int tag;
         final AtomicBoolean stopRequested = new AtomicBoolean();
         final CountDownLatch exited = new CountDownLatch(1);
         private long windowStart = -LOGCAT_WINDOW_MS;
         private int windowCount;
         private int suppressed;
 
-        Run(Process process, String secret, String loaderPath) {
+        Run(Process process, String secret, String loaderPath, int tag) {
+            this.tag = tag;
             this.process = process;
             this.secret = secret;
             this.loaderPath = loaderPath;
@@ -130,7 +133,7 @@ public final class SoloistProcess {
                     + (requested ? " after stop" : "");
             log.add("[st15i] " + msg);
             Log.i(TAG, msg);
-            if (listener != null) listener.onExit(code, expired, requested);
+            if (listener != null) listener.onExit(tag, code, expired, requested);
         }
 
         /** SIGTERM, then SIGKILL after TERM_GRACE_MS, on a helper thread. */
@@ -201,15 +204,16 @@ public final class SoloistProcess {
      *         while starting (no process is left running)
      */
     public void start(String deviceName, String apiKey, boolean verbose) throws IOException {
-        start(deviceName, apiKey, verbose, false);
+        start(deviceName, apiKey, verbose, false, 0);
     }
 
     /**
      * As start(deviceName, apiKey, verbose), optionally with FAKEPULSE_LOG=1
      * (debug: fakepulse traces its calls and underflows to the log ring;
-     * getUnderflowCount() counts the latter).
+     * getUnderflowCount() counts the latter). runTag comes back with this
+     * run's exit (Listener.onExit), so the caller can tell runs apart.
      */
-    public void start(String deviceName, String apiKey, boolean verbose, boolean traceAudio)
+    public void start(String deviceName, String apiKey, boolean verbose, boolean traceAudio, int runTag)
             throws IOException {
         File bin = installer.soloistBin();
         if (!bin.isFile()) throw new IOException("Soloist is not installed");
@@ -247,7 +251,7 @@ public final class SoloistProcess {
                 if (released || stopCount != stopsBefore) throw new IOException("stopped while starting");
                 Process p = pb.start();
                 try {
-                    run = new Run(p, apiKey, cmd.loaderPath());
+                    run = new Run(p, apiKey, cmd.loaderPath(), runTag);
                     current.set(run);
                 } catch (RuntimeException e) {
                     p.destroy();
