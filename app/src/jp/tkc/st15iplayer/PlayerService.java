@@ -690,9 +690,10 @@ public final class PlayerService extends Service {
             // Muted (getStreamVolume reads 0): the index is stored for the
             // unmute, nothing to step. Report the 0 in effect, quietly.
             if (before == 0 || isMusicMuted()) return now;
-            // Refused: Android 4.3's safe headphone volume. On this ROM the
-            // media volume stops at 10 of 15 on headphones (the keys too) and
-            // no confirmation dialog ever appears; with flags 0 the raise is
+            // Refused: Android 4.3's safe headphone volume, where the device
+            // setting enables it. On this ROM it stops the headphone media
+            // volume at 10 of 15 (the keys too) and no confirmation dialog
+            // ever appears; with flags 0 the raise is
             // only kept pending. Go as high as allowed and show the volume
             // panel (at most every SAFE_VOLUME_UI_MS) so the cap is visible.
             for (int i = index - 1; i > now; i--) {
