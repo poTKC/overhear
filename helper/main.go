@@ -358,8 +358,8 @@ func extractTarGz(archive, root string) error {
 			if filepath.IsAbs(h.Linkname) {
 				return fmt.Errorf("%s: absolute symlink target %q", h.Name, h.Linkname)
 			}
-			if _, err := safeRel(filepath.Join(filepath.Dir(rel), h.Linkname)); err != nil {
-				return fmt.Errorf("%s: symlink escapes: %w", h.Name, err)
+			if err := checkLinkTarget(root, filepath.Dir(rel), h.Linkname); err != nil {
+				return fmt.Errorf("%s: %w", h.Name, err)
 			}
 			removeNonDir(target)
 			if err := os.Symlink(h.Linkname, target); err != nil {
@@ -369,6 +369,12 @@ func extractTarGz(archive, root string) error {
 			linkRel, err := safeRel(h.Linkname)
 			if err != nil {
 				return fmt.Errorf("%s: hard link escapes: %w", h.Name, err)
+			}
+			if err := noSymlinkParents(root, linkRel); err != nil {
+				return fmt.Errorf("%s: hard link: %w", h.Name, err)
+			}
+			if st, err := os.Lstat(filepath.Join(root, linkRel)); err != nil || !st.Mode().IsRegular() {
+				return fmt.Errorf("%s: hard link target %q is not an extracted regular file", h.Name, h.Linkname)
 			}
 			removeNonDir(target)
 			if err := os.Link(filepath.Join(root, linkRel), target); err != nil {
@@ -390,6 +396,45 @@ func safeRel(name string) (string, error) {
 		return "", fmt.Errorf("unsafe path %q", name)
 	}
 	return rel, nil
+}
+
+// checkLinkTarget walks a symlink target component by component against the
+// tree extracted so far, starting from the link's directory (relative to
+// root). Every component before the last must already be a real directory
+// inside root; the walk may never climb above root. Directories are never
+// replaced by later entries, so the result cannot change after this check,
+// and since every symlink is checked this way, chains stay inside root too.
+func checkLinkTarget(root, linkDir, linkname string) error {
+	var stack []string
+	if linkDir != "." {
+		stack = strings.Split(linkDir, "/")
+	}
+	parts := strings.Split(linkname, "/")
+	last := len(parts) - 1
+	for last > 0 && (parts[last] == "" || parts[last] == ".") {
+		last--
+	}
+	for i, part := range parts[:last+1] {
+		switch part {
+		case "", ".":
+			continue
+		case "..":
+			if len(stack) == 0 {
+				return fmt.Errorf("symlink target %q escapes", linkname)
+			}
+			stack = stack[:len(stack)-1]
+			continue
+		}
+		stack = append(stack, part)
+		if i == last {
+			break
+		}
+		st, err := os.Lstat(filepath.Join(append([]string{root}, stack...)...))
+		if err != nil || !st.IsDir() || st.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("symlink target %q: %s is not an extracted directory", linkname, strings.Join(stack, "/"))
+		}
+	}
+	return nil
 }
 
 // noSymlinkParents rejects entries placed beneath an already extracted

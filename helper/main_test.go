@@ -147,6 +147,7 @@ func TestFetchExtractKeepsExecBits(t *testing.T) {
 		{name: "bin/", mode: 0o755, typ: tar.TypeDir},
 		{name: "bin/tool", body: "#!/bin/sh\n", mode: 0o555, typ: tar.TypeReg},
 		{name: "tool-link", link: "bin/tool", typ: tar.TypeSymlink},
+		{name: "bin/tool-hard", link: "bin/tool", typ: tar.TypeLink},
 	})
 	srv := serve(t, map[string][]byte{"/a.tgz": tgz})
 	parent := t.TempDir()
@@ -173,6 +174,9 @@ func TestFetchExtractKeepsExecBits(t *testing.T) {
 	if l, err := os.Readlink(filepath.Join(dir, "tool-link")); err != nil || l != "bin/tool" {
 		t.Errorf("symlink = %q, %v", l, err)
 	}
+	if st, err := os.Lstat(filepath.Join(dir, "bin/tool-hard")); err != nil || !st.Mode().IsRegular() {
+		t.Errorf("hard link: %v, %v", st, err)
+	}
 	if _, err := os.Stat(filepath.Join(dir, "stale")); !os.IsNotExist(err) {
 		t.Errorf("stale file survived re-extract")
 	}
@@ -191,16 +195,29 @@ func TestExtractRejectsEscapes(t *testing.T) {
 			{name: "d/up/esc", link: "../..", typ: tar.TypeSymlink},
 		},
 		"hardlink": {{name: "h", link: "../x", typ: tar.TypeLink}},
+		"dotdot-through-symlink": {
+			{name: "d/", mode: 0o755, typ: tar.TypeDir},
+			{name: "d/up", link: "..", typ: tar.TypeSymlink},
+			{name: "a", link: "d/up/..", typ: tar.TypeSymlink},
+			{name: "h", link: "a/secret", typ: tar.TypeLink},
+		},
+		"hardlink-to-symlink": {
+			{name: "f", body: "x", mode: 0o644, typ: tar.TypeReg},
+			{name: "s", link: "f", typ: tar.TypeSymlink},
+			{name: "h", link: "s", typ: tar.TypeLink},
+		},
 	}
 	for name, ents := range cases {
 		t.Run(name, func(t *testing.T) {
 			srv := serve(t, map[string][]byte{"/a.tgz": makeTarGz(t, ents)})
 			parent := t.TempDir()
+			// A file outside DIR that an escaping link could reach.
+			os.WriteFile(filepath.Join(parent, "secret"), []byte("s"), 0o644)
 			f := &fetcher{client: srv.Client()}
 			if err := f.fetchExtract(srv.URL+"/a.tgz", filepath.Join(parent, "pkg")); err == nil {
 				t.Fatal("expected error")
 			}
-			noLeftovers(t, parent)
+			noLeftovers(t, parent, "secret")
 		})
 	}
 }
