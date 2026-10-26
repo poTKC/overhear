@@ -13,7 +13,8 @@ import java.util.regex.Pattern;
  * - An unrequested exit restarts after 1, 2, 4 ... 60 s; the delay starts
  *   over once a run lasted STABLE_MS. After MAX_SHORT_RUNS runs in a row
  *   that each lasted under SHORT_RUN_MS it gives up (bad key, broken
- *   install): retrying forever only burns battery.
+ *   install): retrying forever only burns battery. The same goes for
+ *   MAX_SHORT_RUNS retryable start failures in a row.
  * - An expired build (exit 10) re-downloads at once, then with the same
  *   backoff; at most MAX_REFRESHES re-downloads per REFRESH_WINDOW_MS,
  *   then it gives up (the CDN would otherwise be hit forever).
@@ -35,11 +36,13 @@ final class Supervisor {
     static final int MAX_SHORT_RUNS = 10;
     static final int MAX_REFRESHES = 3;
     static final long REFRESH_WINDOW_MS = 24L * 3600 * 1000;
+    static final String KEEPS_FAILING = "Soloist keeps failing to start \u2014 see log";
     static final String KEEPS_EXITING = "Soloist keeps exiting — check the API key / see log";
 
     /** Soloist error events worth showing: login and key problems, not its startup noise. */
     private static final Pattern AUTH_ERROR = Pattern.compile(
-            "(?i).*(login|credential|unauthori[sz]ed|api[ _-]?key|auth(entication)? failed|forbidden).*");
+            "(?i)login|credential|unauthori[sz]ed|api[ _-]?key|auth(entication)? failed|forbidden");
+    private static final Pattern AUTH_OK = Pattern.compile("(?i)\\b(succeeded|successful(ly)?|success|logged in)\\b");
 
     enum State {
         /** Not started yet. */
@@ -90,6 +93,8 @@ final class Supervisor {
     private boolean active;
     private int failures;
     private int shortRuns;
+    /** Retryable start failures in a row; reset by a successful start. */
+    private int startFailures;
     /** When the last re-downloads were started, newest last; 0 = unused. */
     private final long[] refreshTimes = new long[MAX_REFRESHES];
     private boolean pendingRefresh;
@@ -117,7 +122,7 @@ final class Supervisor {
     static boolean isAuthError(String message) {
         if (message == null) return false;
         if (message.contains("command requires authentication")) return false; // before login completes
-        return AUTH_ERROR.matcher(message).matches();
+        return AUTH_ERROR.matcher(message).find() && !AUTH_OK.matcher(message).find();
     }
 
     State state() {
@@ -131,13 +136,15 @@ final class Supervisor {
     /** The service wants Soloist running. No-op unless idle or failed. */
     void begin(boolean wifiUp) {
         if (state == State.SHUTDOWN) return;
-        this.wifiUp = wifiUp;
         if (state != State.IDLE && state != State.FAILED) {
-            updateActive();
+            // Already going: a fresher Wi-Fi reading is a Wi-Fi transition.
+            onWifi(wifiUp);
             return;
         }
+        this.wifiUp = wifiUp;
         failures = 0;
         shortRuns = 0;
+        startFailures = 0;
         tryStart(false);
     }
 
@@ -150,9 +157,12 @@ final class Supervisor {
         if (state != State.STARTING) return;
         startedAt = now;
         pendingRefresh = false;
+        startFailures = 0;
         if (latched) {
             latched = false;
             if (restartAfterStart || latchedRequested) {
+                // The start (and any re-download it did) succeeded, so the
+                // next one needs no refresh: pendingRefresh stays dropped.
                 restartAfterStart = false;
                 tryStart(false);
                 return;
@@ -177,6 +187,11 @@ final class Supervisor {
         if (!retry) {
             restartAfterStart = false;
             giveUp(reason);
+            return;
+        }
+        if (++startFailures >= MAX_SHORT_RUNS) {
+            restartAfterStart = false;
+            giveUp(KEEPS_FAILING);
             return;
         }
         if (restartAfterStart) {
@@ -279,6 +294,7 @@ final class Supervisor {
      */
     void restart() {
         shortRuns = 0;
+        startFailures = 0;
         switch (state) {
             case RUNNING:
                 setState(State.RESTARTING);

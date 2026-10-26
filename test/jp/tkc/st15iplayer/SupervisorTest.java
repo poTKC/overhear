@@ -487,7 +487,60 @@ public class SupervisorTest {
         assertTrue(Supervisor.isAuthError("login failed: bad credentials"));
         assertTrue(Supervisor.isAuthError("Invalid API key"));
         assertTrue(Supervisor.isAuthError("unauthorized"));
+        assertTrue(Supervisor.isAuthError("request failed\nlogin failed: bad credentials"));
+        assertFalse(Supervisor.isAuthError("login succeeded"));
+        assertFalse(Supervisor.isAuthError("Login successful"));
         assertFalse(Supervisor.isAuthError("command requires authentication"));
         assertFalse(Supervisor.isAuthError("track unavailable"));
+    }
+
+    // --- begin() goes through the Wi-Fi transitions ---
+
+    @Test public void beginWithWifiUpLeavesWaitWifi() {
+        s.begin(false);
+        s.begin(true); // ACTION_START seen Wi-Fi before the debounced check did
+        assertEquals("[start]", take());
+        assertEquals(Supervisor.State.STARTING, s.state());
+        s.onWifi(true); // the debounced check: no change
+        assertEquals("[]", take());
+    }
+
+    @Test public void beginAfterWifiDropRestartsARunningSoloist() {
+        running(0);
+        s.onWifi(false);
+        s.begin(true);
+        assertEquals("[stop]", take());
+        assertEquals(Supervisor.State.RESTARTING, s.state());
+    }
+
+    // --- start failures count toward giving up ---
+
+    @Test public void givesUpAfterTenStartFailuresInARow() {
+        s.begin(true);
+        for (int i = 0; i < 9; i++) {
+            startFailed("download failed", true);
+            s.onTimer();
+        }
+        take();
+        startFailed("download failed", true);
+        String c = take();
+        assertTrue(c, c.startsWith("[failed "));
+        assertEquals(Supervisor.State.FAILED, s.state());
+    }
+
+    @Test public void aSuccessfulStartResetsStartFailures() {
+        s.begin(true);
+        for (int i = 0; i < 9; i++) {
+            startFailed("download failed", true);
+            s.onTimer();
+        }
+        started(0);
+        exit(1, false, false, 100000); // a long run, then failures again
+        s.onTimer();
+        for (int i = 0; i < 9; i++) {
+            startFailed("download failed", true);
+            s.onTimer();
+        }
+        assertEquals(Supervisor.State.STARTING, s.state());
     }
 }

@@ -102,6 +102,8 @@ public final class PlayerService extends Service {
     private boolean mediaRegistered;
     /** The generation of the last Effects.start (main thread). */
     private int runGen;
+    /** The last login/key error from Soloist, shown until a login is reported. */
+    private String authError;
     private PowerManager.WakeLock debounceLock;
     private boolean destroyed;
     private volatile boolean traceAudio;
@@ -228,7 +230,9 @@ public final class PlayerService extends Service {
         } else if (ACTION_RESTART_SOLOIST.equals(action)) {
             traceAudio = intent.getBooleanExtra(EXTRA_TRACE_AUDIO, false);
             Log.i(TAG, "restart requested" + (traceAudio ? " with audio trace" : ""));
-            registerMedia(); // a retry after giving up wants the keys back
+            // A retry after giving up wants the keys and Wi-Fi locks back.
+            acquireWifiLocks();
+            registerMedia();
             supervisor.restart();
         }
         return START_STICKY;
@@ -298,6 +302,7 @@ public final class PlayerService extends Service {
     private final Supervisor.Effects effects = new Supervisor.Effects() {
         @Override public void start(final int gen, final boolean refresh) {
             runGen = gen;
+            authError = null;
             setStatus(refresh ? "Updating Soloist" : "Starting Soloist");
             final boolean trace = traceAudio;
             worker.post(new Runnable() {
@@ -341,8 +346,11 @@ public final class PlayerService extends Service {
         @Override public void failed(String reason) {
             Log.w(TAG, "giving up: " + reason);
             setStatus("Stopped: " + reason);
-            // Let other players have the media keys while we cannot play.
+            // Let other players have the media keys while we cannot play,
+            // and stop holding Wi-Fi in high-performance mode for nothing.
             unregisterMedia();
+            if (multicastLock.isHeld()) multicastLock.release();
+            if (wifiLock.isHeld()) wifiLock.release();
         }
     };
 
@@ -452,7 +460,7 @@ public final class PlayerService extends Service {
             boolean changed = !key.isEmpty() && !wifiKey.isEmpty();
             wifiKey = key;
             if (changed) supervisor.onWifi(false); // another network: restart as if it had dropped
-            if (!key.isEmpty() && begun) {
+            if (!key.isEmpty() && begun && supervisor.state() != Supervisor.State.FAILED) {
                 // The driver may have dropped the multicast filter exemption.
                 multicastLock.release();
                 multicastLock.acquire();
@@ -563,13 +571,18 @@ public final class PlayerService extends Service {
     private final SoloistClient.Listener clientListener = new SoloistClient.Listener() {
         @Override public void onState(PlayerState s) {
             state = s;
+            if (authError != null && s.isLoggedIn()) {
+                authError = null;
+                setReady();
+            }
             updateNotification();
             updateRemoteControl();
         }
 
         @Override public void onConnected(boolean connected) {
             if (connected) {
-                setStatus("Ready: select \"" + prefs.getDeviceName() + "\" in Spotify");
+                // A login error stays shown until a state reports a login.
+                if (authError == null) setReady();
                 if (sink.isFocusMuted()) {
                     Log.i(TAG, "reconnected while muted for a focus loss: pause");
                     client.pause();
@@ -583,11 +596,18 @@ public final class PlayerService extends Service {
 
         @Override public void onError(String message) {
             Log.w(TAG, "Soloist: " + message);
-            if (Supervisor.isAuthError(message)) setStatus("Soloist: " + message);
+            if (Supervisor.isAuthError(message)) {
+                authError = message;
+                setStatus("Soloist: " + message);
+            }
         }
     };
 
     // --- notification and remote control ---
+
+    private void setReady() {
+        setStatus("Ready: select \"" + prefs.getDeviceName() + "\" in Spotify");
+    }
 
     private void postStatus(final String s) {
         main.post(new Runnable() {
@@ -703,6 +723,7 @@ public final class PlayerService extends Service {
         }
         sb.append("locks: mc=").append(multicastLock.isHeld()).append(" wifi=").append(wifiLock.isHeld())
                 .append(" wake=").append(wakeLock.isHeld()).append('\n');
+        if (sink.isFocusMuted()) sb.append("muted (audio focus)\n");
         sb.append("fakepulse underflows: ").append(soloist.getUnderflowCount())
                 .append(traceAudio ? " (tracing)" : " (trace off)");
         return sb.toString();
