@@ -406,7 +406,7 @@ public class PlayerActivity extends Activity {
 
     @Override
     protected void onDestroy() {
-        if (artwork != null) artwork.cancelAll();
+        if (artwork != null) artwork.cancelAll(Artwork.viewsOf(this));
         if (backdropFade != null) backdropFade.cancel();
         super.onDestroy();
     }

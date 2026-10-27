@@ -180,13 +180,31 @@ public class ArtworkLoaderTest {
         assertEquals("[view=u1]", got.toString());
     }
 
-    @Test public void cancelAllDropsEverything() {
-        loader.load("a", "u1", 240, false, cb("a"));
-        loader.load("b", "u2", 48, false, cb("b"));
-        loader.cancelAll();
+    /** Targets named "lib:..." belong to one screen. */
+    private static final ArtworkLoader.TargetFilter LIBRARY = new ArtworkLoader.TargetFilter() {
+        @Override public boolean matches(Object target) {
+            return ((String) target).startsWith("lib:");
+        }
+    };
+
+    @Test public void cancelAllDropsWhatTheFilterMatches() {
+        loader.load("lib:a", "u1", 48, false, cb("a"));
+        loader.load("lib:b", "u2", 48, false, cb("b"));
+        loader.cancelAll(LIBRARY);
         runBackground();
         assertTrue(fetched.isEmpty());
         assertTrue(got.isEmpty());
+    }
+
+    @Test public void cancelAllLeavesAnotherScreensRequest() {
+        // The library closes just after the player asked for the new cover.
+        loader.load("lib:thumb", "u1", 48, false, cb("thumb"));
+        loader.load("player:art", "u2", 240, true, cb("art"));
+        loader.cancelAll(LIBRARY);
+        runBackground();
+        while (!urgent.isEmpty()) urgent.remove(0).run();
+        assertEquals("[u2]", fetched.toString());
+        assertEquals("[art=u2]", got.toString());
     }
 
     @Test public void reRequestAfterCancelWhileInFlightIsAnsweredOnce() {

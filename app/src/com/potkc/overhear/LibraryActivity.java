@@ -249,7 +249,7 @@ public class LibraryActivity extends Activity {
         destroyed = true;
         if (active == this) active = null;
         if (service != null) service.removeUiListener(uiListener);
-        if (artwork != null) artwork.cancelAll();
+        if (artwork != null) artwork.cancelAll(Artwork.viewsOf(this));
         if (bound) unbindService(connection);
         bound = false;
         service = null;

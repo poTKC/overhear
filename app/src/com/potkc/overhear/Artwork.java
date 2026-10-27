@@ -5,6 +5,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Process;
 import android.util.Log;
+import android.view.View;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -95,6 +96,15 @@ final class Artwork {
         loader = new ArtworkLoader<Cover>(new File(app.getCacheDir(), "art"), DISK_MAX_BYTES,
                 FAILURE_RETRY_MS, fetcher, decoder, pool, urgent, new MainThreadExecutor());
         return loader;
+    }
+
+    /** The views of context (a screen), for ArtworkLoader.cancelAll. */
+    static ArtworkLoader.TargetFilter viewsOf(final Context context) {
+        return new ArtworkLoader.TargetFilter() {
+            @Override public boolean matches(Object target) {
+                return target instanceof View && ((View) target).getContext() == context;
+            }
+        };
     }
 
     /** overhear-fetch get url out; throws unless it printed "done" and exited 0. */
