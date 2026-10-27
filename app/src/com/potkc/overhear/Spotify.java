@@ -13,6 +13,7 @@ import com.potkc.overhear.soloist.MainThreadExecutor;
 import com.potkc.overhear.spotify.HelperTransport;
 import com.potkc.overhear.spotify.SpotifyApi;
 import com.potkc.overhear.spotify.SpotifyAuth;
+import com.potkc.overhear.spotify.SpotifyConfig;
 
 /**
  * The app's Spotify Web API access: one SpotifyApi over HelperTransport,
@@ -21,10 +22,9 @@ import com.potkc.overhear.spotify.SpotifyAuth;
  * order given. get() and run() may be called from any thread.
  */
 final class Spotify {
-    static final String CLIENT_ID = "efc26a16958343d0babe0e67afaa1a18";
-    static final String REDIRECT_URI = "https://potkc.github.io/overhear-auth/callback/";
-    static final String SCOPES = "user-read-playback-state user-modify-playback-state user-library-read "
-            + "playlist-read-private user-follow-read user-read-recently-played";
+    static final String CLIENT_ID = SpotifyConfig.CLIENT_ID;
+    static final String REDIRECT_URI = SpotifyConfig.REDIRECT_URI;
+    static final String SCOPES = SpotifyConfig.SCOPES;
 
     /** Runs on the main thread. */
     interface Callback<T> {

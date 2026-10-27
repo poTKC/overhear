@@ -13,21 +13,23 @@ import io.nayuki.qrcodegen.QrCode;
  * Draws a QrCode as black modules on white with a 4-module quiet zone,
  * scaled to the largest whole number of pixels per module that fits and
  * centred in the view. Whole pixels and no anti-aliasing keep the module
- * edges sharp for the scanning phone. Main thread only; draws nothing until
- * setCode() is given a code, or if the code does not fit at 1 px per module.
+ * edges sharp for the scanning phone. The view measures itself square (its
+ * width, limited by the height it may have). Main thread only; draws nothing
+ * until setCode() is given a code, or if the code does not fit at 1 px per
+ * module. Public so layouts can inflate it by its full class name.
  */
-final class QrView extends View {
+public final class QrView extends View {
     private static final int QUIET_ZONE = 4;
 
     private final Paint white = new Paint();
     private final Paint black = new Paint();
     private QrCode code;
 
-    QrView(Context context) {
+    public QrView(Context context) {
         this(context, null);
     }
 
-    QrView(Context context, AttributeSet attrs) {
+    public QrView(Context context, AttributeSet attrs) {
         super(context, attrs);
         white.setAntiAlias(false);
         white.setColor(Color.WHITE);
@@ -38,6 +40,14 @@ final class QrView extends View {
     void setCode(QrCode code) {
         this.code = code;
         invalidate();
+    }
+
+    @Override protected void onMeasure(int widthSpec, int heightSpec) {
+        int side = getDefaultSize(getSuggestedMinimumWidth(), widthSpec);
+        if (MeasureSpec.getMode(heightSpec) != MeasureSpec.UNSPECIFIED) {
+            side = Math.min(side, MeasureSpec.getSize(heightSpec));
+        }
+        setMeasuredDimension(side, side);
     }
 
     @Override protected void onDraw(Canvas canvas) {
