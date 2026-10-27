@@ -41,6 +41,7 @@ public final class SpotifyAuth {
     private final String clientId;
     private String access; // guarded by this
     private long expiresAtMs; // guarded by this
+    private volatile int generation;
 
     public SpotifyAuth(ApiTransport transport, TokenStore store, Clock clock, String clientId) {
         this.transport = transport;
@@ -52,6 +53,14 @@ public final class SpotifyAuth {
     /** Safe on the main thread: does not wait for a refresh in progress. */
     public boolean isLoggedIn() {
         return store.refreshToken() != null;
+    }
+
+    /**
+     * Changes whenever the login does (log out, login expired, a new login),
+     * so callers can drop what they cached for the previous account.
+     */
+    public int generation() {
+        return generation;
     }
 
     /**
@@ -85,6 +94,7 @@ public final class SpotifyAuth {
     public synchronized void logOut() {
         access = null;
         store.clear();
+        generation++;
     }
 
     private void tokenRequest(String form, boolean refreshGrant) throws IOException { // under this
@@ -104,6 +114,7 @@ public final class SpotifyAuth {
         expiresAtMs = clock.nowMs() + Math.max(j.optLong("expires_in", 3600), MIN_EXPIRES_S) * 1000;
         String newRefresh = SpotifyJson.string(j, "refresh_token");
         if (!newRefresh.isEmpty()) store.saveRefreshToken(newRefresh);
+        if (!refreshGrant) generation++;
     }
 
     private static JSONObject parse(String body) {

@@ -379,6 +379,7 @@ public class SpotifyApiTest {
         FakeTransport t = withToken().reply(200, DEVICES).reply(204, "");
         loggedIn(t).play("ST15i", null, "spotify:track:T");
         assertPut("/me/player/play?device_id=d2 A", "{\"uris\":[\"spotify:track:T\"]}", t.log.get(2));
+        assertEquals(3, t.log.size());
     }
 
     @Test public void playLooksUpAgainWhenTheDeviceIsGone() throws IOException {
@@ -394,7 +395,8 @@ public class SpotifyApiTest {
     }
 
     @Test public void playGivesUpAfterASecond404() {
-        FakeTransport t = withToken().reply(200, DEVICES).reply(404, "{}").reply(200, DEVICES).reply(404, "{}");
+        FakeTransport t = withToken().reply(200, DEVICES).reply(404, "{}")
+                .reply(200, "{\"devices\":[{\"id\":\"d3\",\"name\":\"ST15i\"}]}").reply(404, "{}");
         try {
             loggedIn(t).play("ST15i", "spotify:album:X", null);
             fail();
@@ -484,5 +486,98 @@ public class SpotifyApiTest {
                 .reply(200, "{\"items\":[{\"track\":{\"uri\":\"spotify:track:T\",\"name\":\"t\"}}]}");
         Page p = loggedIn(t).savedTracks(0);
         assertNull(p.items.get(0).contextUri);
+    }
+
+    @Test public void playUnderAnotherNameLooksUpAgain() throws IOException {
+        FakeTransport t = withToken().reply(200, DEVICES).reply(204, "").reply(200, DEVICES).reply(204, "");
+        SpotifyApi a = loggedIn(t);
+        a.play("ST15i", "spotify:album:X", null);
+        a.play("Echo", "spotify:album:X", null);
+        assertEquals("GET /me/player/devices A", t.log.get(3));
+        assertPut("/me/player/play?device_id=d1 A", "{\"context_uri\":\"spotify:album:X\"}", t.log.get(4));
+        assertEquals(5, t.log.size());
+    }
+
+    @Test public void playRetrySkipsTheIdThatFailed() throws IOException {
+        FakeTransport t = withToken().reply(200, DEVICES).reply(404, "{}")
+                .reply(200, "{\"devices\":[{\"id\":\"d2\",\"name\":\"ST15i\"},{\"id\":\"d3\",\"name\":\"ST15i\"}]}")
+                .reply(204, "");
+        loggedIn(t).play("ST15i", "spotify:album:X", null);
+        assertPut("/me/player/play?device_id=d3 A", "{\"context_uri\":\"spotify:album:X\"}", t.log.get(4));
+        assertEquals(5, t.log.size());
+    }
+
+    @Test public void playDoesNotRetryOtherErrorsAndKeepsTheDevice() throws IOException {
+        FakeTransport t = withToken().reply(200, DEVICES).reply(502, "").reply(204, "");
+        SpotifyApi a = loggedIn(t);
+        try {
+            a.play("ST15i", "spotify:album:X", null);
+            fail();
+        } catch (SpotifyException e) {
+            assertEquals(502, e.status);
+        }
+        assertEquals(3, t.log.size());
+        a.play("ST15i", "spotify:album:X", null);
+        assertPut("/me/player/play?device_id=d2 A", "{\"context_uri\":\"spotify:album:X\"}", t.log.get(3));
+        assertEquals(4, t.log.size());
+    }
+
+    @Test public void playLooksUpAgainAfterANewLogin() throws IOException {
+        FakeTransport t = withToken().reply(200, DEVICES).reply(204, "")
+                .reply(200, "{\"access_token\":\"A2\",\"expires_in\":3600,\"refresh_token\":\"R2\"}")
+                .reply(200, DEVICES).reply(204, "");
+        SpotifyApi a = loggedIn(t);
+        a.play("ST15i", "spotify:album:X", null);
+        a.auth().logOut();
+        a.auth().exchangeCode("C", "V", "https://x/cb/");
+        a.play("ST15i", "spotify:album:X", null);
+        assertEquals("GET /me/player/devices A2", t.log.get(4));
+        assertEquals(6, t.log.size());
+    }
+
+    @Test public void meIsFetchedAgainAfterLoggingInAgain() throws IOException {
+        FakeTransport t = withToken()
+                .reply(200, "{\"id\":\"potkc\"}")
+                .reply(200, "{\"access_token\":\"A2\",\"expires_in\":3600,\"refresh_token\":\"R2\"}")
+                .reply(200, "{\"id\":\"other\"}");
+        SpotifyApi a = loggedIn(t);
+        assertEquals("potkc", a.me());
+        a.auth().logOut();
+        a.auth().exchangeCode("C", "V", "https://x/cb/");
+        assertEquals("other", a.me());
+        assertEquals("GET /me A2", t.log.get(3));
+        assertEquals(4, t.log.size());
+    }
+
+    @Test public void meIsFetchedAgainAfterTheLoginExpired() throws IOException {
+        FakeTransport t = new FakeTransport()
+                .reply(200, "{\"access_token\":\"A1\",\"expires_in\":3600}")
+                .reply(200, "{\"id\":\"potkc\"}")
+                .reply(400, "{\"error\":\"invalid_grant\"}")
+                .reply(200, "{\"access_token\":\"A2\",\"expires_in\":3600,\"refresh_token\":\"R2\"}")
+                .reply(200, "{\"id\":\"other\"}");
+        MemoryStore s = new MemoryStore();
+        s.refresh = "R";
+        SpotifyApi a = api(t, s);
+        assertEquals("potkc", a.me());
+        now += 3600 * 1000;
+        try {
+            a.recent();
+            fail();
+        } catch (SpotifyException e) {
+            assertEquals(SpotifyException.Reason.LOGIN_REQUIRED, e.reason);
+        }
+        a.auth().exchangeCode("C", "V", "https://x/cb/");
+        assertEquals("other", a.me());
+        assertEquals("GET /me A2", t.log.get(4));
+        assertEquals(5, t.log.size());
+    }
+
+    @Test public void anEmptyUserIdIsNotCached() throws IOException {
+        FakeTransport t = withToken().reply(200, "{}").reply(200, "{\"id\":\"potkc\"}");
+        SpotifyApi a = loggedIn(t);
+        assertEquals("", a.me());
+        assertEquals("potkc", a.me());
+        assertEquals(3, t.log.size());
     }
 }

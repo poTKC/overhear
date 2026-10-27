@@ -9,8 +9,10 @@ import org.json.JSONObject;
 /**
  * The Spotify Web API calls Overhear makes, through an ApiTransport. Each
  * call blocks (run it off the main thread). A 401 refreshes the access token
- * and retries once. The user ID and the playback device ID are cached in
- * volatile fields, so calls may come from any thread. Pure Java.
+ * and retries once. The user ID and the playback device ID are cached per
+ * login (SpotifyAuth.generation()), the device also by name. Safe to call
+ * from any thread; meant for one background thread (play's lookup and PUT
+ * are not atomic). Pure Java.
  */
 public final class SpotifyApi {
     public static final int PAGE = 50;
@@ -20,8 +22,32 @@ public final class SpotifyApi {
 
     private final ApiTransport transport;
     private final SpotifyAuth auth;
-    private volatile String userId;
-    private volatile String deviceId;
+    private volatile Cached userId;
+    private volatile Device device;
+
+    /** The user ID and the login it was fetched under. */
+    private static final class Cached {
+        final String value;
+        final int generation;
+
+        Cached(String value, int generation) {
+            this.value = value;
+            this.generation = generation;
+        }
+    }
+
+    /** A device's name and ID, and the login it was looked up under. */
+    private static final class Device {
+        final String name;
+        final String id;
+        final int generation;
+
+        Device(String name, String id, int generation) {
+            this.name = name;
+            this.id = id;
+            this.generation = generation;
+        }
+    }
 
     public SpotifyApi(ApiTransport transport, SpotifyAuth auth) {
         this.transport = transport;
@@ -32,13 +58,13 @@ public final class SpotifyApi {
         return auth;
     }
 
-    /** The user's ID ("" when the reply has none), fetched once. */
+    /** The user's ID ("" when the reply has none), fetched once per login. */
     public String me() throws IOException {
-        String id = userId;
-        if (id == null) {
-            id = SpotifyJson.me(getJson("/me"));
-            userId = id;
-        }
+        Cached c = userId;
+        int generation = auth.generation();
+        if (c != null && c.generation == generation) return c.value;
+        String id = SpotifyJson.me(getJson("/me"));
+        if (!id.isEmpty()) userId = new Cached(id, generation);
         return id;
     }
 
@@ -91,30 +117,33 @@ public final class SpotifyApi {
     /**
      * Starts playback on the device named deviceName: contextUri from offsetUri
      * (null: from the top), or offsetUri alone when contextUri is null. A 404
-     * (the device ID changed) looks the device up again and retries once.
+     * (the device ID changed) looks the device up again, skipping the ID that
+     * failed, and retries once.
      */
     public void play(String deviceName, String contextUri, String offsetUri) throws IOException {
         String body = playBody(contextUri, offsetUri);
-        String id = deviceId;
-        if (id == null) id = findDevice(deviceName);
+        Device d = device;
+        String id = d != null && d.generation == auth.generation() && d.name.equals(deviceName)
+                ? d.id : findDevice(deviceName, null);
         try {
             put("/me/player/play?device_id=" + Pkce.enc(id), body);
         } catch (SpotifyException e) {
             if (e.reason != SpotifyException.Reason.HTTP || e.status != 404) throw e;
-            deviceId = null;
-            put("/me/player/play?device_id=" + Pkce.enc(findDevice(deviceName)), body);
+            device = null;
+            put("/me/player/play?device_id=" + Pkce.enc(findDevice(deviceName, id)), body);
         }
     }
 
-    /** Looks deviceName up in /me/player/devices and caches its ID. */
-    private String findDevice(String deviceName) throws IOException {
+    /** Looks deviceName up in /me/player/devices, skipping exclude, and caches its ID. */
+    private String findDevice(String deviceName, String exclude) throws IOException {
+        int generation = auth.generation();
         JSONArray a = getJson("/me/player/devices").optJSONArray("devices");
         for (int i = 0; a != null && i < a.length(); i++) {
             JSONObject d = a.optJSONObject(i);
             if (d == null || !deviceName.equals(SpotifyJson.string(d, "name"))) continue;
             String id = SpotifyJson.string(d, "id");
-            if (id.isEmpty()) continue;
-            deviceId = id;
+            if (id.isEmpty() || id.equals(exclude)) continue;
+            device = new Device(deviceName, id, generation);
             return id;
         }
         throw new SpotifyException(SpotifyException.Reason.HTTP, 404, -1, "device not listed");
