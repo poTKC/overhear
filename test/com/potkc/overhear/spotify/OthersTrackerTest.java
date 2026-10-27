@@ -123,6 +123,41 @@ public class OthersTrackerTest {
         assertFalse(tracker.takeQueueRequest(true));
     }
 
+    private void shuffle(boolean on) {
+        apply(new JSONObject().put("type", "options_changed")
+                .put("options", new JSONObject().put("shuffle", on)));
+    }
+
+    @Test public void aShuffleChangeOnTheFirstTrackTakesTheNewOrder() {
+        // Played shuffled although asked in order; the shuffle is then turned off.
+        shuffle(true);
+        contextChanged(PLAYLIST);
+        trackChanged("a");
+        assertTrue(tracker.takeQueueRequest(true));
+        queue("c", "b", "d");
+        shuffle(false);
+        assertTrue(tracker.takeQueueRequest(true));
+        queue("b"); // the regular short queue does not replace it
+        assertEquals(Arrays.asList("a", "c", "b", "d"), uris(tracker.items()));
+        int v = tracker.version();
+        queue("b", "c", "d");
+        assertEquals(Arrays.asList("a", "b", "c", "d"), uris(tracker.items()));
+        assertTrue(tracker.version() != v);
+        queue("d", "c", "b"); // once taken, only a longer list replaces it
+        assertEquals(Arrays.asList("a", "b", "c", "d"), uris(tracker.items()));
+    }
+
+    @Test public void aShuffleChangeOnAnotherTrackLeavesTheList() {
+        contextChanged(PLAYLIST);
+        trackChanged("a");
+        assertTrue(tracker.takeQueueRequest(true));
+        queue("b", "c");
+        trackChanged("b");
+        shuffle(true);
+        assertFalse(tracker.takeQueueRequest(true));
+        assertEquals(Arrays.asList("a", "b", "c"), uris(tracker.items()));
+    }
+
     @Test public void shuffleAloneLeavesTheVersion() {
         int v = tracker.version();
         apply(new JSONObject().put("type", "options_changed")

@@ -18,6 +18,10 @@ import com.potkc.overhear.soloist.PlayerState;
  * playlist is taken as the first. The longest list seen is kept: the
  * regular 10-entry queue that follows must not shorten it, and once
  * another track plays QueueTracks gives none, so the list stays in order.
+ * If the shuffle changes while the first track still plays (a play that
+ * came up shuffled although asked in order, put right shortly after), the
+ * list's order is stale: the whole queue is asked for again, and the next
+ * list at least as long replaces it.
  * Without a list GIVE_UP_AFTER_MS after the request (unless that tick
  * just adopted the first track: then the next tick, at the latest the one
  * LAST_CHECK_AFTER_MS after, gives up), or if the context leaves the
@@ -52,6 +56,12 @@ public final class OthersTracker {
     private boolean queueAsked;
     private boolean failed;
     private boolean left;
+    /** The shuffle as items were collected under. */
+    private boolean itemsShuffle;
+    /** items' order is stale (the shuffle changed): the next list at least as long replaces it. */
+    private boolean reorder;
+    /** While reorder: the queue as of the change (PlayerState keeps one list per queue_changed). */
+    private List<PlayerState.QueueItem> staleQueue;
     private List<Item> items;
     /** Bumped whenever status or items change. */
     private int version;
@@ -94,6 +104,12 @@ public final class OthersTracker {
         String context = s.getContextUri();
         boolean inPlaylist = playlistUri.equals(context);
         if (inPlaylist) sawContext = true;
+        if (items != null && !reorder && s.isShuffle() != itemsShuffle && inPlaylist
+                && firstTrackUri.equals(track)) {
+            reorder = true;
+            staleQueue = s.getQueue();
+            queueAsked = false;
+        }
         if (firstTrackUri == null && inPlaylist && !isEmpty(track)
                 && (s.getTrackChanges() != baseTrackChanges || !track.equals(baseTrackUri))) {
             firstTrackUri = track;
@@ -167,9 +183,14 @@ public final class OthersTracker {
     }
 
     private void collect(PlayerState s) {
+        if (reorder && s.getQueue() == staleQueue) return; // the order the change made stale
         List<Item> got = QueueTracks.fromState(s, playlistUri, firstTrackUri);
-        if (got != null && (items == null || got.size() > items.size())) {
+        if (got != null && (items == null || got.size() > items.size()
+                || (reorder && got.size() == items.size()))) {
             items = got;
+            itemsShuffle = s.isShuffle();
+            reorder = false;
+            staleQueue = null;
             version++;
         }
     }
