@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The full-screen top strip (TopStrip): time left, battery right; shown only while the status
+     bar is hidden. No side padding: each screen's include sets the margins that put the clock
+     and the battery number 8dp from the screen's edges. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/top_strip"
+    android:layout_width="match_parent"
+    android:layout_height="20dp"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingTop="4dp">
+
+    <TextView
+        android:id="@+id/clock"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:singleLine="true"
+        android:textColor="#ffffffff"
+        android:includeFontPadding="false"
+        android:textSize="13sp" />
+
+    <View
+        android:id="@+id/battery_dot"
+        android:layout_width="6dp"
+        android:layout_height="6dp"
+        android:layout_marginRight="4dp" />
+
+    <TextView
+        android:id="@+id/battery"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:singleLine="true"
+        android:textColor="#ffffffff"
+        android:includeFontPadding="false"
+        android:textSize="13sp" />
+</LinearLayout>
