@@ -8,8 +8,7 @@
 Xperia mini ST15i（Android 4.3 / CyanogenMod 10.2、320×480）で開発・確認しています。
 
 > 旧名は **ST15i Player**（パッケージ `jp.tkc.st15iplayer`）です。2026-10-27 に Overhear
-> （パッケージ `com.potkc.overhear`）に改名しました。リポジトリのディレクトリ名
-> `st15i-player/` は旧名のままです。
+> （パッケージ `com.potkc.overhear`）に改名しました。
 
 Spotify 公式のヘッドレスクライアント **Soloist** を、APK に同梱した glibc の上で動かします。
 非公式クライアントは使わず、DRM の回避もしません。
