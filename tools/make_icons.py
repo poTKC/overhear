@@ -16,6 +16,7 @@ import io
 import os
 import subprocess
 import sys
+import urllib.parse
 
 from PIL import Image, ImageDraw
 
@@ -34,10 +35,21 @@ SVGS = {
     "Media/pause-circle-fill.svg": "b01472826d300ac4e18ca240ab7ed7d34bbb31cf283c4e464b675ac8381f1992",
     "Media/pause-fill.svg": "82bfb45bf5b77f055ce984fca319d551c4319036520fd8a0719f41e656431953",
     "Media/play-list-2-fill.svg": "55cbaabbba0ea137002c90595270bb6c3732b1d4e447c622bcfab98bced30868",
+    "Media/album-line.svg": "23e89cbc93fb0b273c5d6f7382517181796519dd724ae5fd0bfeebbfbca2d073",
     "System/settings-3-line.svg": "f2e1fd30e6eadb8d5636f5037cf477f38ef81b235757d3ed290b92b2c002fec1",
     "System/close-line.svg": "db3b4dcebb2d962a0231a191538bf6939620798b18f0ba52d4b91c5a4649ce54",
     "Media/music-2-line.svg": "beaf516b74a065afb95022f9b311ecc981cbdd22af446b96e8a8b353f7b49342",
     "Media/music-2-fill.svg": "70a5c81119274e9b6c0a6286afa125c15414f42d0aa3a799e8c971bebecb1221",
+    "Arrows/arrow-left-line.svg": "83326466c9ea5f3b18eab5051003cb5a6666c9ebc6d9e794aa49721a886987fe",
+    "System/loop-right-line.svg": "ff6bfe94a82962d75b6e93b2253bfea337cba37d4f5194a530824963823277f0",
+    "System/search-line.svg": "e36fd9d602a25425c6c2288005ef5a413eec710f9718bd01dbfd81cb4d6b5c19",
+    "Health & Medical/heart-line.svg": "0159f984e5bc1d5d43dbffade05cb88a6038a2384e8b34afac5967f3873f6713",
+    "Media/play-list-line.svg": "1f25ebe3d18248dede5e6ba6afc6fc6166d83f9dbd1e8ed9191a6ab78b8f5ef7",
+    "User & Faces/user-line.svg": "44ce27189cac344f59aae27ef4e353f3cc1bafc19b1112b682e4cccc6f938a02",
+    "System/history-line.svg": "8a9e56b2de2daddf64fc31414d456b07ada11f8cb93bd7a280832782b836dfd5",
+    "System/login-box-line.svg": "24209e93d081403b9e2353f37000b05843d4f18398b01e27f54c3d3d783a74ad",
+    "Media/play-line.svg": "3dcfeba5edfd64745b8357898c33094e1a6477c180c45fbda4712c58758edf9f",
+    "Arrows/arrow-right-s-line.svg": "2c579a4dbaf25e19a128d71e04f4cf43b19ad2487a0076ff7e7e5a94c9b3e013",
 }
 DENSITIES = {"mdpi": 1.0, "hdpi": 1.5, "xhdpi": 2.0}
 
@@ -45,6 +57,7 @@ WHITE = "#ffffff"
 GREY = "#b3b3b3"  # inactive toggles, small buttons
 GREEN = "#1db954"  # active toggles
 NOTE_GREY = "#7a7a7a"
+MARKER_GREY = "#aaaaaa"  # the library's drill-down chevron, as its secondary text
 PLACEHOLDER_BG = (0x28, 0x28, 0x28, 255)
 
 
@@ -52,7 +65,7 @@ def svg(name):
     path = os.path.join(CACHE, name)
     if not os.path.exists(path):
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        subprocess.run(["curl", "-fsSL", "-o", path + ".part", "%s/%s" % (BASE, name)], check=True)
+        subprocess.run(["curl", "-fsSL", "-o", path + ".part", "%s/%s" % (BASE, urllib.parse.quote(name))], check=True)
         os.rename(path + ".part", path)
     data = open(path, "rb").read()
     got = hashlib.sha256(data).hexdigest()
@@ -143,9 +156,26 @@ def main():
         toggle(density, f, "ic_repeat_off", "Media/repeat-2-line.svg", False)
         toggle(density, f, "ic_repeat_on", "Media/repeat-2-line.svg", True)
         toggle(density, f, "ic_repeat_one_on", "Media/repeat-one-line.svg", True)
+        plain(density, f, "ic_library", "Media/album-line.svg", GREY, 20, 18)
         plain(density, f, "ic_queue", "Media/play-list-2-fill.svg", GREY, 20, 18)
         plain(density, f, "ic_settings", "System/settings-3-line.svg", GREY, 20, 18)
         plain(density, f, "ic_close", "System/close-line.svg", WHITE, 24, 22)
+        # library bar: back, reload, back to the player
+        plain(density, f, "ic_back", "Arrows/arrow-left-line.svg", WHITE, 24, 20)
+        plain(density, f, "ic_reload", "System/loop-right-line.svg", WHITE, 24, 20)
+        plain(density, f, "ic_to_player", "Media/music-2-line.svg", WHITE, 24, 20)
+        # library rows: the icon in the 40 dp cover column, the chevron at the right edge
+        for name, svg_name in (("search", "System/search-line.svg"),
+                               ("liked", "Health & Medical/heart-line.svg"),
+                               ("playlists", "Media/play-list-line.svg"),
+                               ("albums", "Media/album-line.svg"),
+                               ("artists", "User & Faces/user-line.svg"),
+                               ("recent", "System/history-line.svg"),
+                               ("login", "System/login-box-line.svg"),
+                               ("play", "Media/play-line.svg"),
+                               ("shuffle", "Media/shuffle-line.svg")):
+            plain(density, f, "ic_lib_" + name, svg_name, WHITE, 24, 22)
+        plain(density, f, "ic_lib_more", "Arrows/arrow-right-s-line.svg", MARKER_GREY, 20, 20)
         placeholder(density, f)
         # notification row (40 dp wide buttons) and status bar icon (white on transparent)
         plain(density, f, "ic_n_prev", "Media/skip-back-fill.svg", WHITE, 28, 24)

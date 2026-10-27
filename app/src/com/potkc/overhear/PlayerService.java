@@ -41,6 +41,8 @@ import com.potkc.overhear.runtime.SoloistProcess;
 import com.potkc.overhear.soloist.MainThreadExecutor;
 import com.potkc.overhear.soloist.PlayerState;
 import com.potkc.overhear.soloist.SoloistClient;
+import com.potkc.overhear.spotify.OthersTracker;
+import com.potkc.overhear.spotify.SpotifyApi;
 
 /**
  * The foreground service that makes the phone a Spotify Connect speaker. It
@@ -59,8 +61,17 @@ import com.potkc.overhear.soloist.SoloistClient;
  * through a RemoteControlClient, audio focus through AudioSink, and
  * "becoming noisy" (headphones unplugged) pauses.
  *
- * Queue jumps: QueueJump steps skip_next to a tapped queue entry with the
- * track muted (AudioSink.setJumpMuted); any control pressed meanwhile ends it.
+ * Queue jumps: where QueueRoute allows (logged in, a track of an album,
+ * playlist or liked songs context ahead of any queued row, no shuffle), one
+ * Web API play of the context from the tapped track; otherwise, or if that
+ * call fails, QueueJump steps skip_next to the entry with the track muted
+ * (AudioSink.setJumpMuted); any control pressed meanwhile ends it.
+ *
+ * Another user's playlist (the library cannot list it): from the play
+ * the library asks for, an OthersTracker follows Soloist's state and its
+ * whole queue (FULL_QUEUE_LIMIT) here, outliving the library screen, and
+ * runs its timed checks; the library shows its list while the playlist is
+ * the context. A new play replaces it; a finished one is kept.
  *
  * Volume: fakepulse plays at unity gain and VolumeSync ties Soloist's volume
  * (the phone's Spotify slider) to the STREAM_MUSIC index both ways, while
@@ -147,6 +158,12 @@ public final class PlayerService extends Service {
     /** Jumps finished so far, and whether the last one reached its target (for the player screen). */
     private int jumpsFinished;
     private boolean lastJumpOk;
+    /** The Web API jump (jumpTo) in progress, until it ends; or null. */
+    private WebJump webJump;
+    /** When a control was last pressed or a queue jump started (elapsedRealtime); 0 before. */
+    private long lastControlMs;
+    /** The last play of another user's playlist the library asked for; or null. */
+    private OthersTracker others;
     private final IBinder binder = new LocalBinder();
     private final CopyOnWriteArrayList<Runnable> uiListeners = new CopyOnWriteArrayList<Runnable>();
 
@@ -350,7 +367,10 @@ public final class PlayerService extends Service {
 
     // --- for the player screen (main thread) ---
 
-    /** Runs (on the main thread) whenever the state, connection or status changes. */
+    /**
+     * Runs (on the main thread) whenever the state, connection or status
+     * changes, and after the others tracker's timed checks.
+     */
     void addUiListener(Runnable r) {
         uiListeners.addIfAbsent(r);
     }
@@ -410,18 +430,196 @@ public final class PlayerService extends Service {
 
     /** A control was pressed (here, in the notification or by a media key): a queue jump ends. */
     void userInput() {
+        lastControlMs = SystemClock.elapsedRealtime();
         if (jump != null) jump.onUserInput();
+        if (webJump != null) {
+            // The user's command wins: a PUT still queued is cancelled; one already out may still land.
+            webJump.onUserInput();
+            notifyUi();
+        }
+    }
+
+    // --- another user's playlist ---
+
+    /**
+     * Starts following a play of playlistUri (another user's playlist),
+     * replacing the tracker before; call it before asking to play, and
+     * othersPlayReturned once that request returned.
+     */
+    OthersTracker startOthers(String playlistUri) {
+        main.removeCallbacks(othersTick);
+        others = new OthersTracker(playlistUri);
+        others.onOpen(client.getState());
+        Log.i(TAG, "others: following " + playlistUri);
+        notifyUi();
+        return others;
+    }
+
+    /** The play request for t returned (done, or after the fallback): the timed checks start. */
+    void othersPlayReturned(OthersTracker t) {
+        if (destroyed || t != others) return;
+        t.onPlayReturned(System.currentTimeMillis());
+        main.postDelayed(othersTick, OthersTracker.ADOPT_AFTER_MS + 100);
+        main.postDelayed(othersTick, OthersTracker.GIVE_UP_AFTER_MS + 100);
+        main.postDelayed(othersTick, OthersTracker.LAST_CHECK_AFTER_MS + 100);
+    }
+
+    /** The last tracker startOthers made, finished or not; or null. Read it only. */
+    OthersTracker getOthers() {
+        return others;
+    }
+
+    private final Runnable othersTick = new Runnable() {
+        @Override public void run() {
+            if (destroyed || others == null) return;
+            others.onTick(client.getState(), System.currentTimeMillis());
+            askOthersQueue();
+            notifyUi();
+        }
+    };
+
+    /**
+     * Asks for the whole queue when the tracker wants it, only while its
+     * playlist is the context: a finished tracker is kept, and the long
+     * queue must not replace the player's while something else plays, nor
+     * once the context has left it (a later play, not the tracker's).
+     */
+    private void askOthersQueue() {
+        if (others != null && !others.hasLeft()
+                && others.playlistUri().equals(client.getState().getContextUri())
+                && others.takeQueueRequest(client.isConnected())) {
+            Log.i(TAG, "others: asking for the whole queue");
+            client.requestQueue(SoloistClient.FULL_QUEUE_LIMIT);
+        }
     }
 
     // --- queue jump ---
 
     /**
-     * Starts skipping to entry index of the upcoming queue (item as the
-     * screen shows it). False if a jump runs, the API is down, or the entry
-     * is no longer there.
+     * Starts a jump to entry index of the upcoming queue (item as the screen
+     * shows it): a Web API play of the context from item when QueueRoute
+     * allows, else QueueJump. Either way it counts in getJumpsFinished once
+     * done. False if a jump runs, the API is down, or the entry is no longer
+     * there.
      */
     boolean jumpTo(int index, PlayerState.QueueItem item) {
-        if (jump != null || !connected || item.uri == null) return false;
+        if (jump != null || webJump != null || !connected || item.uri == null) return false;
+        lastControlMs = SystemClock.elapsedRealtime();
+        Spotify spotify = Spotify.get(this);
+        if (QueueRoute.useWebApi(state.getQueue(), index, state.getTrackUri(), state.getContextUri(),
+                state.isShuffle(), spotify.isLoggedIn())) {
+            webJump(spotify, index, item, state.getContextUri());
+            return true;
+        }
+        return startQueueJump(index, item);
+    }
+
+    /**
+     * Plays contextUri from item through the Web API; WebJump decides when it
+     * ends (answer, control, timeout, or a fallback to QueueJump for the entry
+     * if it is still where it was). Callbacks of an ended jump, or after
+     * onDestroy (Spotify.run can answer then), do nothing.
+     */
+    private void webJump(final Spotify spotify, final int index, final PlayerState.QueueItem item,
+            final String contextUri) {
+        final String device = prefs.getDeviceName();
+        Log.i(TAG, "web jump: to entry " + index + " " + item.uri);
+        final WebJump[] self = new WebJump[1];
+        WebJump.Effects fx = new WebJump.Effects() {
+            @Override public void sendPlay(final WebJump.Ticket ticket) {
+                spotify.run(new Spotify.Call<Void>() {
+                    @Override public Void run(SpotifyApi api) throws IOException {
+                        // Queued behind other calls: the jump may have ended meanwhile.
+                        if (!ticket.begin()) return null;
+                        api.play(device, contextUri, item.uri);
+                        return null;
+                    }
+                }, new Spotify.Callback<Void>() {
+                    @Override public void done(Void result) {
+                        if (!webJumpLive(self[0])) return;
+                        // Soloist reports the new track (track_changed); nothing more to do.
+                        self[0].onPlayDone();
+                        afterWebJumpEvent();
+                    }
+
+                    @Override public void failed(IOException e) {
+                        if (!webJumpLive(self[0])) return;
+                        self[0].onPlayFailed(e.getMessage());
+                        afterWebJumpEvent();
+                    }
+                });
+            }
+
+            @Override public boolean startQueueJumpFallback() {
+                // QueueJump takes over and counts itself.
+                clearWebJump();
+                return startQueueJump(index, item);
+            }
+
+            @Override public void log(String message) {
+                Log.w(TAG, "web jump: " + message);
+            }
+
+            @Override public void finished(boolean ok, String why) {
+                if (ok) Log.i(TAG, "web jump: " + why);
+                else Log.w(TAG, "web jump: " + why);
+                clearWebJump();
+                countJump(ok);
+                // The caller notifies the UI.
+            }
+        };
+        WebJump j = new WebJump(index, item.uid, item.uri, webJumpClock, WebJump.DEFAULT_TIMEOUT_MS,
+                WebJump.DEFAULT_RECHECK_MS, fx);
+        self[0] = j;
+        webJump = j;
+        j.start(state);
+        scheduleWebJumpTimer();
+        notifyUi();
+    }
+
+    private boolean webJumpLive(WebJump j) {
+        return !destroyed && j != null && j == webJump;
+    }
+
+    /** After an input to webJump: re-arm its timer and show the change. */
+    private void afterWebJumpEvent() {
+        scheduleWebJumpTimer();
+        notifyUi();
+    }
+
+    private final WebJump.Clock webJumpClock = new WebJump.Clock() {
+        @Override public long nowMs() {
+            return SystemClock.elapsedRealtime();
+        }
+    };
+
+    private final Runnable webJumpTimer = new Runnable() {
+        @Override public void run() {
+            if (destroyed || webJump == null) return;
+            webJump.onTimer();
+            afterWebJumpEvent();
+        }
+    };
+
+    private void scheduleWebJumpTimer() {
+        main.removeCallbacks(webJumpTimer);
+        if (webJump != null) main.postDelayed(webJumpTimer, webJump.msUntilDeadline());
+    }
+
+    /** Forgets the web jump without counting it. */
+    private void clearWebJump() {
+        webJump = null;
+        main.removeCallbacks(webJumpTimer);
+    }
+
+    private void countJump(boolean ok) {
+        jumpsFinished++;
+        lastJumpOk = ok;
+    }
+
+    /** QueueJump's skip_next steps to entry index; false if the entry is gone or the API is down. */
+    private boolean startQueueJump(int index, PlayerState.QueueItem item) {
+        if (jump != null || !connected) return false;
         QueueJump j = new QueueJump(index, item.uid, item.uri, jumpClock, QueueJump.DEFAULT_TIMEOUT_MS,
                 jumpEffects);
         jump = j;
@@ -437,9 +635,41 @@ public final class PlayerService extends Service {
         return true;
     }
 
+    /** When a control was last pressed or a queue jump started (elapsedRealtime); 0 if never. */
+    long lastControlMs() {
+        return lastControlMs;
+    }
+
+    /** A queue jump (QueueJump or the Web API's) is under way. */
+    boolean isJumping() {
+        return jump != null || webJump != null;
+    }
+
     /** The running queue jump, or null. */
     QueueJump getJump() {
         return jump;
+    }
+
+    /**
+     * A Web API jump is under way (getWebJumpUri and the rest describe its
+     * target). It outlives a disconnect from Soloist until it ends (answer,
+     * control, timeout).
+     */
+    boolean isWebJumping() {
+        return webJump != null;
+    }
+
+    String getWebJumpUri() {
+        return webJump == null ? null : webJump.getUri();
+    }
+
+    /** The target's uid as tapped, or null if it had none. */
+    String getWebJumpUid() {
+        return webJump == null ? null : webJump.getUid();
+    }
+
+    int getWebJumpIndex() {
+        return webJump == null ? -1 : webJump.getIndex();
     }
 
     int getJumpsFinished() {
@@ -482,8 +712,7 @@ public final class PlayerService extends Service {
             if (ok) Log.i(TAG, "queue jump: done, " + why);
             else Log.w(TAG, "queue jump: gave up, " + why);
             jump = null;
-            jumpsFinished++;
-            lastJumpOk = ok;
+            countJump(ok);
             main.removeCallbacks(jumpTimer);
             // The caller notifies the UI (onState, onConnected, the timer).
         }
@@ -890,9 +1119,14 @@ public final class PlayerService extends Service {
     private final SoloistClient.Listener clientListener = new SoloistClient.Listener() {
         @Override public void onState(PlayerState s) {
             state = s;
+            if (webJump != null) webJump.onState(s);
             if (jump != null) {
                 jump.onState(s);
                 scheduleJumpTimer();
+            }
+            if (others != null) {
+                others.onState(s);
+                askOthersQueue();
             }
             volumeSync.onSoloist(s.isLoggedIn(), s.getVolume(), mediaIndex(), SystemClock.elapsedRealtime());
             if (authError != null && s.isLoggedIn()) {
@@ -917,8 +1151,13 @@ public final class PlayerService extends Service {
                 if (jump != null) jump.onDisconnected();
                 volumeSync.reset();
                 state = new PlayerState();
+                if (webJump != null) webJump.onState(state);
                 updateNotification();
                 updateRemoteControl();
+            }
+            if (others != null) {
+                others.onConnected(c, client.getState());
+                askOthersQueue();
             }
             notifyUi();
         }
@@ -1071,6 +1310,9 @@ public final class PlayerService extends Service {
         sb.append("locks: mc=").append(multicastLock.isHeld()).append(" wifi=").append(wifiLock.isHeld())
                 .append(" wake=").append(wakeLock.isHeld()).append('\n');
         if (sink.isFocusMuted()) sb.append("muted (audio focus)\n");
+        if (webJump != null) sb.append("web jump to entry ").append(webJump.getIndex()).append(' ')
+                .append(webJump.getUri()).append(", ")
+                .append(SystemClock.elapsedRealtime() - webJump.getStartMs()).append(" ms\n");
         if (jump != null) sb.append("queue jump to entry ").append(jump.getIndex()).append(", ")
                 .append(jump.getSteps()).append(" skips done\n");
         sb.append("fakepulse underflows: ").append(soloist.getUnderflowCount())

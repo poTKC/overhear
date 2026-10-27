@@ -243,6 +243,13 @@ public class PlayerStateTest {
         }
     }
 
+    @Test public void placeholderQueueRowsAreDropped() {
+        // Captured right after play: spotify:meta:node_rules_placeholder rows first.
+        s.apply(fixture("queue_changed_placeholder"));
+        assertEquals(1, s.getQueue().size());
+        assertEquals("spotify:track:3ctALmweZBapfBdFiIVpji", s.getQueue().get(0).uri);
+    }
+
     @Test public void coverPrefersLargeThenDefaultThenAny() throws Exception {
         String item = "{\"type\":\"track_changed\",\"item\":{\"decorations\":{\"visual_identity\":{\"cover\":%s}}}}";
         s.apply(new JSONObject(String.format(item, "[{\"url\":\"s\",\"size\":\"small\"},"

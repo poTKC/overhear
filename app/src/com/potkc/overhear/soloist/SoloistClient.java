@@ -51,6 +51,7 @@ public final class SoloistClient {
     public static final String DEFAULT_HOST = "127.0.0.1";
     public static final int DEFAULT_PORT = 8765;
     public static final int QUEUE_LIMIT = 10;
+    public static final int FULL_QUEUE_LIMIT = 500;
     private static final int CONNECT_TIMEOUT_MS = 3000;
 
     private final String host;
@@ -389,7 +390,12 @@ public final class SoloistClient {
     }
 
     public void refreshQueue() {
-        command(put(cmd("get_queue"), "limit", QUEUE_LIMIT));
+        requestQueue(QUEUE_LIMIT);
+    }
+
+    /** Asks for up to limit upcoming entries (a whole context fits in FULL_QUEUE_LIMIT). */
+    public void requestQueue(int limit) {
+        command(put(cmd("get_queue"), "limit", limit));
     }
 
     private void command(final JSONObject c) {

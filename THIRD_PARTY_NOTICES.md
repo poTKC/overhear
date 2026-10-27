@@ -1,7 +1,8 @@
 # Third-party notices
 
 Overhear ships the third-party components below inside its APK
-(`assets/runtime/`, the icons in `res/` and a font in `assets/fonts/`). This file is also packaged as
+(`assets/runtime/`, the icons in `res/`, a font in `assets/fonts/` and a QR
+code library in the app's code). This file is also packaged as
 `assets/licenses/THIRD_PARTY_NOTICES.txt` and shown in the app
 (設定画面の「ライセンス」). In that packaged copy, `runtime/build.sh` appends the
 full licence texts: LGPL-2.1-or-later, GPL-3.0-or-later, GCC-exception-3.1,
@@ -122,7 +123,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
   `tools/make_icons.py`) from Remix Icon 4.5.0 (npm package
   `remixicon@4.5.0`): shuffle-line, repeat-2-line, repeat-one-line,
   skip-back-fill, skip-forward-fill, play-fill, pause-fill, play-circle-fill,
-  pause-circle-fill, play-list-2-fill,
+  pause-circle-fill, play-list-2-fill, album-line,
   settings-3-line, close-line, music-2-line and music-2-fill. Recoloured,
   resized and composed (the toggle dot, the artwork placeholder); otherwise
   unmodified.
@@ -167,6 +168,48 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
   `1b3a7437ba2af80e465e773ed60c5036d1ba6ace492d89046dbcf18fb31e4e88`,
   checked by `tools/make_fonts.py`).
 - Licence text: <https://openfontlicense.org/>, <https://spdx.org/licenses/OFL-1.1.html>
+
+## QR Code generator library (Java)
+
+- `app/src/io/nayuki/qrcodegen/` (`BitBuffer.java`, `DataTooLongException.java`,
+  `QrCode.java`, `QrSegment.java`), compiled into the app's code. It draws the
+  login screen's QR code.
+- Version: v1.8.0, by Project Nayuki.
+- Source: <https://github.com/nayuki/QR-Code-generator/tree/v1.8.0/java/src/main/java/io/nayuki/qrcodegen>.
+  sha256 of the files as downloaded:
+  - `BitBuffer.java` `d5496452b435423beead30aa356e10a7c0ba4790b7da37ee4a1b80b4df136447`
+  - `DataTooLongException.java` `7661186dde4b27334fd94f4950f58522eaab256274388152e5cb8e35ef463e1a`
+  - `QrCode.java` `ab2d9f05bef0c2bedfaa888256f09987b2dbef5a4f432c540b9e549801c030ec`
+  - `QrSegment.java` `70f10e518d3a8f1a1862e598a249abaac036a9c6fae4e5892c4b6d24995bb8d7`
+- **Modification** (for Android 4.3, API 18): `java.util.Objects.requireNonNull`
+  is replaced with a private `requireNonNull` helper in `BitBuffer`, `QrCode` and
+  `QrSegment`, and `QrSegment` encodes text with `getBytes("UTF-8")` in place
+  of `StandardCharsets.UTF_8`. Both APIs arrived in API 19. Each changed file
+  says so in its first line. Nothing else is changed.
+- Licence: MIT (SPDX `MIT`).
+
+```
+Copyright © 2022 Project Nayuki. (MIT License)
+https://www.nayuki.io/page/qr-code-generator-library
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+* The above copyright notice and this permission notice shall be included in
+  all copies or substantial portions of the Software.
+
+* The Software is provided "as is", without warranty of any kind, express or
+  implied, including but not limited to the warranties of merchantability,
+  fitness for a particular purpose and noninfringement. In no event shall the
+  authors or copyright holders be liable for any claim, damages or other
+  liability, whether in an action of contract, tort or otherwise, arising from,
+  out of or in connection with the Software or the use or other dealings in the
+  Software.
+```
 
 ## Zig toolchain runtime
 

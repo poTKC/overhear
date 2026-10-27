@@ -21,9 +21,11 @@ import java.io.IOException;
 
 import com.potkc.overhear.runtime.ProgressListener;
 import com.potkc.overhear.runtime.RuntimeInstaller;
+import com.potkc.overhear.spotify.SpotifyApi;
 
 /**
- * The API key, device name and auto start, and the licence notices. Saving installs the runtime and downloads
+ * The API key, device name and auto start, the Spotify Web API login (which
+ * takes effect at once, not on save), and the licence notices. Saving installs the runtime and downloads
  * Soloist (with progress, cancellable) when the service is not running yet,
  * then starts the service and opens the player; from the player
  * (EXTRA_EDIT) a change restarts Soloist through the running service and
@@ -48,6 +50,10 @@ public class SetupActivity extends Activity {
     private Button cancel;
     private ProgressBar progress;
     private TextView message;
+    private TextView spotifyStatus;
+    private Button spotifyButton;
+    /** Bumped per Spotify status refresh: older me() results are ignored. Main thread. */
+    private int spotifyRefresh;
     private boolean edit;
     private boolean destroyed;
     /** The running install's installer (for cancel), or null. Main thread. */
@@ -72,6 +78,8 @@ public class SetupActivity extends Activity {
         cancel = (Button) findViewById(R.id.cancel);
         progress = (ProgressBar) findViewById(R.id.progress);
         message = (TextView) findViewById(R.id.message);
+        spotifyStatus = (TextView) findViewById(R.id.spotify_status);
+        spotifyButton = (Button) findViewById(R.id.spotify_button);
 
         if (edit) save.setText(R.string.setup_save_edit);
         if (prefs.hasApiKey()) key.setHint(R.string.setup_key_saved_hint);
@@ -99,6 +107,11 @@ public class SetupActivity extends Activity {
                 cancelInstall();
             }
         });
+        spotifyButton.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                onSpotifyButton();
+            }
+        });
         TextView licenses = (TextView) findViewById(R.id.licenses);
         // White like the rest of setup; the underline keeps it reading as a link.
         licenses.setPaintFlags(licenses.getPaintFlags() | Paint.UNDERLINE_TEXT_FLAG);
@@ -107,6 +120,12 @@ public class SetupActivity extends Activity {
                 Licenses.show(SetupActivity.this);
             }
         });
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        showSpotify();
     }
 
     @Override
@@ -122,6 +141,62 @@ public class SetupActivity extends Activity {
             return;
         }
         super.onBackPressed();
+    }
+
+    private void onSpotifyButton() {
+        final Spotify spotify = Spotify.get(this);
+        if (!spotify.isLoggedIn()) {
+            startActivity(new Intent(this, LoginActivity.class));
+            return;
+        }
+        // logOut() takes the auth lock, which a call in progress may hold for
+        // up to its timeout: do it on the Spotify thread, not here.
+        spotifyButton.setEnabled(false);
+        spotify.run(new Spotify.Call<Void>() {
+            @Override public Void run(SpotifyApi api) {
+                api.auth().logOut();
+                return null;
+            }
+        }, new Spotify.Callback<Void>() {
+            @Override public void done(Void result) {
+                if (!destroyed) showSpotify();
+            }
+
+            @Override public void failed(IOException e) {
+                if (!destroyed) showSpotify();
+            }
+        });
+    }
+
+    /** Shows the login state now, then the user ID once me() answers. */
+    private void showSpotify() {
+        final int my = ++spotifyRefresh;
+        Spotify spotify = Spotify.get(this);
+        spotifyButton.setEnabled(true);
+        if (!spotify.isLoggedIn()) {
+            spotifyStatus.setText(R.string.setup_spotify_logged_out);
+            spotifyButton.setText(R.string.setup_spotify_login);
+            return;
+        }
+        spotifyStatus.setText(R.string.setup_spotify_logged_in);
+        spotifyButton.setText(R.string.setup_spotify_logout);
+        spotify.run(new Spotify.Call<String>() {
+            @Override public String run(SpotifyApi api) throws IOException {
+                return api.me();
+            }
+        }, new Spotify.Callback<String>() {
+            @Override public void done(String id) {
+                if (destroyed || my != spotifyRefresh || id.isEmpty()) return;
+                spotifyStatus.setText(getString(R.string.setup_spotify_logged_in_as, id));
+            }
+
+            @Override public void failed(IOException e) {
+                // A login that expired was dropped: show the login button again.
+                if (!destroyed && my == spotifyRefresh && !Spotify.get(SetupActivity.this).isLoggedIn()) {
+                    showSpotify();
+                }
+            }
+        });
     }
 
     private void onSave() {

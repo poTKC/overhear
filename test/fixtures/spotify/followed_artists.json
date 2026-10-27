@@ -1,0 +1,10 @@
+{"artists": {"href": "https://api.spotify.com/v1/me/following?type=artist&limit=2", "limit": 2,
+ "next": "https://api.spotify.com/v1/me/following?type=artist&after=cursor1&limit=2",
+ "cursors": {"after": "cursor1"}, "total": 5,
+ "items": [
+  {"id": "R1", "name": "Artist One", "type": "artist", "uri": "spotify:artist:R1",
+   "images": [{"url": "https://i.example/r1-640", "height": 640, "width": 640},
+              {"url": "https://i.example/r1-320", "height": 320, "width": 320},
+              {"url": "https://i.example/r1-160", "height": 160, "width": 160}]},
+  {"id": "R2", "name": "Artist Two", "type": "artist", "uri": "spotify:artist:R2", "images": []}
+ ]}}

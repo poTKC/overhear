@@ -1,21 +1,35 @@
-// overhear-fetch downloads files over HTTPS for Overhear.
+// overhear-fetch downloads files and calls Spotify over HTTPS for Overhear.
 //
 // Android 4.3's Java TLS stack cannot reach many modern hosts and the system
 // has no tar, so the app delegates downloads (the Soloist tarball, artwork)
-// to this static helper.
+// and Spotify Web API calls to this static helper.
 //
 //	overhear-fetch [--ca FILE] [--dns a,b] get URL OUT
 //	overhear-fetch [--ca FILE] [--dns a,b] extract URL DIR
+//	overhear-fetch [--ca FILE] [--dns a,b] token
+//	OVERHEAR_TOKEN=… overhear-fetch [--ca FILE] [--dns a,b] api METHOD PATH
 //
 // Only https URLs are accepted, on the command line and in redirects.
 //
-// stdout carries "progress N" lines (0-100, only when the size is known),
-// "extracting" once an archive is downloaded, and a final "done". Errors go to
-// stderr with exit status 1. SIGINT/SIGTERM abort cleanly (exit 1).
+// For get and extract, stdout carries "progress N" lines (0-100, only when the
+// size is known), "extracting" once an archive is downloaded, and a final
+// "done".
+//
+// token POSTs the form read from stdin to accounts.spotify.com/api/token. api
+// sends METHOD (GET, PUT, POST or DELETE) to api.spotify.com/v1 + PATH with
+// the bearer token from $OVERHEAR_TOKEN and a JSON body read from stdin.
+// Secrets never appear on the command line, which other apps can read.
+// Both print "status N", an optional "retry-after V", a blank line and the
+// reply body; any HTTP reply, whatever its status, exits 0. Neither follows
+// redirects (a 3xx is reported as its status), so the request body is never
+// re-sent to another host. Both read stdin to EOF, so callers must close it.
+//
+// Errors go to stderr with exit status 1. SIGINT/SIGTERM abort cleanly (exit 1).
 package main
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"context"
 	"crypto/tls"
@@ -49,24 +63,44 @@ const (
 // /etc/resolv.conf (Android), where Go would otherwise query 127.0.0.1:53.
 const fallbackDNS = "8.8.8.8,1.1.1.1"
 
+// Spotify endpoints; tests point them at a local TLS server.
+var (
+	accountsBase = "https://accounts.spotify.com"
+	apiBase      = "https://api.spotify.com/v1"
+)
+
+const (
+	apiTimeout   = 30 * time.Second
+	maxReplyBody = 4 << 20
+	maxStdinBody = 64 << 10
+)
+
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(runWithStdin(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
 
+// run is runWithStdin with an empty stdin.
 func run(args []string, stdout, stderr io.Writer) int {
+	return runWithStdin(args, strings.NewReader(""), stdout, stderr)
+}
+
+// argCounts is the number of arguments each command takes, itself included.
+var argCounts = map[string]int{"get": 3, "extract": 3, "token": 1, "api": 3}
+
+func runWithStdin(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("overhear-fetch", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	caFile := fs.String("ca", "", "PEM bundle of trusted roots (default: system roots)")
 	dns := fs.String("dns", "", "comma-separated DNS server IPs, optionally ip:port (default: $OVERHEAR_DNS)")
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "usage: overhear-fetch [--ca FILE] [--dns a,b] get URL OUT | extract URL DIR")
+		fmt.Fprintln(stderr, "usage: overhear-fetch [--ca FILE] [--dns a,b] get URL OUT | extract URL DIR | token | api METHOD PATH")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
 		return 1
 	}
 	rest := fs.Args()
-	if len(rest) != 3 || (rest[0] != "get" && rest[0] != "extract") {
+	if len(rest) == 0 || argCounts[rest[0]] != len(rest) {
 		fs.Usage()
 		return 1
 	}
@@ -74,8 +108,23 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "overhear-fetch:", err)
 		return 1
 	}
-	if err := checkHTTPS(rest[1]); err != nil {
-		return fail(err)
+	if rest[0] == "get" || rest[0] == "extract" {
+		if err := checkHTTPS(rest[1]); err != nil {
+			return fail(err)
+		}
+	}
+	if rest[0] == "api" {
+		switch rest[1] {
+		case "GET", "PUT", "POST", "DELETE":
+		default:
+			return fail(fmt.Errorf("method %q not allowed", rest[1]))
+		}
+		if err := checkAPIPath(rest[2]); err != nil {
+			return fail(err)
+		}
+		if os.Getenv("OVERHEAR_TOKEN") == "" {
+			return fail(errors.New("OVERHEAR_TOKEN is not set"))
+		}
 	}
 
 	_, statErr := os.Stat("/etc/resolv.conf")
@@ -90,6 +139,23 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if rest[0] == "token" || rest[0] == "api" {
+		ctx, cancel := context.WithTimeout(ctx, apiTimeout)
+		defer cancel()
+		// A followed 307/308 would re-send the body (tokens, verifier).
+		noRedirects := *client
+		noRedirects.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+		client = &noRedirects
+		if rest[0] == "token" {
+			err = postToken(ctx, client, stdin, stdout)
+		} else {
+			err = callAPI(ctx, client, rest[1], rest[2], stdin, stdout)
+		}
+		if err != nil {
+			return fail(err)
+		}
+		return 0
+	}
 	f := &fetcher{
 		client:   client,
 		progress: func(p int) { fmt.Fprintf(stdout, "progress %d\n", p) },
@@ -105,6 +171,94 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	fmt.Fprintln(stdout, "done")
 	return 0
+}
+
+// readStdin reads the request body, refusing more than maxStdinBody bytes
+// rather than sending a truncated one.
+func readStdin(stdin io.Reader) ([]byte, error) {
+	b, err := io.ReadAll(io.LimitReader(stdin, maxStdinBody+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(b) > maxStdinBody {
+		return nil, fmt.Errorf("stdin larger than %d bytes", maxStdinBody)
+	}
+	return b, nil
+}
+
+// postToken sends the form read from stdin to the token endpoint.
+func postToken(ctx context.Context, client *http.Client, stdin io.Reader, stdout io.Writer) error {
+	form, err := readStdin(stdin)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", accountsBase+"/api/token", bytes.NewReader(form))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	return doReply(client, req, stdout)
+}
+
+// checkAPIPath accepts an absolute path (with an optional query) below
+// apiBase: no scheme or host, no dot segments, no fragment.
+func checkAPIPath(p string) error {
+	if !strings.HasPrefix(p, "/") || strings.HasPrefix(p, "//") || strings.ContainsAny(p, "#\\") {
+		return fmt.Errorf("bad API path %q", p)
+	}
+	path := p
+	if i := strings.IndexByte(path, '?'); i >= 0 {
+		path = path[:i]
+	}
+	for _, seg := range strings.Split(path, "/") {
+		if seg == "." || seg == ".." {
+			return fmt.Errorf("bad API path %q", p)
+		}
+	}
+	return nil
+}
+
+// callAPI sends METHOD apiBase+path with the bearer token from
+// $OVERHEAR_TOKEN and the body read from stdin (JSON when not empty).
+func callAPI(ctx context.Context, client *http.Client, method, path string, stdin io.Reader, stdout io.Writer) error {
+	body, err := readStdin(stdin)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, method, apiBase+path, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+os.Getenv("OVERHEAR_TOKEN"))
+	if len(body) > 0 {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	return doReply(client, req, stdout)
+}
+
+// doReply runs req and writes "status N", an optional "retry-after V", a
+// blank line and the body (at most maxReplyBody bytes) to stdout.
+func doReply(client *http.Client, req *http.Request, stdout io.Writer) error {
+	req.Header.Set("User-Agent", userAgent)
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxReplyBody+1))
+	if err != nil {
+		return err
+	}
+	if len(body) > maxReplyBody {
+		return fmt.Errorf("reply larger than %d bytes", maxReplyBody)
+	}
+	fmt.Fprintf(stdout, "status %d\n", resp.StatusCode)
+	if ra := resp.Header.Get("Retry-After"); ra != "" {
+		fmt.Fprintf(stdout, "retry-after %s\n", strings.TrimSpace(ra))
+	}
+	fmt.Fprint(stdout, "\n")
+	_, err = stdout.Write(body)
+	return err
 }
 
 // dnsServers picks the resolver list: --dns, then $OVERHEAR_DNS, then a public

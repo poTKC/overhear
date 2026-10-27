@@ -1,0 +1,206 @@
+package com.potkc.overhear.spotify;
+
+import java.util.List;
+
+import com.potkc.overhear.soloist.PlayerState;
+
+/**
+ * Follows Soloist's state after another user's playlist was asked to play
+ * from the top (in order, or shuffled from a random track), and rebuilds
+ * its track list, in the order it plays, from the queue (QueueTracks).
+ *
+ * The first track is the first one seen playing in the playlist since the
+ * request: Soloist reports the context first, while the state still shows
+ * the previous track and then briefly none (""), so a track only counts
+ * once a track_changed came or it differs from the one playing at open.
+ * Restarting the track that already played sends no track_changed, so
+ * ADOPT_AFTER_MS after the request returned a track near its start in the
+ * playlist is taken as the first. The longest list seen is kept: the
+ * regular 10-entry queue that follows must not shorten it, and once
+ * another track plays QueueTracks gives none, so the list stays in order.
+ * If the shuffle changes while the first track still plays (a play that
+ * came up shuffled although asked in order, put right shortly after), the
+ * list's order is stale: the whole queue is asked for again, and the next
+ * list at least as long replaces it.
+ * Without a list GIVE_UP_AFTER_MS after the request (unless that tick
+ * just adopted the first track: then the next tick, at the latest the one
+ * LAST_CHECK_AFTER_MS after, gives up), or if the context leaves the
+ * playlist first, the status is FAILED (playing it again takes a new
+ * tracker). Once the context has left the playlist after the request
+ * (hasLeft), the list may not match a later play of it (from the phone,
+ * maybe shuffled otherwise); a replay while it is still the context is not
+ * noticed.
+ *
+ * Pure Java, one thread (the caller's); times come from the caller.
+ */
+public final class OthersTracker {
+    public enum Status { STARTING, READY, FAILED }
+
+    public static final long ADOPT_AFTER_MS = 2500;
+    public static final long GIVE_UP_AFTER_MS = 10000;
+    /** A last check, for a first track adopted in the GIVE_UP_AFTER_MS tick whose list never came. */
+    public static final long LAST_CHECK_AFTER_MS = 20000;
+    /** How far into the track the timed adoption still takes it for a fresh start. */
+    public static final long ADOPT_MAX_POSITION_MS = 5000;
+
+    private final String playlistUri;
+    /** The state at open (or at a new connection), whose track does not count without a track_changed. */
+    private int baseTrackChanges = -1;
+    private String baseTrackUri;
+    /** When the play request returned; -1 before. */
+    private long playReturnedMs = -1;
+    /** The playlist was seen as the context. */
+    private boolean sawContext;
+    private String firstTrackUri;
+    private String currentTrackUri;
+    private boolean queueAsked;
+    private boolean failed;
+    private boolean left;
+    /** The shuffle as items were collected under. */
+    private boolean itemsShuffle;
+    /** items' order is stale (the shuffle changed): the next list at least as long replaces it. */
+    private boolean reorder;
+    /** While reorder: the queue as of the change (PlayerState keeps one list per queue_changed). */
+    private List<PlayerState.QueueItem> staleQueue;
+    private List<Item> items;
+    /** Bumped whenever status or items change. */
+    private int version;
+
+    public OthersTracker(String playlistUri) {
+        this.playlistUri = playlistUri;
+    }
+
+    public String playlistUri() {
+        return playlistUri;
+    }
+
+    /** Before asking to play: before is the current state, null if unknown. */
+    public void onOpen(PlayerState before) {
+        baseline(before);
+        if (before != null) {
+            currentTrackUri = before.getTrackUri();
+            sawContext = playlistUri.equals(before.getContextUri());
+        }
+    }
+
+    /** The play request returned (done or failed) at nowMs; the timed checks count from the first call. */
+    public void onPlayReturned(long nowMs) {
+        if (playReturnedMs < 0) playReturnedMs = nowMs;
+    }
+
+    /**
+     * A connection came or went, or the caller now follows another client:
+     * the queue is asked for again, and a new connection's track count
+     * (from 0) becomes the baseline while no first track is known.
+     */
+    public void onConnected(boolean connected, PlayerState s) {
+        queueAsked = false;
+        if (connected && firstTrackUri == null) baseline(s);
+    }
+
+    public void onState(PlayerState s) {
+        String track = s.getTrackUri();
+        currentTrackUri = track;
+        String context = s.getContextUri();
+        boolean inPlaylist = playlistUri.equals(context);
+        if (inPlaylist) sawContext = true;
+        if (items != null && !reorder && s.isShuffle() != itemsShuffle && inPlaylist
+                && firstTrackUri.equals(track)) {
+            reorder = true;
+            staleQueue = s.getQueue();
+            queueAsked = false;
+        }
+        if (firstTrackUri == null && inPlaylist && !isEmpty(track)
+                && (s.getTrackChanges() != baseTrackChanges || !track.equals(baseTrackUri))) {
+            firstTrackUri = track;
+        }
+        collect(s);
+        if (playReturnedMs >= 0 && sawContext && !inPlaylist && !isEmpty(context) && !left) {
+            left = true;
+            if (items == null) failed = true; // played something else before the list came
+            version++;
+        }
+    }
+
+    /**
+     * onState plus the timed checks; call it ADOPT_AFTER_MS, GIVE_UP_AFTER_MS
+     * and LAST_CHECK_AFTER_MS after the request returned.
+     */
+    public void onTick(PlayerState s, long nowMs) {
+        onState(s);
+        if (playReturnedMs < 0) return;
+        long since = nowMs - playReturnedMs;
+        String track = s.getTrackUri();
+        boolean adopted = false;
+        if (firstTrackUri == null && since >= ADOPT_AFTER_MS && playlistUri.equals(s.getContextUri())
+                && !isEmpty(track) && s.positionAt(nowMs) < ADOPT_MAX_POSITION_MS) {
+            firstTrackUri = track; // restarted without a track_changed
+            adopted = true;
+            collect(s);
+        }
+        // Not in the tick that adopted: the queue request has yet to go out.
+        if (items == null && !failed && !adopted && since >= GIVE_UP_AFTER_MS) {
+            failed = true;
+            version++;
+        }
+    }
+
+    /**
+     * Whether to ask for the whole queue now (true once per connection):
+     * once the first track is known, and unless a list came and another
+     * track plays (its queue would be rotated anyway).
+     */
+    public boolean takeQueueRequest(boolean connected) {
+        if (!connected || queueAsked || firstTrackUri == null) return false;
+        if (items != null && !firstTrackUri.equals(currentTrackUri)) return false;
+        queueAsked = true;
+        return true;
+    }
+
+    public Status status() {
+        if (items != null) return Status.READY;
+        return failed ? Status.FAILED : Status.STARTING;
+    }
+
+    /** The context left the playlist after the request returned. */
+    public boolean hasLeft() {
+        return left;
+    }
+
+    /** The longest list so far; null until one. */
+    public List<Item> items() {
+        return items;
+    }
+
+    /** The first track in the playlist; null until known. */
+    public String firstTrackUri() {
+        return firstTrackUri;
+    }
+
+    /** Changes whenever status(), items() or hasLeft() may have. */
+    public int version() {
+        return version;
+    }
+
+    private void collect(PlayerState s) {
+        if (reorder && s.getQueue() == staleQueue) return; // the order the change made stale
+        List<Item> got = QueueTracks.fromState(s, playlistUri, firstTrackUri);
+        if (got != null && (items == null || got.size() > items.size()
+                || (reorder && got.size() == items.size()))) {
+            items = got;
+            itemsShuffle = s.isShuffle();
+            reorder = false;
+            staleQueue = null;
+            version++;
+        }
+    }
+
+    private void baseline(PlayerState s) {
+        baseTrackChanges = s == null ? -1 : s.getTrackChanges();
+        baseTrackUri = s == null ? null : s.getTrackUri();
+    }
+
+    private static boolean isEmpty(String s) {
+        return s == null || s.isEmpty();
+    }
+}

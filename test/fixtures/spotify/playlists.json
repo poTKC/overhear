@@ -1,0 +1,21 @@
+{"href": "https://api.spotify.com/v1/me/playlists?offset=10&limit=3", "limit": 3,
+ "next": "https://api.spotify.com/v1/me/playlists?offset=13&limit=3", "offset": 10, "previous": null, "total": 20,
+ "items": [
+  {"collaborative": false, "description": "", "id": "P1", "name": "Mix One",
+   "images": [{"height": null, "url": "https://i.example/p1", "width": null}],
+   "owner": {"display_name": "Owner One", "id": "owner1", "type": "user", "uri": "spotify:user:owner1"},
+   "public": true, "items": {"href": "https://api.spotify.com/v1/playlists/P1/items", "total": 23},
+   "type": "playlist", "uri": "spotify:playlist:P1"},
+  {"collaborative": false, "description": "", "id": "P2", "name": "Mix Two",
+   "images": [{"height": 640, "url": "https://i.example/p2-640", "width": 640},
+              {"height": 300, "url": "https://i.example/p2-300", "width": 300},
+              {"height": 60, "url": "https://i.example/p2-60", "width": 60}],
+   "owner": {"display_name": null, "id": "user1", "type": "user", "uri": "spotify:user:user1"},
+   "public": false, "tracks": {"href": "https://api.spotify.com/v1/playlists/P2/tracks", "total": 66},
+   "type": "playlist", "uri": "spotify:playlist:P2"},
+  {"collaborative": false, "description": "", "id": "P3", "name": "No Cover",
+   "images": [],
+   "owner": {"display_name": "Owner Three", "id": "owner3", "type": "user", "uri": "spotify:user:owner3"},
+   "public": true, "items": {"href": "https://api.spotify.com/v1/playlists/P3/items", "total": 0},
+   "type": "playlist", "uri": "spotify:playlist:P3"}
+ ]}

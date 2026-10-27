@@ -5,21 +5,21 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Process;
 import android.util.Log;
+import android.view.View;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import com.potkc.overhear.runtime.Dns;
+import com.potkc.overhear.runtime.HelperProcess;
 import com.potkc.overhear.runtime.LineReader;
 import com.potkc.overhear.runtime.RuntimeInstaller;
 import com.potkc.overhear.soloist.MainThreadExecutor;
@@ -53,7 +53,6 @@ final class Artwork {
     }
 
     private static ArtworkLoader<Cover> loader;
-    private static ScheduledExecutorService watchdog;
 
     private Artwork() {}
 
@@ -82,7 +81,6 @@ final class Artwork {
         ThreadPoolExecutor urgent = new ThreadPoolExecutor(1, 1, 30, TimeUnit.SECONDS,
                 new LinkedBlockingQueue<Runnable>(), low);
         urgent.allowCoreThreadTimeOut(true);
-        watchdog = Executors.newSingleThreadScheduledExecutor(low);
 
         ArtworkLoader.Fetcher fetcher = new ArtworkLoader.Fetcher() {
             @Override public void fetch(String url, File out) throws IOException {
@@ -100,50 +98,37 @@ final class Artwork {
         return loader;
     }
 
+    /** The views of context (a screen), for ArtworkLoader.cancelAll. */
+    static ArtworkLoader.TargetFilter viewsOf(final Context context) {
+        return new ArtworkLoader.TargetFilter() {
+            @Override public boolean matches(Object target) {
+                return target instanceof View && ((View) target).getContext() == context;
+            }
+        };
+    }
+
     /** overhear-fetch get url out; throws unless it printed "done" and exited 0. */
     static void runHelper(RuntimeInstaller installer, String url, File out) throws IOException {
-        File helper = installer.helperBin();
-        if (!helper.canExecute()) throw new IOException("overhear-fetch is not installed yet");
-        List<String> cmd = new ArrayList<String>();
-        cmd.add(helper.getPath());
-        cmd.add("--ca");
-        cmd.add(installer.caFile().getPath());
-        cmd.add("--dns");
-        cmd.add(Dns.helperArg(RuntimeInstaller.systemDns()));
-        cmd.add("get");
-        cmd.add(url);
-        cmd.add(out.getPath());
-        final java.lang.Process p = new ProcessBuilder(cmd).directory(installer.runtimeDir())
-                .redirectErrorStream(true).start();
-        ScheduledFuture<?> kill = watchdog.schedule(new Runnable() {
-            @Override public void run() {
-                p.destroy();
-            }
-        }, FETCH_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+        List<String> args = new ArrayList<String>();
+        args.add("--ca");
+        args.add(installer.caFile().getPath());
+        args.add("--dns");
+        args.add(Dns.helperArg(RuntimeInstaller.systemDns()));
+        args.add("get");
+        args.add(url);
+        args.add(out.getPath());
+        HelperProcess.Result res = HelperProcess.run(installer, args, null, null, FETCH_TIMEOUT_MS);
         boolean done = false;
         String last = "";
-        int code;
-        try {
-            p.getOutputStream().close();
-            LineReader r = new LineReader(p.getInputStream(), MAX_LINE_BYTES);
-            String line;
-            while ((line = r.readLine()) != null) {
-                if (line.equals("done")) done = true;
-                else if (!line.startsWith("progress ")) last = line;
-            }
-            code = p.waitFor();
-        } catch (InterruptedException e) {
-            p.destroy();
-            Thread.currentThread().interrupt();
-            throw new IOException("interrupted");
-        } finally {
-            kill.cancel(false);
-            try {
-                p.getInputStream().close();
-            } catch (IOException e) {
-                // ignore
-            }
+        LineReader r = new LineReader(new ByteArrayInputStream(res.stdout), MAX_LINE_BYTES);
+        String line;
+        while ((line = r.readLine()) != null) {
+            if (line.equals("done")) done = true;
+            else if (!line.startsWith("progress ")) last = line;
         }
+        // Errors go to stderr; stdout carries only progress and "done".
+        if (!res.lastErrorLine.isEmpty()) last = res.lastErrorLine;
+        int code = res.exitCode;
         if (code != 0 || !done || !out.isFile()) {
             Log.w(TAG, "artwork fetch failed (" + code + "): " + last);
             throw new IOException("overhear-fetch: " + last);

@@ -21,7 +21,9 @@ import org.json.JSONObject;
  * Shapes follow events captured from Soloist 1.3.10 (test/fixtures); every
  * metadata field may be missing. options.repeat is "off", "context" or
  * "track". Positions are {position_ms, timestamp_ms, speed} where
- * timestamp_ms is the device's wall clock.
+ * timestamp_ms is the device's wall clock. Soloist sends
+ * spotify:meta:node_rules_placeholder rows right after play; they are
+ * dropped from the queue.
  */
 public final class PlayerState {
     public enum Status {
@@ -85,7 +87,8 @@ public final class PlayerState {
                 }
             }
             artists = Collections.unmodifiableList(a);
-            album = name(entityDecorations(d == null ? null : d.optJSONObject("parent")));
+            JSONObject parent = d == null ? null : d.optJSONObject("parent");
+            album = name(entityDecorations(parent));
             coverUrl = cover(d);
             mediumCoverUrl = cover(d, "default", "large");
             smallCoverUrl = cover(d, "small", "default", "large");
@@ -248,7 +251,10 @@ public final class PlayerState {
             for (int i = 0; i < upcoming.length(); i++) {
                 JSONObject entry = upcoming.optJSONObject(i);
                 JSONObject item = entry == null ? null : entry.optJSONObject("item");
-                if (item != null) q.add(new QueueItem(entry, item));
+                if (item == null) continue;
+                String uri = str(item, "uri");
+                if (uri != null && uri.startsWith("spotify:meta:")) continue;
+                q.add(new QueueItem(entry, item));
             }
         }
         queue = Collections.unmodifiableList(q);
@@ -292,6 +298,9 @@ public final class PlayerState {
 
     /** A cover of about 300 px (what a 240 px view needs), or null. */
     public String getMediumCoverUrl() { return track.mediumCoverUrl; }
+
+    /** A cover of about 64 px (for a list row), or null. */
+    public String getSmallCoverUrl() { return track.smallCoverUrl; }
 
     /** 0 if unknown. */
     public long getDurationMs() { return track.durationMs; }
@@ -362,9 +371,14 @@ public final class PlayerState {
         return str(id, "name");
     }
 
+    /** x.entity, for creators[] and parent. */
+    static JSONObject entity(JSONObject x) {
+        return x == null ? null : x.optJSONObject("entity");
+    }
+
     /** x.entity.decorations, for creators[] and parent. */
     static JSONObject entityDecorations(JSONObject x) {
-        JSONObject entity = x == null ? null : x.optJSONObject("entity");
+        JSONObject entity = entity(x);
         return entity == null ? null : entity.optJSONObject("decorations");
     }
 

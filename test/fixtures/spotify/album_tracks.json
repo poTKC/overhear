@@ -1,0 +1,14 @@
+{"href": "https://api.spotify.com/v1/albums/A/tracks?offset=0&limit=3", "limit": 3,
+ "next": "https://api.spotify.com/v1/albums/A/tracks?offset=3&limit=3", "offset": 0, "previous": null, "total": 13,
+ "items": [
+  {"artists": [{"id": "R1", "name": "Artist One", "type": "artist", "uri": "spotify:artist:R1"}],
+   "disc_number": 1, "duration_ms": 275386, "explicit": false, "id": "AT1", "name": "Side One",
+   "track_number": 1, "type": "track", "uri": "spotify:track:AT1", "is_local": false},
+  {"artists": [{"id": "R1", "name": "Artist One", "type": "artist", "uri": "spotify:artist:R1"},
+               {"id": "R5", "name": "Guest Five", "type": "artist", "uri": "spotify:artist:R5"}],
+   "disc_number": 1, "duration_ms": 322146, "explicit": false, "id": "AT2", "name": "Side Two",
+   "track_number": 2, "type": "track", "uri": "spotify:track:AT2", "is_local": false},
+  {"artists": [{"id": "R1", "name": "Artist One", "type": "artist", "uri": "spotify:artist:R1"}],
+   "disc_number": 1, "duration_ms": 290000, "explicit": false, "id": "AT3", "name": "Side Three",
+   "track_number": 3, "type": "track", "uri": "spotify:track:AT3", "is_local": false}
+ ]}

@@ -54,6 +54,11 @@ final class ArtworkLoader<B> {
         B decode(File file, int sizePx) throws IOException;
     }
 
+    /** Picks the targets cancelAll forgets (one screen's views). */
+    interface TargetFilter {
+        boolean matches(Object target);
+    }
+
     /** Main thread; image is null when the cover could not be loaded. */
     interface Callback<B> {
         void onArtwork(String url, B image);
@@ -140,12 +145,22 @@ final class ArtworkLoader<B> {
     }
 
     /**
-     * Forgets every pending request (the screen is going away); jobs that
-     * have not started yet skip their fetch.
+     * Forgets the pending requests of the targets filter matches (a screen
+     * going away); jobs nobody else waits for skip their fetch if they have
+     * not started. Only that screen's: the loader is shared, and the next
+     * screen may already have asked for its cover (the closing one's
+     * onDestroy comes after the next one's onResume).
      */
-    void cancelAll() {
-        targets.clear();
-        wanted.clear();
+    void cancelAll(TargetFilter filter) {
+        boolean changed = false;
+        Iterator<Object> it = targets.keySet().iterator();
+        while (it.hasNext()) {
+            if (filter.matches(it.next())) {
+                it.remove();
+                changed = true;
+            }
+        }
+        if (changed) updateWanted();
     }
 
     private void forget(Object target) {

@@ -1,0 +1,14 @@
+{"href": "https://api.spotify.com/v1/artists/R1/albums?offset=0&limit=2", "limit": 2,
+ "next": "https://api.spotify.com/v1/artists/R1/albums?offset=2&limit=2", "offset": 0, "previous": null, "total": 7,
+ "items": [
+  {"album_type": "album", "total_tracks": 13, "id": "A7", "name": "Album Seven",
+   "images": [{"url": "https://i.example/a7-640", "height": 640, "width": 640},
+              {"url": "https://i.example/a7-300", "height": 300, "width": 300},
+              {"url": "https://i.example/a7-64", "height": 64, "width": 64}],
+   "release_date": "2013-05-17", "release_date_precision": "day", "type": "album", "uri": "spotify:album:A7",
+   "artists": [{"id": "R1", "name": "Artist One", "type": "artist", "uri": "spotify:artist:R1"}]},
+  {"album_type": "single", "total_tracks": 2, "id": "A8", "name": "Single Eight",
+   "images": [{"url": "https://i.example/a8-64", "height": 64, "width": 64}],
+   "release_date": "1997", "release_date_precision": "year", "type": "album", "uri": "spotify:album:A8",
+   "artists": [{"id": "R1", "name": "Artist One", "type": "artist", "uri": "spotify:artist:R1"}]}
+ ]}

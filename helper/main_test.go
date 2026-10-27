@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -430,7 +431,7 @@ func TestExtractPrintsExtracting(t *testing.T) {
 }
 
 func TestUsageErrors(t *testing.T) {
-	for _, args := range [][]string{nil, {"get", "u"}, {"bogus", "a", "b"}, {"--ca"}} {
+	for _, args := range [][]string{nil, {"get", "u"}, {"bogus", "a", "b"}, {"--ca"}, {"token", "extra"}, {"api", "GET"}} {
 		if code := run(args, io.Discard, io.Discard); code == 0 {
 			t.Errorf("run(%q) = 0, want failure", args)
 		}
@@ -495,5 +496,212 @@ func TestRedirectsMustStayHTTPS(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(out); string(b) != "secure" {
 		t.Errorf("got %q", b)
+	}
+}
+
+// replyServer answers every request with status, an optional Retry-After and
+// body, and records the last request for the test to inspect.
+func replyServer(t *testing.T, status int, retryAfter, body string) (*httptest.Server, *http.Request, *[]byte) {
+	t.Helper()
+	var last http.Request
+	var lastBody []byte
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		last = *r
+		lastBody, _ = io.ReadAll(r.Body)
+		if retryAfter != "" {
+			w.Header().Set("Retry-After", retryAfter)
+		}
+		w.WriteHeader(status)
+		io.WriteString(w, body)
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &last, &lastBody
+}
+
+func caFor(t *testing.T, srv *httptest.Server) string {
+	t.Helper()
+	ca := filepath.Join(t.TempDir(), "ca.pem")
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw})
+	if err := os.WriteFile(ca, pemBytes, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return ca
+}
+
+func TestTokenPostsStdinForm(t *testing.T) {
+	srv, last, lastBody := replyServer(t, 200, "", `{"access_token":"a"}`)
+	old := accountsBase
+	accountsBase = srv.URL
+	t.Cleanup(func() { accountsBase = old })
+
+	var stdout, stderr bytes.Buffer
+	code := runWithStdin([]string{"--ca", caFor(t, srv), "token"}, strings.NewReader("grant_type=refresh_token&refresh_token=r"), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("exit %d, stderr: %s", code, stderr.String())
+	}
+	if last.Method != "POST" || last.URL.Path != "/api/token" {
+		t.Errorf("request = %s %s", last.Method, last.URL.Path)
+	}
+	if got := last.Header.Get("Content-Type"); got != "application/x-www-form-urlencoded" {
+		t.Errorf("content type = %q", got)
+	}
+	if string(*lastBody) != "grant_type=refresh_token&refresh_token=r" {
+		t.Errorf("body = %q", *lastBody)
+	}
+	if want := "status 200\n\n{\"access_token\":\"a\"}"; stdout.String() != want {
+		t.Errorf("stdout = %q, want %q", stdout.String(), want)
+	}
+}
+
+func TestTokenReportsErrorStatusWithExitZero(t *testing.T) {
+	srv, _, _ := replyServer(t, 400, "", `{"error":"invalid_grant"}`)
+	old := accountsBase
+	accountsBase = srv.URL
+	t.Cleanup(func() { accountsBase = old })
+
+	var stdout bytes.Buffer
+	if code := runWithStdin([]string{"--ca", caFor(t, srv), "token"}, strings.NewReader("x=1"), &stdout, io.Discard); code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	if !strings.HasPrefix(stdout.String(), "status 400\n\n") {
+		t.Errorf("stdout = %q", stdout.String())
+	}
+}
+
+func TestAPISendsBearerAndBody(t *testing.T) {
+	srv, last, lastBody := replyServer(t, 204, "", "")
+	old := apiBase
+	apiBase = srv.URL + "/v1"
+	t.Cleanup(func() { apiBase = old })
+	t.Setenv("OVERHEAR_TOKEN", "tok")
+
+	var stdout, stderr bytes.Buffer
+	code := runWithStdin([]string{"--ca", caFor(t, srv), "api", "PUT", "/me/player/play?device_id=d"},
+		strings.NewReader(`{"context_uri":"spotify:album:x"}`), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("exit %d, stderr: %s", code, stderr.String())
+	}
+	if last.Method != "PUT" || last.URL.Path != "/v1/me/player/play" || last.URL.Query().Get("device_id") != "d" {
+		t.Errorf("request = %s %s", last.Method, last.URL)
+	}
+	if got := last.Header.Get("Authorization"); got != "Bearer tok" {
+		t.Errorf("authorization = %q", got)
+	}
+	if got := last.Header.Get("Content-Type"); got != "application/json" {
+		t.Errorf("content type = %q", got)
+	}
+	if string(*lastBody) != `{"context_uri":"spotify:album:x"}` {
+		t.Errorf("body = %q", *lastBody)
+	}
+	if stdout.String() != "status 204\n\n" {
+		t.Errorf("stdout = %q", stdout.String())
+	}
+}
+
+func TestAPIReportsRetryAfter(t *testing.T) {
+	srv, _, _ := replyServer(t, 429, "7", `{"error":{"status":429}}`)
+	old := apiBase
+	apiBase = srv.URL + "/v1"
+	t.Cleanup(func() { apiBase = old })
+	t.Setenv("OVERHEAR_TOKEN", "tok")
+
+	var stdout bytes.Buffer
+	if code := runWithStdin([]string{"--ca", caFor(t, srv), "api", "GET", "/me"}, strings.NewReader(""), &stdout, io.Discard); code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	if !strings.HasPrefix(stdout.String(), "status 429\nretry-after 7\n\n") {
+		t.Errorf("stdout = %q", stdout.String())
+	}
+}
+
+func TestAPIRejectsBadInput(t *testing.T) {
+	t.Setenv("OVERHEAR_TOKEN", "tok")
+	for _, args := range [][]string{
+		{"api", "GET", "me"},               // not absolute
+		{"api", "GET", "//evil.example/x"}, // scheme-relative
+		{"api", "GET", "/a/../b"},          // dot segments
+		{"api", "GET", "/me#x"},            // fragment
+		{"api", "PATCH", "/me"},            // method not allowed
+	} {
+		if code := runWithStdin(args, strings.NewReader(""), io.Discard, io.Discard); code == 0 {
+			t.Errorf("%v: want failure", args)
+		}
+	}
+	t.Setenv("OVERHEAR_TOKEN", "")
+	if code := runWithStdin([]string{"api", "GET", "/me"}, strings.NewReader(""), io.Discard, io.Discard); code == 0 {
+		t.Error("missing token: want failure")
+	}
+}
+
+func TestTokenDoesNotFollowRedirects(t *testing.T) {
+	var followed atomic.Bool
+	other := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		followed.Store(true)
+	}))
+	t.Cleanup(other.Close)
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, other.URL+"/api/token", http.StatusTemporaryRedirect)
+	}))
+	t.Cleanup(srv.Close)
+	old := accountsBase
+	accountsBase = srv.URL
+	t.Cleanup(func() { accountsBase = old })
+
+	var stdout, stderr bytes.Buffer
+	code := runWithStdin([]string{"--ca", caFor(t, srv), "token"}, strings.NewReader("refresh_token=r"), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("exit %d, stderr: %s", code, stderr.String())
+	}
+	if !strings.HasPrefix(stdout.String(), "status 307\n") {
+		t.Errorf("stdout = %q", stdout.String())
+	}
+	if followed.Load() {
+		t.Error("redirect was followed")
+	}
+}
+
+func TestTokenSendsNoAuthorization(t *testing.T) {
+	srv, last, _ := replyServer(t, 200, "", "{}")
+	old := accountsBase
+	accountsBase = srv.URL
+	t.Cleanup(func() { accountsBase = old })
+	t.Setenv("OVERHEAR_TOKEN", "tok")
+
+	if code := runWithStdin([]string{"--ca", caFor(t, srv), "token"}, strings.NewReader("x=1"), io.Discard, io.Discard); code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	if got := last.Header.Get("Authorization"); got != "" {
+		t.Errorf("authorization = %q, want none", got)
+	}
+}
+
+func TestTokenRejectsOversizedStdin(t *testing.T) {
+	srv, last, _ := replyServer(t, 200, "", "{}")
+	old := accountsBase
+	accountsBase = srv.URL
+	t.Cleanup(func() { accountsBase = old })
+
+	form := strings.NewReader(strings.Repeat("x", maxStdinBody+1))
+	if code := runWithStdin([]string{"--ca", caFor(t, srv), "token"}, form, io.Discard, io.Discard); code == 0 {
+		t.Error("oversized stdin: want failure")
+	}
+	if last.Method != "" {
+		t.Errorf("request sent: %s %s", last.Method, last.URL)
+	}
+}
+
+func TestAPIRejectsOversizedReply(t *testing.T) {
+	srv, _, _ := replyServer(t, 200, "", strings.Repeat("x", maxReplyBody+1))
+	old := apiBase
+	apiBase = srv.URL + "/v1"
+	t.Cleanup(func() { apiBase = old })
+	t.Setenv("OVERHEAR_TOKEN", "tok")
+
+	var stdout bytes.Buffer
+	if code := runWithStdin([]string{"--ca", caFor(t, srv), "api", "GET", "/me"}, strings.NewReader(""), &stdout, io.Discard); code == 0 {
+		t.Error("oversized reply: want failure")
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("stdout has %d bytes, want none", stdout.Len())
 	}
 }
