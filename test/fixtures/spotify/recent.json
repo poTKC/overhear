@@ -30,5 +30,15 @@
    "name": "New Shape", "track_number": 1, "type": "track", "uri": "spotify:track:PT1"},
    "played_at": "2026-10-26T11:50:00.000Z",
    "context": {"type": "playlist", "uri": "spotify:playlist:P1", "href": "https://api.spotify.com/v1/playlists/P1",
-    "external_urls": {"spotify": "https://open.spotify.com/playlist/P1"}}}
+    "external_urls": {"spotify": "https://open.spotify.com/playlist/P1"}}},
+  {"track": {"album": {"album_type": "single", "id": "A3", "name": "Album Three", "type": "album",
+    "uri": "spotify:album:A3",
+    "images": [{"url": "https://i.example/a3-64", "width": 64, "height": 64}],
+    "artists": [{"id": "R1", "name": "Artist One", "type": "artist", "uri": "spotify:artist:R1"}]},
+   "artists": [{"id": "R1", "name": "Artist One", "type": "artist", "uri": "spotify:artist:R1"}],
+   "disc_number": 1, "duration_ms": 163000, "id": "T1", "is_local": false, "is_playable": true,
+   "name": "Track One", "track_number": 2, "type": "track", "uri": "spotify:track:T1"},
+   "played_at": "2026-10-26T11:45:00.000Z",
+   "context": {"type": "collection", "uri": "spotify:user:user1:collection",
+    "href": "https://api.spotify.com/v1/me/tracks", "external_urls": {"spotify": "https://open.spotify.com/collection/tracks"}}}
  ]}

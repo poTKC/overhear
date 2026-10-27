@@ -66,6 +66,15 @@ public class SpotifyJsonTest {
         assertEquals("2", p.next);
     }
 
+    @Test public void savedTracksWithoutAUserPlayAlone() {
+        assertNull(SpotifyJson.savedTracks(f("saved_tracks"), null, 0).items.get(0).contextUri);
+        assertNull(SpotifyJson.savedTracks(f("saved_tracks"), "", 0).items.get(0).contextUri);
+    }
+
+    @Test public void emptyPageHasNoNextEvenIfTheReplySaysSo() throws Exception {
+        assertNull(SpotifyJson.playlists(new JSONObject("{\"items\":[],\"next\":\"x\"}"), 0).next);
+    }
+
     @Test public void albumTracksUseTheAlbumCover() {
         Page p = SpotifyJson.albumTracks(f("album_tracks"), "spotify:album:A", "http://cover", 0);
         assertEquals(3, p.items.size());
@@ -108,6 +117,13 @@ public class SpotifyJsonTest {
         assertNull(SpotifyJson.followedArtists(j).next);
     }
 
+    @Test public void followedArtistsWithoutACursorStop() throws Exception {
+        JSONObject j = new JSONObject("{\"artists\":{\"next\":\"x\",\"items\":[]}}");
+        assertNull(SpotifyJson.followedArtists(j).next);
+        j = new JSONObject("{\"artists\":{\"next\":\"x\",\"cursors\":{\"after\":null},\"items\":[]}}");
+        assertNull(SpotifyJson.followedArtists(j).next);
+    }
+
     @Test public void artistAlbumsShowTheYear() {
         Page p = SpotifyJson.artistAlbums(f("artist_albums"), 0);
         assertEquals(2, p.items.size());
@@ -120,10 +136,11 @@ public class SpotifyJsonTest {
 
     @Test public void recentKeepsTheContextOrNone() {
         Page p = SpotifyJson.recent(f("recent"));
-        assertEquals(3, p.items.size());
+        assertEquals(4, p.items.size());
         assertEquals("spotify:album:A7", p.items.get(0).contextUri);
         assertNull(p.items.get(1).contextUri); // the fixture's context: null row
         assertEquals("spotify:playlist:P1", p.items.get(2).contextUri);
+        assertEquals("spotify:user:user1:collection", p.items.get(3).contextUri); // liked songs
         assertEquals("Recent Two", p.items.get(1).title);
         assertEquals("https://i.example/a8-64", p.items.get(1).coverUrl);
         assertNull(p.next);

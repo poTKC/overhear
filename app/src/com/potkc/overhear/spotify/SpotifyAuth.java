@@ -90,7 +90,7 @@ public final class SpotifyAuth {
     private void tokenRequest(String form, boolean refreshGrant) throws IOException { // under this
         HelperReply r = transport.token(form);
         JSONObject j = parse(r.body);
-        if (r.status == 400 && "invalid_grant".equals(string(j, "error"))) {
+        if (r.status == 400 && "invalid_grant".equals(SpotifyJson.string(j, "error"))) {
             if (!refreshGrant) {
                 throw new SpotifyException(SpotifyException.Reason.HTTP, 400, -1, "login failed");
             }
@@ -98,17 +98,12 @@ public final class SpotifyAuth {
             throw loginRequired("login expired");
         }
         if (r.status != 200) throw SpotifyApi.httpError("token", r);
-        String a = string(j, "access_token");
+        String a = SpotifyJson.string(j, "access_token");
         if (a.isEmpty()) throw new IOException("token reply without access_token");
         access = a;
         expiresAtMs = clock.nowMs() + Math.max(j.optLong("expires_in", 3600), MIN_EXPIRES_S) * 1000;
-        String newRefresh = string(j, "refresh_token");
+        String newRefresh = SpotifyJson.string(j, "refresh_token");
         if (!newRefresh.isEmpty()) store.saveRefreshToken(newRefresh);
-    }
-
-    /** The string at key, "" when missing or JSON null (Android's optString gives "null"). */
-    private static String string(JSONObject j, String key) {
-        return j.isNull(key) ? "" : j.optString(key, "");
     }
 
     private static JSONObject parse(String body) {

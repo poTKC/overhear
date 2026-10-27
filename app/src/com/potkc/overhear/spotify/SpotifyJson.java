@@ -10,9 +10,9 @@ import org.json.JSONObject;
 /**
  * Turns Web API replies into Items and Pages. Every field may be missing or
  * JSON null (read with opt* and isNull, never throwing, like PlayerState);
- * items without a uri are dropped. Since February 2026 a playlist's count
- * may sit under "items" or "tracks" and a playlist row's track under "item"
- * or "track" (the new shape also has a boolean "track"), so both are read.
+ * items without a uri are dropped. Since February 2026 a playlist row's
+ * track may sit under "item" or "track" (the new shape also has a boolean
+ * "track"), so both are read.
  * Offset pages return the next offset as next, counting rows that were
  * skipped. Stateless; pure Java (org.json only, the subset Android 4.3 has).
  */
@@ -57,9 +57,9 @@ public final class SpotifyJson {
         return new Page(out, nextOffset(j, offset, a));
     }
 
-    /** /me/tracks: played in the liked songs. */
+    /** /me/tracks: played in the liked songs, alone when userId is unknown. */
     public static Page savedTracks(JSONObject j, String userId, int offset) {
-        String context = "spotify:user:" + userId + ":collection";
+        String context = userId == null || userId.isEmpty() ? null : "spotify:user:" + userId + ":collection";
         JSONArray a = j.optJSONArray("items");
         List<Item> out = new ArrayList<Item>();
         for (int i = 0; a != null && i < a.length(); i++) {
@@ -126,8 +126,8 @@ public final class SpotifyJson {
     }
 
     /**
-     * /me/player/recently-played: tracks play in their album or playlist
-     * context, alone otherwise. Only one page is used, so next is null.
+     * /me/player/recently-played: tracks play in their album, playlist or
+     * liked songs (collection) context, alone otherwise. Only one page is used, so next is null.
      */
     public static Page recent(JSONObject j) {
         JSONArray a = j.optJSONArray("items");
@@ -140,7 +140,8 @@ public final class SpotifyJson {
             if (c != null) {
                 String type = string(c, "type");
                 String uri = string(c, "uri");
-                if (("album".equals(type) || "playlist".equals(type)) && !uri.isEmpty()) context = uri;
+                if (("album".equals(type) || "playlist".equals(type) || "collection".equals(type))
+                        && !uri.isEmpty()) context = uri;
             }
             add(out, track(row.optJSONObject("track"), context, null));
         }
@@ -268,7 +269,7 @@ public final class SpotifyJson {
     }
 
     /** The string at key, "" when missing or JSON null (Android's optString gives "null"). */
-    private static String string(JSONObject j, String key) {
+    static String string(JSONObject j, String key) {
         return j.isNull(key) ? "" : j.optString(key, "");
     }
 }
