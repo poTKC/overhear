@@ -41,6 +41,7 @@ import com.potkc.overhear.runtime.SoloistProcess;
 import com.potkc.overhear.soloist.MainThreadExecutor;
 import com.potkc.overhear.soloist.PlayerState;
 import com.potkc.overhear.soloist.SoloistClient;
+import com.potkc.overhear.spotify.OthersTracker;
 import com.potkc.overhear.spotify.SpotifyApi;
 
 /**
@@ -65,6 +66,12 @@ import com.potkc.overhear.spotify.SpotifyApi;
  * Web API play of the context from the tapped track; otherwise, or if that
  * call fails, QueueJump steps skip_next to the entry with the track muted
  * (AudioSink.setJumpMuted); any control pressed meanwhile ends it.
+ *
+ * Another user's playlist (the library cannot list it): from the play
+ * the library asks for, an OthersTracker follows Soloist's state and its
+ * whole queue (FULL_QUEUE_LIMIT) here, outliving the library screen, and
+ * runs its timed checks; the library shows its list while the playlist is
+ * the context. A new play replaces it; a finished one is kept.
  *
  * Volume: fakepulse plays at unity gain and VolumeSync ties Soloist's volume
  * (the phone's Spotify slider) to the STREAM_MUSIC index both ways, while
@@ -153,6 +160,8 @@ public final class PlayerService extends Service {
     private boolean lastJumpOk;
     /** The Web API jump (jumpTo) in progress, until it ends; or null. */
     private WebJump webJump;
+    /** The last play of another user's playlist the library asked for; or null. */
+    private OthersTracker others;
     private final IBinder binder = new LocalBinder();
     private final CopyOnWriteArrayList<Runnable> uiListeners = new CopyOnWriteArrayList<Runnable>();
 
@@ -356,7 +365,10 @@ public final class PlayerService extends Service {
 
     // --- for the player screen (main thread) ---
 
-    /** Runs (on the main thread) whenever the state, connection or status changes. */
+    /**
+     * Runs (on the main thread) whenever the state, connection or status
+     * changes, and after the others tracker's timed checks.
+     */
     void addUiListener(Runnable r) {
         uiListeners.addIfAbsent(r);
     }
@@ -421,6 +433,53 @@ public final class PlayerService extends Service {
             // The user's command wins: a PUT still queued is cancelled; one already out may still land.
             webJump.onUserInput();
             notifyUi();
+        }
+    }
+
+    // --- another user's playlist ---
+
+    /**
+     * Starts following a play of playlistUri (another user's playlist),
+     * replacing the tracker before; call it before asking to play, and
+     * othersPlayReturned once that request returned.
+     */
+    OthersTracker startOthers(String playlistUri) {
+        main.removeCallbacks(othersTick);
+        others = new OthersTracker(playlistUri);
+        others.onOpen(client.getState());
+        Log.i(TAG, "others: following " + playlistUri);
+        notifyUi();
+        return others;
+    }
+
+    /** The play request for t returned (done, or after the fallback): the timed checks start. */
+    void othersPlayReturned(OthersTracker t) {
+        if (destroyed || t != others) return;
+        t.onPlayReturned(System.currentTimeMillis());
+        main.postDelayed(othersTick, OthersTracker.ADOPT_AFTER_MS + 100);
+        main.postDelayed(othersTick, OthersTracker.GIVE_UP_AFTER_MS + 100);
+        main.postDelayed(othersTick, OthersTracker.LAST_CHECK_AFTER_MS + 100);
+    }
+
+    /** The last tracker startOthers made, finished or not; or null. Read it only. */
+    OthersTracker getOthers() {
+        return others;
+    }
+
+    private final Runnable othersTick = new Runnable() {
+        @Override public void run() {
+            if (destroyed || others == null) return;
+            others.onTick(client.getState(), System.currentTimeMillis());
+            askOthersQueue();
+            notifyUi();
+        }
+    };
+
+    /** Asks for the whole queue when the tracker wants it. */
+    private void askOthersQueue() {
+        if (others != null && others.takeQueueRequest(client.isConnected())) {
+            Log.i(TAG, "others: asking for the whole queue");
+            client.requestQueue(SoloistClient.FULL_QUEUE_LIMIT);
         }
     }
 
@@ -1044,6 +1103,10 @@ public final class PlayerService extends Service {
                 jump.onState(s);
                 scheduleJumpTimer();
             }
+            if (others != null) {
+                others.onState(s);
+                askOthersQueue();
+            }
             volumeSync.onSoloist(s.isLoggedIn(), s.getVolume(), mediaIndex(), SystemClock.elapsedRealtime());
             if (authError != null && s.isLoggedIn()) {
                 authError = null;
@@ -1070,6 +1133,10 @@ public final class PlayerService extends Service {
                 if (webJump != null) webJump.onState(state);
                 updateNotification();
                 updateRemoteControl();
+            }
+            if (others != null) {
+                others.onConnected(c, client.getState());
+                askOthersQueue();
             }
             notifyUi();
         }

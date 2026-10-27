@@ -6,7 +6,8 @@ import com.potkc.overhear.soloist.PlayerState;
 
 /**
  * Follows Soloist's state after another user's playlist was asked to play
- * from the top, and rebuilds its track list from the queue (QueueTracks).
+ * from the top (in order, or shuffled from a random track), and rebuilds
+ * its track list, in the order it plays, from the queue (QueueTracks).
  *
  * The first track is the first one seen playing in the playlist since the
  * request: Soloist reports the context first, while the state still shows
@@ -20,8 +21,8 @@ import com.potkc.overhear.soloist.PlayerState;
  * Without a list GIVE_UP_AFTER_MS after the request (unless that tick
  * just adopted the first track: then the next tick, at the latest the one
  * LAST_CHECK_AFTER_MS after, gives up), or if the context leaves the
- * playlist first, the status is FAILED (the caller offers to
- * play again, with a new tracker).
+ * playlist first, the status is FAILED (playing it again takes a new
+ * tracker).
  *
  * Pure Java, one thread (the caller's); times come from the caller.
  */
@@ -46,10 +47,9 @@ public final class OthersTracker {
     private String firstTrackUri;
     private String currentTrackUri;
     private boolean queueAsked;
-    private boolean shuffle;
     private boolean failed;
     private List<Item> items;
-    /** Bumped whenever status, items or shuffle change. */
+    /** Bumped whenever status or items change. */
     private int version;
 
     public OthersTracker(String playlistUri) {
@@ -64,7 +64,6 @@ public final class OthersTracker {
     public void onOpen(PlayerState before) {
         baseline(before);
         if (before != null) {
-            shuffle = before.isShuffle();
             currentTrackUri = before.getTrackUri();
             sawContext = playlistUri.equals(before.getContextUri());
         }
@@ -86,10 +85,6 @@ public final class OthersTracker {
     }
 
     public void onState(PlayerState s) {
-        if (s.isShuffle() != shuffle) {
-            shuffle = s.isShuffle();
-            version++;
-        }
         String track = s.getTrackUri();
         currentTrackUri = track;
         String context = s.getContextUri();
@@ -151,16 +146,12 @@ public final class OthersTracker {
         return items;
     }
 
-    public boolean isShuffle() {
-        return shuffle;
-    }
-
     /** The first track in the playlist; null until known. */
     public String firstTrackUri() {
         return firstTrackUri;
     }
 
-    /** Changes whenever status(), items() or isShuffle() may have. */
+    /** Changes whenever status() or items() may have. */
     public int version() {
         return version;
     }

@@ -123,13 +123,10 @@ public class OthersTrackerTest {
         assertFalse(tracker.takeQueueRequest(true));
     }
 
-    @Test public void reportsShuffleAndBumpsTheVersion() {
+    @Test public void shuffleAloneLeavesTheVersion() {
         int v = tracker.version();
         apply(new JSONObject().put("type", "options_changed")
                 .put("options", new JSONObject().put("shuffle", true)));
-        assertTrue(tracker.isShuffle());
-        assertTrue(tracker.version() != v);
-        v = tracker.version();
         position(0, T0);
         assertEquals(v, tracker.version());
     }

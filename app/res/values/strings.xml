@@ -104,9 +104,9 @@
     <string name="library_loading">読み込み中…</string>
     <string name="library_empty">何もありません</string>
     <string name="library_no_results">見つかりませんでした</string>
-    <string name="library_others_starting">再生を始めています…</string>
-    <string name="library_others_shuffled">シャッフル順です</string>
-    <string name="library_others_failed">プレイリストの曲を取得できませんでした — タップでやり直す</string>
+    <string name="library_others_before_play">曲の一覧は再生を始めると表示されます（他の人のプレイリストは、Spotify の制限で再生前に中身を取得できません）</string>
+    <string name="library_others_starting">曲の一覧を取得しています…</string>
+    <string name="library_others_failed">曲の一覧を取得できませんでした — ▶ か ⇄ で再生し直してください</string>
     <string name="library_others_no_player">再生サービスに接続していません</string>
     <string name="library_login_expired">Spotify のログインが切れました — タップしてログイン</string>
     <string name="library_rate_limited">混み合っています。しばらくしてから ↻ を押してください</string>
