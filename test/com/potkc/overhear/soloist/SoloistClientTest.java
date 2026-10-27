@@ -183,6 +183,13 @@ public class SoloistClientTest {
         assertCommand("activate");
     }
 
+    @Test public void requestQueueSendsTheLimit() throws Exception {
+        client.requestQueue(SoloistClient.FULL_QUEUE_LIMIT);
+        JSONObject q = assertCommand("get_queue");
+        assertEquals(500, q.getInt("limit"));
+        assertEquals(3, q.length()); // type, command, limit
+    }
+
     @Test public void repeatUsesTwoCommands() throws Exception {
         client.setRepeat(PlayerState.Repeat.OFF);
         assertFalse(assertCommand("set_repeat_track").getBoolean("enabled"));
