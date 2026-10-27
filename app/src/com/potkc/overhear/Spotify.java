@@ -89,6 +89,11 @@ final class Spotify {
         return api;
     }
 
+    /** The login's generation (SpotifyAuth.generation()); safe on the main thread. */
+    int generation() {
+        return auth.generation();
+    }
+
     /** Safe on the main thread. */
     boolean isLoggedIn() {
         return auth.isLoggedIn();

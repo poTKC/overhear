@@ -26,6 +26,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -41,14 +42,17 @@ import com.potkc.overhear.spotify.SpotifyJson;
 /**
  * Browses the user's Spotify library and searches it, one page on a stack
  * (LibraryPath, saved to Prefs on every change and reopened from there).
- * Lists load through Spotify.run, page by page as the last row comes into
- * view, and stay cached for the process lifetime (dropped when the login
- * changes); ↻ reloads the page shown. Tapping something playable asks the
- * Web API to play it on this device and returns to the player; if that
- * fails, Soloist plays the context from the top instead.
+ * Lists load through Spotify.run: the first page when shown, each further
+ * page when the last row comes into view. The CACHE_MAX most recently used
+ * lists stay cached for the process lifetime (dropped when the login
+ * changes); ↻ reloads the page shown, or retries the page that failed.
+ * Tapping something playable asks the Web API to play it on this device and
+ * returns to the player; if that fails, Soloist plays the context from the
+ * top instead.
  *
- * Main thread only. Spotify callbacks can arrive after onDestroy: they still
- * fill the cache, but touch no views then.
+ * Main thread only. Spotify callbacks can arrive after the Activity that
+ * started them is gone: they still fill the cache and redraw the resumed
+ * instance, if any (active), so a reopened screen sees the result too.
  */
 public class LibraryActivity extends Activity {
     /** One list as loaded so far; main thread only. */
@@ -80,10 +84,17 @@ public class LibraryActivity extends Activity {
         }
     }
 
-    /** The loaded pages, for the process lifetime; main thread only. */
-    private static final Map<Node, Loaded> cache = new HashMap<Node, Loaded>();
+    private static final int CACHE_MAX = 30;
+    /** The loaded pages, least recently used first; main thread only. */
+    private static final Map<Node, Loaded> cache = new LinkedHashMap<Node, Loaded>(16, 0.75f, true) {
+        @Override protected boolean removeEldestEntry(Map.Entry<Node, Loaded> eldest) {
+            return size() > CACHE_MAX;
+        }
+    };
     /** The login (SpotifyAuth.generation) the cache was filled under. */
     private static int cacheGeneration = -1;
+    /** The resumed instance, which load results redraw; null while none is. */
+    private static LibraryActivity active;
 
     private Spotify spotify;
     private Prefs prefs;
@@ -97,8 +108,8 @@ public class LibraryActivity extends Activity {
     private TextView empty;
     private final RowAdapter adapter = new RowAdapter();
     private List<Node> stack;
-    /** The first visible row of the pages below the top one, to return to. */
-    private final Map<Node, Integer> scroll = new HashMap<Node, Integer>();
+    /** The first visible row of the pages below the top one, by stack size, to return to. */
+    private final Map<Integer, Integer> scroll = new HashMap<Integer, Integer>();
     private boolean destroyed;
     /** A play request is in flight: further taps are ignored. */
     private boolean playing;
@@ -167,12 +178,20 @@ public class LibraryActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        active = this;
         render(); // the login may have changed in LoginActivity
+    }
+
+    @Override
+    protected void onPause() {
+        if (active == this) active = null;
+        super.onPause();
     }
 
     @Override
     protected void onDestroy() {
         destroyed = true;
+        if (active == this) active = null;
         if (artwork != null) artwork.cancelAll();
         if (bound) unbindService(connection);
         bound = false;
@@ -197,7 +216,7 @@ public class LibraryActivity extends Activity {
     }
 
     private void push(Node node) {
-        scroll.put(current(), list.getFirstVisiblePosition());
+        scroll.put(stack.size(), list.getFirstVisiblePosition());
         stack.add(node);
         saveStack();
         hideKeyboard();
@@ -216,7 +235,7 @@ public class LibraryActivity extends Activity {
         saveStack();
         hideKeyboard();
         render();
-        Integer at = scroll.remove(current());
+        Integer at = scroll.remove(stack.size());
         list.setSelection(at == null ? 0 : at);
     }
 
@@ -228,7 +247,7 @@ public class LibraryActivity extends Activity {
 
     /** The current login's cache entry for node, created on first use. */
     private Loaded loaded(Node node) {
-        int generation = spotify.api().auth().generation();
+        int generation = spotify.generation();
         if (generation != cacheGeneration) {
             cache.clear();
             cacheGeneration = generation;
@@ -246,9 +265,15 @@ public class LibraryActivity extends Activity {
         return node.type != Node.Type.TOP && node.type != Node.Type.OTHERS_PLAYLIST;
     }
 
+    /** Retries the page that failed after others loaded, else reloads from the start. */
     private void reloadPage() {
         Node node = current();
         if (!loads(node)) return;
+        Loaded old = loaded(node);
+        if (old.error != null && !old.items.isEmpty()) {
+            retry(node, old);
+            return;
+        }
         String q = node.type == Node.Type.SEARCH ? loaded(node).query : null;
         cache.remove(node);
         if (q != null) {
@@ -274,7 +299,9 @@ public class LibraryActivity extends Activity {
         list.post(new Runnable() {
             @Override public void run() {
                 if (destroyed || !loads(current())) return;
-                if (startLoad(current(), loaded(current()))) render();
+                Loaded l = loaded(current());
+                if (l.items.isEmpty() && l.search == null) return; // the first page is render's
+                if (startLoad(current(), l)) render();
             }
         });
     }
@@ -303,26 +330,36 @@ public class LibraryActivity extends Activity {
                     l.next = f.page.next;
                     l.more = f.page.next != null;
                 }
-                if (!destroyed) render();
+                renderActive();
             }
 
             @Override public void failed(IOException e) {
                 l.loading = false;
                 l.error = e;
-                if (!destroyed) render();
+                renderActive();
             }
         });
         return true;
     }
 
+    private void retry(Node node, Loaded l) {
+        l.error = null;
+        startLoad(node, l);
+        render();
+    }
+
+    private static void renderActive() {
+        if (active != null) active.render();
+    }
+
     /** One page of node's list; on the Spotify thread. */
     private static Page fetch(SpotifyApi api, Node node, String next) throws IOException {
-        int offset = next == null ? 0 : Integer.parseInt(next); // not for ARTISTS: a cursor
+        if (node.type == Node.Type.ARTISTS) return api.followedArtists(next); // next is a cursor
+        int offset = next == null ? 0 : Integer.parseInt(next);
         switch (node.type) {
             case LIKED: return api.savedTracks(offset);
             case PLAYLISTS: return api.playlists(offset);
             case ALBUMS: return api.savedAlbums(offset);
-            case ARTISTS: return api.followedArtists(next);
             case RECENT: return api.recent();
             case ALBUM: return api.albumTracks(node.uri, node.coverUrl, offset);
             case PLAYLIST: return api.playlistTracks(node.uri, offset);
@@ -348,10 +385,10 @@ public class LibraryActivity extends Activity {
             return;
         }
         Loaded l = loaded(node);
-        startLoad(node, l);
+        if (l.items.isEmpty() && l.search == null && l.next == null) startLoad(node, l); // the first page only
         if (search) searchRows(rows, l);
         else listRows(rows, node, l);
-        statusRow(rows, l);
+        statusRow(rows, node, l);
         empty.setText(search && l.query == null ? ""
                 : getString(search ? R.string.library_no_results : R.string.library_empty));
         adapter.setRows(rows);
@@ -431,7 +468,7 @@ public class LibraryActivity extends Activity {
     }
 
     /** Loading, or why the last page did not load (with what a tap does about it). */
-    private void statusRow(List<Row> rows, final Loaded l) {
+    private void statusRow(List<Row> rows, final Node node, final Loaded l) {
         if (l.loading) {
             rows.add(Row.note(getString(R.string.library_loading), null));
             return;
@@ -451,8 +488,7 @@ public class LibraryActivity extends Activity {
         } else {
             rows.add(Row.note(getString(R.string.library_load_failed), new Runnable() {
                 @Override public void run() {
-                    l.error = null;
-                    render();
+                    retry(node, l);
                 }
             }));
         }
