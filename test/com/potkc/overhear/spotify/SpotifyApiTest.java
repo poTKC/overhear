@@ -642,4 +642,65 @@ public class SpotifyApiTest {
         assertEquals("potkc", a.me());
         assertEquals(3, t.log.size());
     }
+
+    // --- Liked Songs (since February 2026: /me/library with uris) ---
+
+    private static final String T_ENC = "spotify%3Atrack%3AT";
+
+    @Test public void containsAsksTheLibraryForTheUri() throws IOException {
+        FakeTransport t = withToken().reply(200, "[true]").reply(200, "[false]");
+        SpotifyApi a = loggedIn(t);
+        assertTrue(a.isTrackSaved("spotify:track:T"));
+        assertFalse(a.isTrackSaved("spotify:track:T"));
+        assertEquals("GET /me/library/contains?uris=" + T_ENC + " A", t.log.get(1));
+    }
+
+    @Test public void containsWithAnOddReplyFails() throws IOException {
+        for (String body : new String[] {"[]", "{}", "[\"x\"]", "nonsense"}) {
+            FakeTransport t = withToken().reply(200, body);
+            try {
+                loggedIn(t).isTrackSaved("spotify:track:T");
+                fail(body);
+            } catch (IOException expected) {
+                assertFalse(expected instanceof SpotifyException);
+            }
+        }
+    }
+
+    @Test public void saveAndRemovePutAndDeleteTheUri() throws IOException {
+        FakeTransport t = withToken().reply(200, "").reply(200, "");
+        SpotifyApi a = loggedIn(t);
+        a.saveTrack("spotify:track:T");
+        a.removeTrack("spotify:track:T");
+        assertEquals("PUT /me/library?uris=" + T_ENC + " A", t.log.get(1));
+        assertEquals("DELETE /me/library?uris=" + T_ENC + " A", t.log.get(2));
+        assertEquals(3, t.log.size());
+    }
+
+    @Test public void aMissingScopeSaysSo() throws IOException {
+        FakeTransport t = withToken()
+                .reply(403, "{\"error\":{\"status\":403,\"message\":\"Insufficient client scope\"}}");
+        try {
+            loggedIn(t).saveTrack("spotify:track:T");
+            fail();
+        } catch (SpotifyException e) {
+            assertEquals(SpotifyException.Reason.SCOPE, e.reason);
+            assertEquals(403, e.status);
+        }
+    }
+
+    @Test public void anotherForbiddenStaysPlainHttp() throws IOException {
+        FakeTransport t = withToken().reply(403, "{\"error\":{\"status\":403,\"message\":\"Forbidden\"}}")
+                .reply(403, "");
+        SpotifyApi a = loggedIn(t);
+        for (int i = 0; i < 2; i++) {
+            try {
+                a.removeTrack("spotify:track:T");
+                fail();
+            } catch (SpotifyException e) {
+                assertEquals(SpotifyException.Reason.HTTP, e.reason);
+                assertEquals(403, e.status);
+            }
+        }
+    }
 }

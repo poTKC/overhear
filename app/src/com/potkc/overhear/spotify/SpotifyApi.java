@@ -19,6 +19,12 @@ public final class SpotifyApi {
     public static final int SEARCH_PAGE = 10;
     /** /artists/{id}/albums answers 400 "Invalid limit" above 10 (development mode, 2026-10). */
     public static final int ARTIST_ALBUMS_PAGE = 10;
+    /**
+     * Saving, removing and checking library items. Since February 2026
+     * (development mode) PUT / DELETE /me/library and GET
+     * /me/library/contains, with uris; the older /me/tracks?ids= ones are gone.
+     */
+    static final String LIBRARY = "/me/library";
     /** Lists of tracks and albums follow the user's country for what is playable. */
     private static final String MARKET = "&market=from_token";
 
@@ -120,6 +126,30 @@ public final class SpotifyApi {
     public SpotifyJson.SearchResult search(String query) throws IOException {
         return SpotifyJson.search(getJson("/search?q=" + Pkce.enc(query) + "&type="
                 + Pkce.enc("track,album,artist,playlist") + "&limit=" + SEARCH_PAGE));
+    }
+
+    /** Whether trackUri is in the user's Liked Songs (needs user-library-read). */
+    public boolean isTrackSaved(String trackUri) throws IOException {
+        String path = LIBRARY + "/contains?uris=" + Pkce.enc(trackUri);
+        HelperReply r = call("GET", path, "");
+        if (r.status != 200) throw httpError("GET " + stripQuery(path), r);
+        try {
+            JSONArray a = new JSONArray(r.body);
+            if (a.length() != 1 || !(a.get(0) instanceof Boolean)) throw new IOException("bad reply from contains");
+            return a.getBoolean(0);
+        } catch (JSONException e) {
+            throw new IOException("bad JSON from contains");
+        }
+    }
+
+    /** Adds trackUri to the user's Liked Songs (needs user-library-modify: else Reason.SCOPE). */
+    public void saveTrack(String trackUri) throws IOException {
+        send("PUT", LIBRARY + "?uris=" + Pkce.enc(trackUri));
+    }
+
+    /** Removes trackUri from the user's Liked Songs (needs user-library-modify: else Reason.SCOPE). */
+    public void removeTrack(String trackUri) throws IOException {
+        send("DELETE", LIBRARY + "?uris=" + Pkce.enc(trackUri));
     }
 
     /**
@@ -236,6 +266,12 @@ public final class SpotifyApi {
         if (r.status / 100 != 2) throw httpError("PUT " + stripQuery(path), r);
     }
 
+    /** method without a body; any 2xx is success. */
+    private void send(String method, String path) throws IOException {
+        HelperReply r = call(method, path, "");
+        if (r.status / 100 != 2) throw httpError(method + " " + stripQuery(path), r);
+    }
+
     private HelperReply call(String method, String path, String body) throws IOException {
         String sent = auth.accessToken();
         HelperReply r = transport.api(method, path, sent, body);
@@ -250,6 +286,9 @@ public final class SpotifyApi {
         if (r.status == 429) {
             return new SpotifyException(SpotifyException.Reason.RATE_LIMITED, 429, r.retryAfterSeconds,
                     what + ": rate limited");
+        }
+        if (r.status == 403 && r.body != null && r.body.toLowerCase(java.util.Locale.ROOT).contains("scope")) {
+            return new SpotifyException(SpotifyException.Reason.SCOPE, 403, -1, what + ": missing scope");
         }
         return new SpotifyException(SpotifyException.Reason.HTTP, r.status, -1, what + ": HTTP " + r.status);
     }
