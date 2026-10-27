@@ -154,15 +154,34 @@ final class PlayerText {
 
     /**
      * Queue entries take a tap (a jump) when the controls work, no jump runs
-     * and the queue is not stale.
+     * and the queue is not stale. While Soloist waits, skipping cannot work:
+     * a tap then plays the entry here through the Web API (webLoggedIn;
+     * ResumePlan.queueEntry), unless such a play is in flight.
      */
-    static boolean queueTappable(boolean connected, PlayerState ps, boolean jumping) {
-        return controlsEnabled(connected, ps) && !jumping && !ps.isQueueStale();
+    static boolean queueTappable(boolean connected, PlayerState ps, boolean jumping, boolean webLoggedIn,
+            boolean playingHere) {
+        if (!connected || jumping || ps.isQueueStale()) return false;
+        if (controlsEnabled(connected, ps)) return true;
+        return webLoggedIn && !playingHere;
     }
 
     /** Playback controls work only on the active device. */
     static boolean controlsEnabled(boolean connected, PlayerState ps) {
         return connected && ps.isActive();
+    }
+
+    /**
+     * ▶/⏸: as the other controls while Soloist is active (not during a
+     * queue jump); while it waits, when there is something to play here
+     * again (ResumePlan.resume; webLoggedIn: the Web API is) and no such
+     * play is in flight.
+     */
+    static boolean playEnabled(boolean connected, PlayerState ps, boolean jumping, boolean webLoggedIn,
+            boolean playingHere) {
+        if (controlsEnabled(connected, ps)) return !jumping;
+        if (!connected || playingHere) return false;
+        return ResumePlan.resume(ps.isLoggedIn() && ps.isActive(), webLoggedIn, ps.getTrackUri(), ps.getContextUri(),
+                ps.getPositionMs(), ps.getDurationMs()).kind != ResumePlan.Kind.NONE;
     }
 
     /** "A, B · Album", leaving out what is missing. */

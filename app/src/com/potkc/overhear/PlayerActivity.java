@@ -515,9 +515,12 @@ public class PlayerActivity extends Activity {
         // While a jump skips, the controls rest (and the queue takes no other tap).
         boolean enabled = PlayerText.controlsEnabled(connected, state) && !jumping;
         PlayerState.Status ps = state.getStatus();
-        boolean playing = ps == PlayerState.Status.PLAYING || ps == PlayerState.Status.BUFFERING;
+        // While Soloist waits, ▶ plays the last track here again (PlayerService.resume), whatever it last reported.
+        boolean playing = (ps == PlayerState.Status.PLAYING || ps == PlayerState.Status.BUFFERING)
+                && PlayerText.controlsEnabled(connected, state);
         setImage(playPause, playing ? R.drawable.ic_pause_button : R.drawable.ic_play_button);
-        setEnabled(playPause, enabled);
+        setEnabled(playPause, PlayerText.playEnabled(connected, state, jumping, spotify.isLoggedIn(),
+                service != null && service.isPlayingHere()));
         setEnabled(prev, enabled);
         setEnabled(next, enabled);
         // Faded and untappable where Soloist does not allow them (radio ...);
@@ -531,7 +534,8 @@ public class PlayerActivity extends Activity {
         List<PlayerState.QueueItem> q = connected ? state.getQueue()
                 : Collections.<PlayerState.QueueItem>emptyList();
         List<PlayerState.QueueItem> shown = q.size() > QUEUE_SHOWN ? q.subList(0, QUEUE_SHOWN) : q;
-        boolean tappable = PlayerText.queueTappable(connected, state, jumping || webJumping);
+        boolean tappable = PlayerText.queueTappable(connected, state, jumping || webJumping, spotify.isLoggedIn(),
+                service != null && service.isPlayingHere());
         if (webJumping) {
             // With a uid the row is found by it alone, so it does not drift when the list shifts.
             String uid = service.getWebJumpUid();

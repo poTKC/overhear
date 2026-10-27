@@ -28,6 +28,7 @@ import android.util.Log;
 import android.view.KeyEvent;
 import android.view.View;
 import android.widget.RemoteViews;
+import android.widget.Toast;
 
 import java.io.IOException;
 import java.lang.reflect.Method;
@@ -162,6 +163,8 @@ public final class PlayerService extends Service {
     private WebJump webJump;
     /** When a control was last pressed or a queue jump started (elapsedRealtime); 0 before. */
     private long lastControlMs;
+    /** A play on this device while Soloist was inactive (playHere) is in flight: further presses wait. */
+    private boolean playingHere;
     /** The last play of another user's playlist the library asked for; or null. */
     private OthersTracker others;
     private final IBinder binder = new LocalBinder();
@@ -504,8 +507,21 @@ public final class PlayerService extends Service {
      */
     boolean jumpTo(int index, PlayerState.QueueItem item) {
         if (jump != null || webJump != null || !connected || item.uri == null) return false;
-        lastControlMs = SystemClock.elapsedRealtime();
         Spotify spotify = Spotify.get(this);
+        if (!soloistActive()) {
+            // Skipping through the queue needs an active Soloist: play the entry here through the Web API,
+            // or (no login) do nothing.
+            ResumePlan p = ResumePlan.queueEntry(spotify.isLoggedIn(), item.uri, item.source, state.getContextUri());
+            if (p.kind == ResumePlan.Kind.NONE) {
+                Log.i(TAG, "queue tap while inactive, without the Web API: ignored");
+                return false;
+            }
+            lastControlMs = SystemClock.elapsedRealtime();
+            Log.i(TAG, "queue tap while inactive: " + (p.contextUri != null ? p.contextUri + " from " : "") + p.trackUri);
+            playHere(p);
+            return false; // not a jump: nothing for the player to wait for
+        }
+        lastControlMs = SystemClock.elapsedRealtime();
         if (QueueRoute.useWebApi(state.getQueue(), index, state.getTrackUri(), state.getContextUri(),
                 state.isShuffle(), spotify.isLoggedIn())) {
             webJump(spotify, index, item, state.getContextUri());
@@ -978,9 +994,95 @@ public final class PlayerService extends Service {
     // --- controls ---
 
     private void playPause() {
+        if (resume()) return; // Soloist waits: whatever it last reported, play here again
         PlayerState.Status s = state.getStatus();
         if (s == PlayerState.Status.PLAYING || s == PlayerState.Status.BUFFERING) client.pause();
-        else client.play();
+        else play();
+    }
+
+    /** Play: Soloist's own while it is the active device, else the last track again on this device (resume). */
+    private void play() {
+        if (!resume()) client.play();
+    }
+
+    /** Soloist is logged in and the active Connect device: its play and pause work. */
+    private boolean soloistActive() {
+        return state.isLoggedIn() && state.isActive();
+    }
+
+    /**
+     * While Soloist waits (connected, not the active device), plays its last
+     * track again here at the last known position (ResumePlan.resume);
+     * false when there is nothing to do that way (active, or nothing to
+     * start from).
+     */
+    private boolean resume() {
+        if (!connected) return false;
+        ResumePlan p = ResumePlan.resume(soloistActive(), Spotify.get(this).isLoggedIn(), state.getTrackUri(),
+                state.getContextUri(), state.getPositionMs(), state.getDurationMs());
+        if (p.kind == ResumePlan.Kind.NONE) return false;
+        Log.i(TAG, "resume while inactive: " + p.kind + " " + (p.contextUri != null ? p.contextUri + " from " : "")
+                + p.trackUri + " at " + p.positionMs + " ms");
+        playHere(p);
+        return true;
+    }
+
+    /**
+     * Plays p on this device: through the Web API (WEB), falling back to
+     * Soloist's play of p.soloistUri from the top when that fails and Soloist
+     * has not become active meanwhile (a failed call may still have gone
+     * through), with the library's toast; or Soloist's play at once
+     * (SOLOIST). One at a time: a press while one is in flight is ignored
+     * (logged), as the Web API takes seconds.
+     */
+    private void playHere(final ResumePlan p) {
+        if (playingHere) {
+            Log.i(TAG, "play here: one already in flight, ignored");
+            return;
+        }
+        if (p.kind == ResumePlan.Kind.SOLOIST) {
+            soloistFromTop(p.soloistUri);
+            return;
+        }
+        playingHere = true;
+        notifyUi();
+        final String device = prefs.getDeviceName();
+        Spotify.get(this).run(new Spotify.Call<Void>() {
+            @Override public Void run(SpotifyApi api) throws IOException {
+                api.play(device, p.contextUri, p.trackUri, p.positionMs);
+                return null;
+            }
+        }, new Spotify.Callback<Void>() {
+            @Override public void done(Void result) {
+                playingHere = false;
+                if (destroyed) return;
+                Log.i(TAG, "play here: done");
+                notifyUi();
+            }
+
+            @Override public void failed(IOException e) {
+                playingHere = false;
+                if (destroyed) return;
+                if (soloistActive()) {
+                    Log.i(TAG, "play here failed (" + e.getMessage() + "), but Soloist is active now");
+                } else {
+                    Log.w(TAG, "play here failed (" + e.getMessage() + "): from the top through Soloist");
+                    soloistFromTop(p.soloistUri);
+                }
+                notifyUi();
+            }
+        });
+    }
+
+    /** Soloist plays uri from its start (it becomes the active device); says so in a toast. */
+    private void soloistFromTop(String uri) {
+        client.play(uri);
+        Toast.makeText(this, R.string.library_play_from_top, Toast.LENGTH_SHORT).show();
+    }
+
+    /** A play on this device while Soloist was inactive is in flight (the player shows ▶ busy). */
+    boolean isPlayingHere() {
+        return playingHere;
     }
 
     private void mediaKey(int keyCode) {
@@ -990,7 +1092,7 @@ public final class PlayerService extends Service {
                 playPause();
                 break;
             case KeyEvent.KEYCODE_MEDIA_PLAY:
-                client.play();
+                play();
                 break;
             case KeyEvent.KEYCODE_MEDIA_PAUSE:
             case KeyEvent.KEYCODE_MEDIA_STOP:

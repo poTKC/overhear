@@ -65,7 +65,8 @@ import com.potkc.overhear.spotify.SpotifyJson;
  * page when the last row comes into view. The CACHE_MAX most recently used
  * lists stay cached for the process lifetime (dropped when the login
  * changes); ↻ reloads the page shown, or retries the page that failed.
- * Tapping the track marked as playing now only returns to the player.
+ * Tapping the track marked as playing now only returns to the player
+ * (while Soloist is the active device; while it waits, the tap plays it).
  * Tapping anything else playable asks the Web API to play it on this
  * device and returns to the player. A failed call may still have been applied, so
  * unless it certainly sent nothing (no login, device not listed) Soloist's
@@ -1084,18 +1085,28 @@ public class LibraryActivity extends Activity {
         }, PlayPlan.CHECK_MS);
     }
 
-    /** A failure that certainly sent no play: no login, or this device is not in the user's list. */
     /**
      * A track row's tap: the track marked as playing now only returns to the
-     * player (it keeps playing, not restarted); any other plays from it.
+     * player (it keeps playing, not restarted) while Soloist is the active
+     * device; any other, or that one while Soloist waits, plays from it.
      */
     private void playTrack(String contextUri, String trackUri) {
-        if (trackUri != null && trackUri.equals(adapter.nowTrack)) {
+        if (trackUri != null && trackUri.equals(adapter.nowTrack) && soloistActive()) {
             toPlayer();
             return;
         }
         play(contextUri, trackUri);
     }
+
+    /** Soloist is connected, logged in and the active Connect device. */
+    private boolean soloistActive() {
+        SoloistClient client = client();
+        if (client == null || !client.isConnected()) return false;
+        PlayerState s = client.getState();
+        return s.isLoggedIn() && s.isActive();
+    }
+
+    /** A failure that certainly sent no play: no login, or this device is not in the user's list. */
 
     private static boolean sentNothing(IOException e) {
         return (e instanceof SpotifyException
