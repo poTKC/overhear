@@ -29,7 +29,8 @@ import com.potkc.overhear.spotify.SpotifyApi;
  * Soloist (with progress, cancellable) when the service is not running yet,
  * then starts the service and opens the player; from the player
  * (EXTRA_EDIT) a change restarts Soloist through the running service and
- * returns.
+ * returns. There (edit mode only) a button also stops or starts the
+ * service at once, as its label says (PlayerText.serviceLabel).
  *
  * The stored key is never put into the field (nor saved instance state or
  * screenshots: FLAG_SECURE): the field stays empty with a hint, and only a
@@ -40,6 +41,9 @@ public class SetupActivity extends Activity {
     static final String EXTRA_EDIT = "edit";
 
     private final Handler main = new Handler(Looper.getMainLooper());
+    /** After the service button, when to show the service's state again (a slow start or stop: the second). */
+    private static final long SERVICE_RECHECK_MS = 500;
+    private static final long SERVICE_RECHECK_LATE_MS = 1500;
     private Prefs prefs;
     private EditText key;
     private EditText name;
@@ -52,6 +56,8 @@ public class SetupActivity extends Activity {
     private TextView message;
     private TextView spotifyStatus;
     private Button spotifyButton;
+    private TextView serviceStatus;
+    private Button serviceButton;
     /** Bumped per Spotify status refresh: older me() results are ignored. Main thread. */
     private int spotifyRefresh;
     private boolean edit;
@@ -81,7 +87,18 @@ public class SetupActivity extends Activity {
         spotifyStatus = (TextView) findViewById(R.id.spotify_status);
         spotifyButton = (Button) findViewById(R.id.spotify_button);
 
-        if (edit) save.setText(R.string.setup_save_edit);
+        serviceStatus = (TextView) findViewById(R.id.service_status);
+        serviceButton = (Button) findViewById(R.id.service_button);
+        if (edit) {
+            save.setText(R.string.setup_save_edit);
+            findViewById(R.id.service_label).setVisibility(View.VISIBLE);
+            findViewById(R.id.service_row).setVisibility(View.VISIBLE);
+            serviceButton.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    onServiceButton();
+                }
+            });
+        }
         if (prefs.hasApiKey()) key.setHint(R.string.setup_key_saved_hint);
         if (savedInstanceState == null) {
             name.setText(prefs.getDeviceName());
@@ -126,11 +143,48 @@ public class SetupActivity extends Activity {
     protected void onResume() {
         super.onResume();
         showSpotify();
+        showService();
+    }
+
+    /** Whether the service runs, and the button that changes it (edit mode). */
+    private void showService() {
+        if (!edit) return;
+        boolean up = PlayerService.current() != null;
+        serviceStatus.setText(up ? R.string.setup_service_running : R.string.setup_service_stopped);
+        serviceButton.setText(PlayerText.serviceLabel(up));
+    }
+
+    private void onServiceButton() {
+        // The button's label decides, as shown: a tap on 停止 never starts.
+        if (PlayerText.serviceAction(PlayerText.STOP.contentEquals(serviceButton.getText()))
+                == PlayerText.Action.STOP) {
+            PlayerService.stop(this);
+        } else {
+            PlayerService.start(this);
+        }
+        // Starting and stopping take a moment (onCreate / onDestroy set PlayerService.current).
+        main.postDelayed(showServiceLater, SERVICE_RECHECK_MS);
+        main.postDelayed(showServiceLater, SERVICE_RECHECK_LATE_MS);
+        showService();
+    }
+
+    private final Runnable showServiceLater = new Runnable() {
+        @Override public void run() {
+            if (!destroyed) showService();
+        }
+    };
+
+    /** Back from the notification shade (which does not pause on 4.3), where ✕ may have stopped the service. */
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) showService();
     }
 
     @Override
     protected void onDestroy() {
         destroyed = true;
+        main.removeCallbacks(showServiceLater);
         super.onDestroy();
     }
 

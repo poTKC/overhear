@@ -49,6 +49,8 @@ import java.util.List;
 
 import com.potkc.overhear.soloist.PlayerState;
 import com.potkc.overhear.soloist.SoloistClient;
+import com.potkc.overhear.spotify.LibraryPath;
+import com.potkc.overhear.spotify.LikedTracks;
 
 /**
  * The player: in full screen a top strip with the time and battery, artwork
@@ -72,8 +74,16 @@ import com.potkc.overhear.soloist.SoloistClient;
  * phone's Spotify slider.
  *
  * The launcher entry: without an API key it hands over to SetupActivity.
- * Closing it leaves playback running; the menu (Menu key or long-press on
- * settings) stops the service.
+ * Closing it leaves playback running; setup's service button stops the
+ * service.
+ *
+ * The track text is left-aligned with the elapsed time, long lines scrolling
+ * (marquee). ⋮ at its right (or the Menu key) opens the library at the
+ * track's album or one of its artists (PlayerText.trackLinks), and saves
+ * the track to Liked Songs or removes it (Likes; checked in the background
+ * once per track, the item disabled while that or a change is under way). It is hidden (INVISIBLE,
+ * keeping the layout) without a track, with nothing to offer, or without a
+ * Spotify login.
  */
 public class PlayerActivity extends Activity {
     private static final long TICK_MS = 500;
@@ -81,8 +91,6 @@ public class PlayerActivity extends Activity {
     private static final int QUEUE_SHOWN = 10;
     /** The played part of the seek bar while it is dragged (white otherwise). */
     private static final int SEEK_DRAG_COLOR = 0xff1ed760;
-    private static final int MENU_SETTINGS = 1;
-    private static final int MENU_SERVICE = 2;
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private Prefs prefs;
@@ -98,6 +106,18 @@ public class PlayerActivity extends Activity {
     private ImageView art;
     private TextView title;
     private TextView subtitle;
+    /** The ⋮ menu: the track's album and artists in the library. */
+    private ImageButton more;
+    /** What ⋮ offers, as of the last render (empty: ⋮ hidden). */
+    private List<LibraryPath.Node> trackLinks = Collections.emptyList();
+    /** The track ⋮ can save to or remove from Liked Songs (as of the last render), or null. */
+    private String likeUri;
+    /** The track the open ⋮ menu is about, or null. */
+    private String menuLikeUri;
+    private boolean destroyed;
+    private static final int MENU_LIKE = 1000;
+    /** The ⋮ menu on screen, or null. */
+    private PopupMenu trackMenu;
     private TextView elapsed;
     private TextView duration;
     private SeekBar seek;
@@ -182,7 +202,15 @@ public class PlayerActivity extends Activity {
         queueEmpty = (TextView) findViewById(R.id.queue_empty);
         queueAdapter = new QueueAdapter();
         queueList.setAdapter(queueAdapter);
-        title.setSelected(true); // marquee
+        // Selected: long lines scroll (marquee). setText only on a change, so it keeps going.
+        title.setSelected(true);
+        subtitle.setSelected(true);
+        more = (ImageButton) findViewById(R.id.more);
+        more.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                showTrackMenu();
+            }
+        });
         art.setImageDrawable(RoundedArt.placeholder(getResources(), artRadius));
 
         wireControls();
@@ -207,12 +235,6 @@ public class PlayerActivity extends Activity {
         findViewById(R.id.settings).setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 openSettings();
-            }
-        });
-        findViewById(R.id.settings).setOnLongClickListener(new View.OnLongClickListener() {
-            @Override public boolean onLongClick(View v) {
-                showMenu();
-                return true;
             }
         });
         playPause.setOnClickListener(new View.OnClickListener() {
@@ -374,6 +396,7 @@ public class PlayerActivity extends Activity {
     @Override
     protected void onPause() {
         started = false;
+        dismissTrackMenu();
         topStrip.pause();
         main.removeCallbacks(tick);
         detach();
@@ -384,6 +407,8 @@ public class PlayerActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        destroyed = true;
+        dismissTrackMenu();
         if (artwork != null) artwork.cancelAll(Artwork.viewsOf(this));
         if (backdropFade != null) backdropFade.cancel();
         super.onDestroy();
@@ -473,6 +498,14 @@ public class PlayerActivity extends Activity {
         setText(title, hasTrack ? state.getTitle() : getString(R.string.no_track));
         setText(subtitle, hasTrack ? PlayerText.subtitle(state.getArtists(), state.getAlbum()) : "");
         showArtwork(hasTrack ? state.getMediumCoverUrl() : null);
+        // Without a Spotify login neither the library nor Liked Songs can be used.
+        Spotify spotify = Spotify.get(this);
+        boolean web = hasTrack && spotify.isLoggedIn();
+        trackLinks = web ? PlayerText.trackLinks(connected, state) : Collections.<LibraryPath.Node>emptyList();
+        likeUri = web && LikedTracks.likeable(state.getTrackUri()) ? state.getTrackUri() : null;
+        if (likeUri != null) Likes.check(spotify, likeUri, null); // once per track (a failure backs off)
+        int moreVisibility = trackLinks.isEmpty() && likeUri == null ? View.INVISIBLE : View.VISIBLE;
+        if (more.getVisibility() != moreVisibility) more.setVisibility(moreVisibility);
 
         QueueJump jump = service == null ? null : service.getJump();
         boolean jumping = jump != null;
@@ -621,7 +654,7 @@ public class PlayerActivity extends Activity {
     @Override
     public boolean onKeyUp(int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_MENU) {
-            showMenu();
+            if (more.getVisibility() == View.VISIBLE) showTrackMenu();
             return true;
         }
         return super.onKeyUp(keyCode, event);
@@ -642,6 +675,7 @@ public class PlayerActivity extends Activity {
     private void openQueue() {
         if (queueOpen) return;
         queueOpen = true;
+        setMarquee(false); // hidden under the panel: no need to keep scrolling
         SoloistClient c = client();
         if (c != null) c.refreshQueue();
         queuePanel.setVisibility(View.VISIBLE);
@@ -657,6 +691,7 @@ public class PlayerActivity extends Activity {
     private void closeQueue() {
         if (!queueOpen) return;
         queueOpen = false;
+        setMarquee(true);
         queuePanel.animate().translationY(queuePanel.getHeight()).setDuration(180).withEndAction(new Runnable() {
             @Override public void run() {
                 if (!queueOpen) queuePanel.setVisibility(View.GONE);
@@ -823,20 +858,95 @@ public class PlayerActivity extends Activity {
         }
     }
 
-    /** Menu key or long-press on settings: settings, and stop (or start) the service. */
-    private void showMenu() {
-        final boolean up = PlayerService.current() != null;
-        PopupMenu menu = new PopupMenu(this, findViewById(R.id.settings));
-        menu.getMenu().add(Menu.NONE, MENU_SETTINGS, 0, R.string.menu_settings);
-        menu.getMenu().add(Menu.NONE, MENU_SERVICE, 1, PlayerText.serviceMenuLabel(up));
+    /**
+     * ⋮ (or the Menu key): the track's album and artists, each opening the
+     * library at its page under its category (LibraryActivity's context
+     * extras, as for what plays now).
+     */
+    private void showTrackMenu() {
+        final List<LibraryPath.Node> links = trackLinks;
+        final String like = likeUri;
+        if (links.isEmpty() && like == null) return;
+        dismissTrackMenu();
+        final PopupMenu menu = new PopupMenu(this, more);
+        menuLikeUri = like;
+        if (like != null) {
+            // Disabled while checked or changed (likeKnown then updates it).
+            MenuItem item = menu.getMenu().add(Menu.NONE, MENU_LIKE, 0, R.string.like_add);
+            showLike(item, like);
+            Likes.check(Spotify.get(this), like, likeKnown); // waits for a check under way, or starts one
+        }
+        for (int i = 0; i < links.size(); i++) {
+            LibraryPath.Node n = links.get(i);
+            String label;
+            if (n.type == LibraryPath.Node.Type.ALBUM) {
+                label = getString(R.string.track_open_album);
+            } else {
+                label = n.title == null || n.title.isEmpty() ? getString(R.string.library_open_artist)
+                        : getString(R.string.library_open_named, n.title);
+            }
+            menu.getMenu().add(Menu.NONE, i, i + 1, label);
+        }
         menu.setOnMenuItemClickListener(new PopupMenu.OnMenuItemClickListener() {
             @Override public boolean onMenuItemClick(MenuItem item) {
-                if (item.getItemId() == MENU_SETTINGS) openSettings();
-                else run(PlayerText.serviceMenuAction(up));
+                if (item.getItemId() == MENU_LIKE) {
+                    // Unknown (the check failed): 「お気に入りに追加」, whose own failure says so.
+                    Spotify spotify = Spotify.get(PlayerActivity.this);
+                    Likes.set(PlayerActivity.this, spotify, like, !Boolean.TRUE.equals(Likes.get(spotify, like)),
+                            NOTHING);
+                    return true;
+                }
+                LibraryPath.Node n = links.get(item.getItemId());
+                startActivity(new Intent(PlayerActivity.this, LibraryActivity.class)
+                        .putExtra(LibraryActivity.EXTRA_CONTEXT_URI, n.uri)
+                        .putExtra(LibraryActivity.EXTRA_CONTEXT_NAME, n.title)
+                        .putExtra(LibraryActivity.EXTRA_CONTEXT_COVER, n.coverUrl));
+                overridePendingTransition(0, 0); // as every switch between the player and the library
                 return true;
             }
         });
+        menu.setOnDismissListener(new PopupMenu.OnDismissListener() {
+            @Override public void onDismiss(PopupMenu m) {
+                if (trackMenu == menu) {
+                    trackMenu = null;
+                    menuLikeUri = null;
+                }
+            }
+        });
+        trackMenu = menu;
         menu.show();
+    }
+
+    private static final Runnable NOTHING = new Runnable() {
+        @Override public void run() {}
+    };
+
+    /** A Liked Songs check answered: the open ⋮ menu shows it. */
+    private final Runnable likeKnown = new Runnable() {
+        @Override public void run() {
+            if (destroyed || trackMenu == null || menuLikeUri == null) return;
+            MenuItem item = trackMenu.getMenu().findItem(MENU_LIKE);
+            if (item != null) showLike(item, menuLikeUri);
+        }
+    };
+
+    /** The ⋮ menu's Liked Songs item for uri: its label, disabled while checked or changed. */
+    private void showLike(MenuItem item, String uri) {
+        Spotify spotify = Spotify.get(this);
+        item.setTitle(Likes.label(Likes.get(spotify, uri)));
+        item.setEnabled(!Likes.busy(spotify, uri));
+    }
+
+    private void dismissTrackMenu() {
+        PopupMenu m = trackMenu;
+        trackMenu = null;
+        if (m != null) m.dismiss();
+    }
+
+    /** The track text scrolls (marquee) while selected. */
+    private void setMarquee(boolean on) {
+        title.setSelected(on);
+        subtitle.setSelected(on);
     }
 
     private void openSettings() {

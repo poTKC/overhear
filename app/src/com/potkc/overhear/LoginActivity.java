@@ -62,6 +62,8 @@ public class LoginActivity extends Activity {
     private static final long REQUEST_MS = 5000;
     private static final int MAX_LINE = 8 * 1024;
     private static final int MAX_HEADER_BYTES = 16 * 1024;
+    /** The relay page's "logged in" view, where a successful callback sends the browser on. */
+    private static final String DONE_URL = Spotify.REDIRECT_URI + "?done=1";
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private QrView qr;
@@ -294,9 +296,14 @@ public class LoginActivity extends Activity {
                     break;
                 case CODE:
                     boolean ok = exchange(cb.value);
-                    respond(client, "200 OK",
-                            getString(ok ? R.string.login_html_done : R.string.login_html_failed));
-                    if (ok) stopped = true;
+                    if (ok) {
+                        // To the relay's own done page: the browser may load this URL again
+                        // (a tab restored from Spotify's app, say) once nothing listens here.
+                        redirect(client, DONE_URL);
+                        stopped = true;
+                    } else {
+                        respond(client, "200 OK", getString(R.string.login_html_failed));
+                    }
                     break;
                 default:
                     respond(client, "400 Bad Request", "Bad Request");
@@ -375,6 +382,23 @@ public class LoginActivity extends Activity {
             left -= h.length() + 2;
         }
         throw new IOException("headers too long");
+    }
+
+    /** A 303 to location (a constant https URL), with a link in case the browser stays. */
+    private static void redirect(Socket client, String location) throws IOException {
+        byte[] body = ("<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Overhear</title></head><body>"
+                + "<a href=\"" + TextUtils.htmlEncode(location) + "\">Overhear</a></body></html>").getBytes("UTF-8");
+        String head = "HTTP/1.1 303 See Other\r\n"
+                + "Location: " + location + "\r\n"
+                + "Content-Type: text/html; charset=utf-8\r\n"
+                + "Content-Length: " + body.length + "\r\n"
+                + "Referrer-Policy: no-referrer\r\n"
+                + "Cache-Control: no-store\r\n"
+                + "Connection: close\r\n\r\n";
+        OutputStream out = client.getOutputStream();
+        out.write(head.getBytes("US-ASCII"));
+        out.write(body);
+        out.flush();
     }
 
     private static void respond(Socket client, String status, String text) throws IOException {

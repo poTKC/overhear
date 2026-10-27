@@ -9,8 +9,9 @@ package com.potkc.overhear.spotify;
 public final class SpotifyConfig {
     public static final String CLIENT_ID = "efc26a16958343d0babe0e67afaa1a18";
     public static final String REDIRECT_URI = "https://potkc.github.io/overhear-auth/callback/";
+    /** user-library-modify: Liked Songs (since 2026-10-28; older logins lack it until logged in again). */
     public static final String SCOPES = "user-read-playback-state user-modify-playback-state user-library-read "
-            + "playlist-read-private user-follow-read user-read-recently-played";
+            + "user-library-modify playlist-read-private user-follow-read user-read-recently-played";
 
     private SpotifyConfig() {
     }
