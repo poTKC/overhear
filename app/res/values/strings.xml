@@ -88,6 +88,8 @@
     <string name="library_back_glyph">←</string>
     <string name="library_reload">再読み込み</string>
     <string name="library_reload_glyph">↻</string>
+    <string name="library_to_player">再生画面に戻る</string>
+    <string name="library_to_player_glyph">♫</string>
     <string name="library_search">検索</string>
     <string name="library_search_hint">曲・アルバム・アーティストを検索</string>
     <string name="library_liked">お気に入りの曲</string>

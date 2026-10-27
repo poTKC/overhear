@@ -196,6 +196,11 @@ public class LibraryActivity extends Activity {
                 reloadPage();
             }
         });
+        findViewById(R.id.to_player).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                toPlayer();
+            }
+        });
         query.setOnEditorActionListener(new TextView.OnEditorActionListener() {
             @Override public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
                 boolean enter = event != null && event.getKeyCode() == KeyEvent.KEYCODE_ENTER
@@ -295,6 +300,13 @@ public class LibraryActivity extends Activity {
         render();
         Integer at = scroll.remove(stack.size());
         list.setSelection(at == null ? 0 : at);
+    }
+
+    /** ♫: back to the player screen, keeping the saved path for the next visit. */
+    private void toPlayer() {
+        startActivity(new Intent(this, PlayerActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP));
+        finish();
     }
 
     private void saveStack() {
