@@ -17,8 +17,9 @@ import com.potkc.overhear.soloist.PlayerState;
  * playlist is taken as the first. The longest list seen is kept: the
  * regular 10-entry queue that follows must not shorten it, and once
  * another track plays QueueTracks gives none, so the list stays in order.
- * Without a list GIVE_UP_AFTER_MS after the request, or if the context
- * leaves the playlist first, the status is FAILED (the caller offers to
+ * Without a list GIVE_UP_AFTER_MS after the request (unless that tick
+ * just adopted the first track), or if the context leaves the playlist
+ * first, the status is FAILED (the caller offers to
  * play again, with a new tracker).
  *
  * Pure Java, one thread (the caller's); times come from the caller.
@@ -108,12 +109,15 @@ public final class OthersTracker {
         if (playReturnedMs < 0) return;
         long since = nowMs - playReturnedMs;
         String track = s.getTrackUri();
+        boolean adopted = false;
         if (firstTrackUri == null && since >= ADOPT_AFTER_MS && playlistUri.equals(s.getContextUri())
                 && !isEmpty(track) && s.positionAt(nowMs) < ADOPT_MAX_POSITION_MS) {
             firstTrackUri = track; // restarted without a track_changed
+            adopted = true;
             collect(s);
         }
-        if (items == null && !failed && since >= GIVE_UP_AFTER_MS) {
+        // Not in the tick that adopted: the queue request has yet to go out.
+        if (items == null && !failed && !adopted && since >= GIVE_UP_AFTER_MS) {
             failed = true;
             version++;
         }

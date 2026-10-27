@@ -179,6 +179,23 @@ public class OthersTrackerTest {
         assertTrue(tracker.version() != v);
     }
 
+    @Test public void doesNotFailInTheTickThatAdopts() {
+        // Only the give-up tick runs (the earlier one came before the restart),
+        // and the queue is stale, so the list waits for the queue request.
+        trackChanged("a");
+        playbackState("a", PLAYLIST);
+        tracker = new OthersTracker(PLAYLIST);
+        tracker.onOpen(state.copy());
+        tracker.onPlayReturned(T0);
+        position(1000, T0 + OthersTracker.GIVE_UP_AFTER_MS - 1000);
+        tracker.onTick(state.copy(), T0 + OthersTracker.GIVE_UP_AFTER_MS);
+        assertEquals("spotify:track:a", tracker.firstTrackUri());
+        assertEquals(OthersTracker.Status.STARTING, tracker.status());
+        assertTrue(tracker.takeQueueRequest(true));
+        queue("b");
+        assertEquals(OthersTracker.Status.READY, tracker.status());
+    }
+
     @Test public void failsWhenTheContextLeavesThePlaylistFirst() {
         tracker.onPlayReturned(T0);
         contextChanged(PLAYLIST);
