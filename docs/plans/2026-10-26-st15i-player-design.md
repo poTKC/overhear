@@ -452,3 +452,11 @@ set_volume・set_shuffle・set_repeat_*・add_to_queue・activate・deactivate�
   再生画面とライブラリの切り替えと同じくアニメーションなし（`overridePendingTransition(0, 0)`）。
 - キューを開いている間は、曲名のマーキーを止める（閉じると再開）。
 
+## 設定画面の並び（2026-10-28）
+
+- 見出しで 3 つに分けた。「アカウント」: Soloist API キー（前は「Spotify API キー」と書いていて、Web API のログインと
+  紛らわしかった）、Spotify（ライブラリ）のログイン。「再生」: デバイス名、再生サービス（再生画面から開いたときだけ）、
+  自動開始。「表示」: 「再生画面とライブラリを全画面表示」（ライブラリにも効くので名前を変えた）。その下に保存、進み具合、ライセンス。
+- 見出しは小さい灰色の字と下の 1dp の線（`Overhear.SetupSection`、`setup_section_rule`）。Holo の青は使わない。
+- 保存で反映するもの・すぐ反映するもの、初回（EXTRA_EDIT なし）の動きは変えていない。
+

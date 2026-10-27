@@ -9,6 +9,18 @@
         <item name="android:listChoiceBackgroundIndicator">@drawable/holo_g_list_selector_holo_dark</item>
     </style>
 
+    <!-- Setup's section headers (アカウント, スピーカー, 表示): small grey text over a thin
+         rule, as Holo's list separators but without the blue. -->
+    <style name="Overhear.SetupSection" parent="@android:style/Widget.TextView">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginBottom">6dp</item>
+        <item name="android:paddingBottom">3dp</item>
+        <item name="android:background">@drawable/setup_section_rule</item>
+        <item name="android:textColor">#ff8f8f8f</item>
+        <item name="android:textSize">12sp</item>
+    </style>
+
     <!-- Setup: no accent colour, white and light grey instead of Holo blue. -->
     <style name="Theme.Overhear.Setup">
         <item name="android:editTextStyle">@style/Overhear.EditText</item>
