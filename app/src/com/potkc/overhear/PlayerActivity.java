@@ -49,6 +49,7 @@ import java.util.List;
 
 import com.potkc.overhear.soloist.PlayerState;
 import com.potkc.overhear.soloist.SoloistClient;
+import com.potkc.overhear.spotify.LibraryPath;
 
 /**
  * The player: in full screen a top strip with the time and battery, artwork
@@ -72,8 +73,14 @@ import com.potkc.overhear.soloist.SoloistClient;
  * phone's Spotify slider.
  *
  * The launcher entry: without an API key it hands over to SetupActivity.
- * Closing it leaves playback running; the menu (Menu key or long-press on
- * settings) stops the service.
+ * Closing it leaves playback running; setup's service button stops the
+ * service.
+ *
+ * The track text is left-aligned with the elapsed time, long lines scrolling
+ * (marquee). ⋮ at its right (or the Menu key) opens the library at the
+ * track's album or one of its artists (PlayerText.trackLinks); it is hidden
+ * (INVISIBLE, keeping the layout) without a track, without those URIs, or
+ * without a Spotify login.
  */
 public class PlayerActivity extends Activity {
     private static final long TICK_MS = 500;
@@ -81,8 +88,6 @@ public class PlayerActivity extends Activity {
     private static final int QUEUE_SHOWN = 10;
     /** The played part of the seek bar while it is dragged (white otherwise). */
     private static final int SEEK_DRAG_COLOR = 0xff1ed760;
-    private static final int MENU_SETTINGS = 1;
-    private static final int MENU_SERVICE = 2;
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private Prefs prefs;
@@ -98,6 +103,10 @@ public class PlayerActivity extends Activity {
     private ImageView art;
     private TextView title;
     private TextView subtitle;
+    /** The ⋮ menu: the track's album and artists in the library. */
+    private ImageButton more;
+    /** What ⋮ offers, as of the last render (empty: ⋮ hidden). */
+    private List<LibraryPath.Node> trackLinks = Collections.emptyList();
     private TextView elapsed;
     private TextView duration;
     private SeekBar seek;
@@ -182,7 +191,15 @@ public class PlayerActivity extends Activity {
         queueEmpty = (TextView) findViewById(R.id.queue_empty);
         queueAdapter = new QueueAdapter();
         queueList.setAdapter(queueAdapter);
-        title.setSelected(true); // marquee
+        // Selected: long lines scroll (marquee). setText only on a change, so it keeps going.
+        title.setSelected(true);
+        subtitle.setSelected(true);
+        more = (ImageButton) findViewById(R.id.more);
+        more.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                showTrackMenu();
+            }
+        });
         art.setImageDrawable(RoundedArt.placeholder(getResources(), artRadius));
 
         wireControls();
@@ -207,12 +224,6 @@ public class PlayerActivity extends Activity {
         findViewById(R.id.settings).setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 openSettings();
-            }
-        });
-        findViewById(R.id.settings).setOnLongClickListener(new View.OnLongClickListener() {
-            @Override public boolean onLongClick(View v) {
-                showMenu();
-                return true;
             }
         });
         playPause.setOnClickListener(new View.OnClickListener() {
@@ -473,6 +484,11 @@ public class PlayerActivity extends Activity {
         setText(title, hasTrack ? state.getTitle() : getString(R.string.no_track));
         setText(subtitle, hasTrack ? PlayerText.subtitle(state.getArtists(), state.getAlbum()) : "");
         showArtwork(hasTrack ? state.getMediumCoverUrl() : null);
+        // Without a Spotify login the library cannot open the pages.
+        trackLinks = hasTrack && Spotify.get(this).isLoggedIn() ? PlayerText.trackLinks(connected, state)
+                : Collections.<LibraryPath.Node>emptyList();
+        int moreVisibility = trackLinks.isEmpty() ? View.INVISIBLE : View.VISIBLE;
+        if (more.getVisibility() != moreVisibility) more.setVisibility(moreVisibility);
 
         QueueJump jump = service == null ? null : service.getJump();
         boolean jumping = jump != null;
@@ -621,7 +637,7 @@ public class PlayerActivity extends Activity {
     @Override
     public boolean onKeyUp(int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_MENU) {
-            showMenu();
+            if (more.getVisibility() == View.VISIBLE) showTrackMenu();
             return true;
         }
         return super.onKeyUp(keyCode, event);
@@ -823,16 +839,33 @@ public class PlayerActivity extends Activity {
         }
     }
 
-    /** Menu key or long-press on settings: settings, and stop (or start) the service. */
-    private void showMenu() {
-        final boolean up = PlayerService.current() != null;
-        PopupMenu menu = new PopupMenu(this, findViewById(R.id.settings));
-        menu.getMenu().add(Menu.NONE, MENU_SETTINGS, 0, R.string.menu_settings);
-        menu.getMenu().add(Menu.NONE, MENU_SERVICE, 1, PlayerText.serviceLabel(up));
+    /**
+     * ⋮ (or the Menu key): the track's album and artists, each opening the
+     * library at its page under its category (LibraryActivity's context
+     * extras, as for what plays now).
+     */
+    private void showTrackMenu() {
+        final List<LibraryPath.Node> links = trackLinks;
+        if (links.isEmpty()) return;
+        PopupMenu menu = new PopupMenu(this, more);
+        for (int i = 0; i < links.size(); i++) {
+            LibraryPath.Node n = links.get(i);
+            String label;
+            if (n.type == LibraryPath.Node.Type.ALBUM) {
+                label = getString(R.string.track_open_album);
+            } else {
+                label = n.title == null || n.title.isEmpty() ? getString(R.string.library_open_artist)
+                        : getString(R.string.library_open_named, n.title);
+            }
+            menu.getMenu().add(Menu.NONE, i, i, label);
+        }
         menu.setOnMenuItemClickListener(new PopupMenu.OnMenuItemClickListener() {
             @Override public boolean onMenuItemClick(MenuItem item) {
-                if (item.getItemId() == MENU_SETTINGS) openSettings();
-                else run(PlayerText.serviceAction(up));
+                LibraryPath.Node n = links.get(item.getItemId());
+                startActivity(new Intent(PlayerActivity.this, LibraryActivity.class)
+                        .putExtra(LibraryActivity.EXTRA_CONTEXT_URI, n.uri)
+                        .putExtra(LibraryActivity.EXTRA_CONTEXT_NAME, n.title)
+                        .putExtra(LibraryActivity.EXTRA_CONTEXT_COVER, n.coverUrl));
                 return true;
             }
         });

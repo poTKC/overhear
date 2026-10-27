@@ -65,31 +65,56 @@
             android:layout_height="0dp"
             android:layout_weight="3" />
 
-        <TextView
-            android:id="@+id/title"
+        <!-- The track text left-aligned with the elapsed time below (8dp in), long
+             lines scrolling (marquee), and the ⋮ menu at the right. -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:ellipsize="marquee"
-            android:gravity="center_horizontal"
-            android:marqueeRepeatLimit="marquee_forever"
-            android:paddingLeft="8dp"
-            android:paddingRight="8dp"
-            android:singleLine="true"
-            android:textColor="#ffffffff"
-            android:textSize="18sp" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-        <TextView
-            android:id="@+id/subtitle"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:ellipsize="end"
-            android:gravity="center_horizontal"
-            android:paddingLeft="8dp"
-            android:paddingRight="8dp"
-            android:singleLine="true"
-            android:textColor="#ffaaaaaa"
-            android:textSize="13sp" />
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/title"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="marquee"
+                    android:marqueeRepeatLimit="marquee_forever"
+                    android:paddingLeft="8dp"
+                    android:singleLine="true"
+                    android:textColor="#ffffffff"
+                    android:textSize="18sp" />
+
+                <TextView
+                    android:id="@+id/subtitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:ellipsize="marquee"
+                    android:marqueeRepeatLimit="marquee_forever"
+                    android:paddingLeft="8dp"
+                    android:singleLine="true"
+                    android:textColor="#ffaaaaaa"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <!-- INVISIBLE, not GONE, while there is nothing to open: the text keeps its width. -->
+            <ImageButton
+                android:id="@+id/more"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:layout_marginLeft="4dp"
+                android:background="@drawable/btn_round_bg"
+                android:contentDescription="@string/track_menu"
+                android:scaleType="center"
+                android:src="@drawable/ic_more"
+                android:visibility="invisible" />
+        </LinearLayout>
 
         <View
             android:layout_width="match_parent"

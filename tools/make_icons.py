@@ -37,6 +37,7 @@ SVGS = {
     "Media/play-list-2-fill.svg": "55cbaabbba0ea137002c90595270bb6c3732b1d4e447c622bcfab98bced30868",
     "Media/album-line.svg": "23e89cbc93fb0b273c5d6f7382517181796519dd724ae5fd0bfeebbfbca2d073",
     "System/settings-3-line.svg": "f2e1fd30e6eadb8d5636f5037cf477f38ef81b235757d3ed290b92b2c002fec1",
+    "System/more-2-line.svg": "db8d54387be3fe161e4f82e2ff0463159a7f346e40a9173dc1850bc2e9e891af",
     "System/close-line.svg": "db3b4dcebb2d962a0231a191538bf6939620798b18f0ba52d4b91c5a4649ce54",
     "Media/music-2-line.svg": "beaf516b74a065afb95022f9b311ecc981cbdd22af446b96e8a8b353f7b49342",
     "Media/music-2-fill.svg": "70a5c81119274e9b6c0a6286afa125c15414f42d0aa3a799e8c971bebecb1221",
@@ -161,6 +162,7 @@ def main():
         plain(density, f, "ic_queue", "Media/play-list-2-fill.svg", GREY, 20, 18)
         plain(density, f, "ic_settings", "System/settings-3-line.svg", GREY, 20, 18)
         plain(density, f, "ic_close", "System/close-line.svg", WHITE, 24, 22)
+        plain(density, f, "ic_more", "System/more-2-line.svg", WHITE, 20, 18)  # the track's ⋮ menu
         # library bar: back, reload, back to the player
         plain(density, f, "ic_back", "Arrows/arrow-left-line.svg", WHITE, 24, 20)
         plain(density, f, "ic_reload", "System/loop-right-line.svg", WHITE, 24, 20)

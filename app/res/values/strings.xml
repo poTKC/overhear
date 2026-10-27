@@ -32,7 +32,11 @@
     <string name="shuffle">シャッフル</string>
     <string name="repeat">リピート</string>
     <string name="artwork">アートワーク</string>
-    <string name="menu_settings">設定</string>
+    <string name="track_menu">曲のメニュー</string>
+    <string name="track_open_album">アルバムを開く</string>
+    <string name="setup_service_label">再生サービス</string>
+    <string name="setup_service_running">動作中</string>
+    <string name="setup_service_stopped">停止中</string>
     <string name="stop">停止</string>
 
     <!-- setup -->

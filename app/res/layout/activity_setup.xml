@@ -97,6 +97,41 @@
                 android:layout_height="wrap_content" />
         </LinearLayout>
 
+        <!-- Edit mode only (from the player); takes effect at once, not on save. -->
+        <TextView
+            android:id="@+id/service_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="@string/setup_service_label"
+            android:textColor="#ffffffff"
+            android:textStyle="bold"
+            android:textSize="13sp"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:id="@+id/service_row"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/service_status"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:singleLine="true"
+                android:textColor="#ffffffff"
+                android:textSize="14sp" />
+
+            <Button
+                android:id="@+id/service_button"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+
         <CheckBox
             android:id="@+id/auto_start"
             android:layout_width="wrap_content"
