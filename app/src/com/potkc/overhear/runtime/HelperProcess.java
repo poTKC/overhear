@@ -113,6 +113,7 @@ public final class HelperProcess {
         errReader.start();
         byte[] out;
         int code;
+        boolean finished = false;
         try {
             OutputStream in = p.getOutputStream();
             try {
@@ -128,11 +129,15 @@ public final class HelperProcess {
                 throw new IOException("overhear-fetch printed more than " + MAX_STDOUT_BYTES + " bytes");
             }
             code = p.waitFor();
+            finished = true;
         } catch (InterruptedException e) {
             p.destroy();
             Thread.currentThread().interrupt();
             throw new IOException("interrupted");
         } finally {
+            // Not after waitFor(): destroy() is a bare kill by pid on 4.3, and
+            // a reaped helper's pid may already belong to another process.
+            if (!finished) p.destroy();
             kill.cancel(false);
             closeQuietly(p.getInputStream());
             try {

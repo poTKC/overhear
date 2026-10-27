@@ -35,6 +35,7 @@ public final class HelperTransport implements ApiTransport {
 
     @Override public HelperReply api(String method, String path, String accessToken, String body)
             throws IOException {
+        if (accessToken == null) throw new IOException("no access token");
         List<String> args = baseArgs();
         args.add("api");
         args.add(method);
@@ -55,8 +56,9 @@ public final class HelperTransport implements ApiTransport {
 
     private HelperReply call(List<String> args, Map<String, String> env, String stdin) throws IOException {
         HelperProcess.Result r = HelperProcess.run(installer, args, env, utf8(stdin), TIMEOUT_MS);
-        if (r.timedOut) throw new IOException("overhear-fetch timed out after " + TIMEOUT_MS / 1000 + " s");
         if (r.exitCode != 0) {
+            // A watchdog firing just after a clean exit must not discard a good reply.
+            if (r.timedOut) throw new IOException("overhear-fetch timed out after " + TIMEOUT_MS / 1000 + " s");
             throw new IOException(r.lastErrorLine.isEmpty()
                     ? "overhear-fetch exited with " + r.exitCode : r.lastErrorLine);
         }

@@ -72,7 +72,7 @@ final class Spotify {
         api = new SpotifyApi(transport, auth);
         thread = Executors.newSingleThreadExecutor(new ThreadFactory() {
             @Override public Thread newThread(Runnable r) {
-                Thread t = new Thread(r, "spotify");
+                Thread t = new Thread(r, "overhear-spotify");
                 t.setDaemon(true);
                 return t;
             }
@@ -94,7 +94,13 @@ final class Spotify {
         return auth.isLoggedIn();
     }
 
-    /** Runs call on the Spotify thread; the callback runs on the main thread. */
+    /**
+     * Runs call on the Spotify thread; the callback runs on the main thread.
+     * Calls run one at a time and each may take up to HelperTransport's 40 s
+     * timeout, so the callback can arrive long after the caller is gone: it
+     * still runs after an Activity's onDestroy, so Activities must ignore
+     * results then (e.g. check a destroyed flag) and not touch their views.
+     */
     <T> void run(final Call<T> call, final Callback<T> callback) {
         thread.execute(new Runnable() {
             @Override public void run() {
