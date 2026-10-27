@@ -25,9 +25,13 @@
         <item name="android:alertDialogTheme">@style/Theme.Overhear.Dialog.Neutral</item>
     </style>
 
-    <!-- The licences dialog: white title; Dialogs.neutral() also recolours the
-         title divider, which alert_dialog_holo.xml hard-codes to Holo blue. -->
+    <!-- The alert dialogs of setup and the library: white title; Dialogs.neutral()
+         also recolours the title divider, which alert_dialog_holo.xml hard-codes
+         to Holo blue. The alert draws its own panel, so the window has none (as
+         the internal Theme.Holo.Dialog.Alert): Theme.Holo.Dialog's would show
+         as a second frame around it. -->
     <style name="Theme.Overhear.Dialog.Neutral" parent="@android:style/Theme.Holo.Dialog">
+        <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowTitleStyle">@style/Overhear.DialogWindowTitle</item>
         <item name="android:buttonStyle">@style/Overhear.Button</item>
         <item name="android:listChoiceBackgroundIndicator">@drawable/holo_w_list_selector_holo_dark</item>
