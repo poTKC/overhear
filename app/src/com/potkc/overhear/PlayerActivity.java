@@ -828,11 +828,11 @@ public class PlayerActivity extends Activity {
         final boolean up = PlayerService.current() != null;
         PopupMenu menu = new PopupMenu(this, findViewById(R.id.settings));
         menu.getMenu().add(Menu.NONE, MENU_SETTINGS, 0, R.string.menu_settings);
-        menu.getMenu().add(Menu.NONE, MENU_SERVICE, 1, PlayerText.serviceMenuLabel(up));
+        menu.getMenu().add(Menu.NONE, MENU_SERVICE, 1, PlayerText.serviceLabel(up));
         menu.setOnMenuItemClickListener(new PopupMenu.OnMenuItemClickListener() {
             @Override public boolean onMenuItemClick(MenuItem item) {
                 if (item.getItemId() == MENU_SETTINGS) openSettings();
-                else run(PlayerText.serviceMenuAction(up));
+                else run(PlayerText.serviceAction(up));
                 return true;
             }
         });

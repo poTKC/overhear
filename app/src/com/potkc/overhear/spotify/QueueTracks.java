@@ -42,6 +42,17 @@ public final class QueueTracks {
         return items;
     }
 
+    /**
+     * The track playing now as a row, with its album and artists (for the
+     * player's ⋮ menu), played in Soloist's context; null when none plays.
+     */
+    public static Item current(PlayerState s) {
+        String uri = s.getTrackUri();
+        if (uri == null) return null;
+        return track(uri, s.getTitle(), s.getArtists(), s.getArtistUris(), s.getAlbumUri(), s.getAlbum(),
+                s.getSmallCoverUrl(), s.getContextUri());
+    }
+
     /** With the album and the artists that have a URI, for the long-press. */
     private static Item track(String uri, String title, List<String> artists, List<String> artistUris,
             String albumUri, String albumName, String coverUrl, String playlistUri) {

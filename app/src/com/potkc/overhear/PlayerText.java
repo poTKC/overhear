@@ -1,15 +1,20 @@
 package com.potkc.overhear;
 
+import java.util.Collections;
 import java.util.List;
 
 import com.potkc.overhear.soloist.PlayerState;
+import com.potkc.overhear.spotify.Item;
+import com.potkc.overhear.spotify.LibraryPath;
+import com.potkc.overhear.spotify.QueueTracks;
 
 /**
  * What the player screen says: the status line and its tap action, track
- * text and times. Pure Java (host tests).
+ * text and times, the ⋮ menu's pages and setup's service button. Pure Java
+ * (host tests).
  */
 final class PlayerText {
-    /** What tapping the status line (or the service menu item) does. */
+    /** What tapping the status line (or setup's service button) does. */
     enum Action { NONE, START, RETRY, SETUP, STOP }
 
     static final class Status {
@@ -107,16 +112,27 @@ final class PlayerText {
     }
 
     /**
-     * The menu's service item (Menu key, long-press on settings): stop while
-     * the service runs, whatever its state (starting, failed ...), else start.
-     * After a stop the status line reads TAP_TO_START (status()).
+     * Setup's service button: stop while the service runs, whatever its
+     * state (starting, failed ...), else start. After a stop the player's
+     * status line reads TAP_TO_START (status()).
      */
-    static Action serviceMenuAction(boolean serviceUp) {
+    static Action serviceAction(boolean serviceUp) {
         return serviceUp ? Action.STOP : Action.START;
     }
 
-    static String serviceMenuLabel(boolean serviceUp) {
+    static String serviceLabel(boolean serviceUp) {
         return serviceUp ? STOP : START;
+    }
+
+    /**
+     * The library pages the player's ⋮ menu offers for the track playing:
+     * its album, then its artists (those with a URI; LibraryPath.linksOf).
+     * None while no player is connected or no track plays.
+     */
+    static List<LibraryPath.Node> trackLinks(boolean connected, PlayerState s) {
+        Item t = connected ? QueueTracks.current(s) : null;
+        if (t == null) return Collections.emptyList();
+        return LibraryPath.linksOf(t, LibraryPath.Node.top());
     }
 
     /** Shuffle: the controls work and Soloist allows it here (available_actions). */

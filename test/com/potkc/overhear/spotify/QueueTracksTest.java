@@ -169,4 +169,14 @@ public class QueueTracksTest {
             assertEquals("X" + id + ", Y" + id, t.subtitle);
         }
     }
+
+    @Test public void currentIsThePlayingTrackWithItsLinks() throws Exception {
+        Item t = QueueTracks.current(state);
+        assertEquals("spotify:track:a", t.uri);
+        assertEquals("Ta", t.title);
+        assertEquals("spotify:album:Aa", t.album.uri);
+        assertEquals("spotify:artist:Xa", t.artists.get(0).uri);
+        assertEquals(PLAYLIST, t.contextUri);
+        assertNull(QueueTracks.current(new PlayerState()));
+    }
 }

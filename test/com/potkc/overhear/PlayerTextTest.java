@@ -8,6 +8,7 @@ import java.util.Arrays;
 import java.util.Collections;
 
 import com.potkc.overhear.soloist.PlayerState;
+import com.potkc.overhear.spotify.LibraryPath;
 
 import org.json.JSONObject;
 import org.junit.Test;
@@ -176,14 +177,14 @@ public class PlayerTextTest {
         assertEquals("Check API key \u2014 tap", s.text);
     }
 
-    @Test public void serviceMenuStopsARunningService() {
-        assertEquals(PlayerText.Action.STOP, PlayerText.serviceMenuAction(true));
-        assertEquals("停止", PlayerText.serviceMenuLabel(true));
+    @Test public void serviceButtonStopsARunningService() {
+        assertEquals(PlayerText.Action.STOP, PlayerText.serviceAction(true));
+        assertEquals("停止", PlayerText.serviceLabel(true));
     }
 
-    @Test public void serviceMenuStartsAStoppedService() {
-        assertEquals(PlayerText.Action.START, PlayerText.serviceMenuAction(false));
-        assertEquals("開始", PlayerText.serviceMenuLabel(false));
+    @Test public void serviceButtonStartsAStoppedService() {
+        assertEquals(PlayerText.Action.START, PlayerText.serviceAction(false));
+        assertEquals("開始", PlayerText.serviceLabel(false));
     }
 
     @Test public void afterAStopTheStatusLineOffersStartEvenWithStaleState() throws Exception {
@@ -192,6 +193,48 @@ public class PlayerTextTest {
                 "login failed", true, state(true, true), "ST15i");
         assertEquals(PlayerText.Action.START, s.action);
         assertEquals("Stopped \u2014 tap to start", s.text);
-        assertEquals(PlayerText.Action.START, PlayerText.serviceMenuAction(false));
+        assertEquals(PlayerText.Action.START, PlayerText.serviceAction(false));
+    }
+
+    // --- the ⋮ menu ---
+
+    /** A playback_state of spotify:track:T on album A (if albumUri) by the creators given as "uri=name" ("=name": no uri). */
+    private static PlayerState track(String albumUri, String... creators) throws Exception {
+        org.json.JSONArray c = new org.json.JSONArray();
+        for (String e : creators) {
+            String[] p = e.split("=", -1);
+            JSONObject entity = new JSONObject().put("decorations",
+                    new JSONObject().put("identity", new JSONObject().put("name", p[1])));
+            if (!p[0].isEmpty()) entity.put("uri", p[0]);
+            c.put(new JSONObject().put("entity", entity));
+        }
+        JSONObject d = new JSONObject().put("identity", new JSONObject().put("name", "Title")).put("creators", c);
+        if (albumUri != null) {
+            d.put("parent", new JSONObject().put("entity", new JSONObject().put("uri", albumUri)
+                    .put("decorations", new JSONObject().put("identity", new JSONObject().put("name", "Album")))));
+        }
+        PlayerState s = new PlayerState();
+        s.apply(new JSONObject().put("type", "playback_state").put("status", "playing")
+                .put("item", new JSONObject().put("uri", "spotify:track:T").put("decorations", d)));
+        return s;
+    }
+
+    @Test public void trackLinksAreTheAlbumThenTheArtists() throws Exception {
+        PlayerState s = track("spotify:album:A", "spotify:artist:R=Daft Punk", "=No Uri", "spotify:artist:S=Romanthony");
+        assertEquals(Arrays.asList(LibraryPath.Node.album("spotify:album:A", "Album", null),
+                        LibraryPath.Node.artist("spotify:artist:R", "Daft Punk"),
+                        LibraryPath.Node.artist("spotify:artist:S", "Romanthony")),
+                PlayerText.trackLinks(true, s));
+    }
+
+    @Test public void noTrackLinksWithoutAPlayerOrATrack() throws Exception {
+        assertTrue(PlayerText.trackLinks(false, track("spotify:album:A", "spotify:artist:R=R")).isEmpty());
+        assertTrue(PlayerText.trackLinks(true, new PlayerState()).isEmpty());
+        assertTrue(PlayerText.trackLinks(true, track(null, "=No Uri")).isEmpty());
+    }
+
+    @Test public void trackLinksWithOnlySomeUris() throws Exception {
+        assertEquals(Collections.singletonList(LibraryPath.Node.artist("spotify:artist:R", "R")),
+                PlayerText.trackLinks(true, track(null, "spotify:artist:R=R")));
     }
 }
