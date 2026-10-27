@@ -15,7 +15,9 @@ device from Spotify's CDN, under Spotify's terms. It is never committed to this
 repository or bundled in the APK.
 
 The project's own code (the Android app, fakepulse, libargkey, overhear-fetch's
-own sources and the build scripts) has no licence chosen yet.
+own sources, the build scripts and tools) is under the MIT License
+(SPDX `MIT`), Copyright (c) 2026 poTKC; see `LICENSE`. The components below
+keep their own licences.
 
 ---
 

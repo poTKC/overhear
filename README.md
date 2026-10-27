@@ -157,8 +157,9 @@ API キーも同様です。
 
 ## ライセンス
 
-このプロジェクト自体のライセンスは**未定**です。
+このプロジェクト自体のコード（アプリ、fakepulse、libargkey、overhear-fetch、ビルドスクリプトとツール）は
+[MIT License](LICENSE) です（Copyright (c) 2026 poTKC）。
 
 同梱しているサードパーティ製コンポーネント（glibc、libatomic、Mozilla CA バンドル、Go 標準ライブラリ、
-PulseAudio ヘッダー）については [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) を見てください。
+PulseAudio ヘッダー、Remix Icon、AOSP の Holo 画像、Rubik フォント）はそれぞれのライセンスに従います。詳しくは [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) を見てください。
 同じ内容に全文のライセンス文を加えたものが APK に入り、アプリの「ライセンス」から読めます。
