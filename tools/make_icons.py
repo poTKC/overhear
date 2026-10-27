@@ -148,6 +148,8 @@ def main():
         plain(density, f, "ic_queue", "Media/play-list-2-fill.svg", GREY, 20, 18)
         plain(density, f, "ic_settings", "System/settings-3-line.svg", GREY, 20, 18)
         plain(density, f, "ic_close", "System/close-line.svg", WHITE, 24, 22)
+        # library bar: back to the player
+        plain(density, f, "ic_to_player", "Media/music-2-line.svg", WHITE, 24, 20)
         placeholder(density, f)
         # notification row (40 dp wide buttons) and status bar icon (white on transparent)
         plain(density, f, "ic_n_prev", "Media/skip-back-fill.svg", WHITE, 28, 24)
