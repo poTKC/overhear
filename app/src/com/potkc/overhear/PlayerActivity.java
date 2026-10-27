@@ -697,6 +697,8 @@ public class PlayerActivity extends Activity {
                     .putExtra(LibraryActivity.EXTRA_CONTEXT_COVER, cover);
         }
         startActivity(i);
+        // Fades in over this screen, which stays: the top strip looks fixed (LibraryActivity.finish).
+        overridePendingTransition(R.anim.fade_in, R.anim.hold);
     }
 
     private final class QueueAdapter extends BaseAdapter {
