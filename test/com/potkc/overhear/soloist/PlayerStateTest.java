@@ -243,6 +243,29 @@ public class PlayerStateTest {
         }
     }
 
+    @Test public void trackKnowsItsAlbumUri() {
+        s.apply(fixture("playback_state"));
+        assertEquals("spotify:album:1UP8wDVpZ3VCDjzbLsZ5AP", s.getAlbumUri());
+        assertEquals("spotify:album:1UP8wDVpZ3VCDjzbLsZ5AP", s.copy().getAlbumUri());
+    }
+
+    @Test public void contextKeepsItsCover() {
+        s.apply(fixture("playback_state"));
+        String cover = "https://i.scdn.co/image/ab67616d00001e024571e5501977b5cddac93a7c";
+        assertEquals(cover, s.getContextCoverUrl());
+        assertEquals(cover, s.copy().getContextCoverUrl());
+        // context_changed.json's context has no decorations.
+        s.apply(fixture("context_changed"));
+        assertNull(s.getContextCoverUrl());
+    }
+
+    @Test public void placeholderQueueRowsAreDropped() {
+        // Captured right after play: spotify:meta:node_rules_placeholder rows first.
+        s.apply(fixture("queue_changed_placeholder"));
+        assertEquals(1, s.getQueue().size());
+        assertEquals("spotify:track:3ctALmweZBapfBdFiIVpji", s.getQueue().get(0).uri);
+    }
+
     @Test public void coverPrefersLargeThenDefaultThenAny() throws Exception {
         String item = "{\"type\":\"track_changed\",\"item\":{\"decorations\":{\"visual_identity\":{\"cover\":%s}}}}";
         s.apply(new JSONObject(String.format(item, "[{\"url\":\"s\",\"size\":\"small\"},"
