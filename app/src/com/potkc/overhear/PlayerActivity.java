@@ -756,14 +756,18 @@ public class PlayerActivity extends Activity {
      */
     private void openLibrary() {
         Intent i = new Intent(this, LibraryActivity.class);
-        if (connected && state.getContextUri() != null) {
+        // Without a track (as render shows it; Soloist idle after a restart, say) nothing plays,
+        // whatever the context says.
+        String uri = connected && state.getTitle() != null ? state.getContextUri() : null;
+        if (uri != null) {
             String name = state.getContextName();
-            // The name can lag a fresh play by a moment; an album's is the track's album.
-            if ((name == null || name.isEmpty()) && state.getContextUri().startsWith("spotify:album:")) {
-                name = state.getAlbum();
+            String cover = null;
+            // Right after a play the track (and the name) may still be the last context's.
+            if (uri.equals(state.getAlbumUri())) {
+                if (name == null || name.isEmpty()) name = state.getAlbum(); // the name lags a play a moment
+                cover = state.getSmallCoverUrl() != null ? state.getSmallCoverUrl() : state.getCoverUrl();
             }
-            String cover = state.getSmallCoverUrl() != null ? state.getSmallCoverUrl() : state.getCoverUrl();
-            i.putExtra(LibraryActivity.EXTRA_CONTEXT_URI, state.getContextUri())
+            i.putExtra(LibraryActivity.EXTRA_CONTEXT_URI, uri)
                     .putExtra(LibraryActivity.EXTRA_CONTEXT_NAME, name)
                     .putExtra(LibraryActivity.EXTRA_CONTEXT_COVER, cover);
         }

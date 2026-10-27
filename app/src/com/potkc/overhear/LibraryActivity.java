@@ -30,6 +30,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -50,11 +51,12 @@ import com.potkc.overhear.spotify.SpotifyJson;
  * (LibraryPath, saved to Prefs on every change and reopened from there).
  * The player opens it with Soloist's context in the EXTRA_CONTEXT_* extras:
  * then it starts at the page of what plays now (LibraryPath.atContext), and
- * Back leads to its category and TOP. A playlist is someone else's when the
+ * Back leads to its category and TOP; a page opened before Soloist named
+ * its context takes the name once it does (nameUntitled). A playlist is someone else's when the
  * cached PLAYLISTS list says so or the service follows it (OthersTracker);
  * otherwise it opens as the user's own, and if its tracks are refused (HTTP
- * 403 or 404: someone else's, or one of Spotify's own) the page turns into
- * the OTHERS_PLAYLIST one, in the saved stack too.
+ * 403 or 404: someone else's, one of Spotify's own, or a deleted one) the
+ * page turns into the OTHERS_PLAYLIST one, in the saved stack too.
  * Lists load through Spotify.run: the first page when shown, each further
  * page when the last row comes into view. The CACHE_MAX most recently used
  * lists stay cached for the process lifetime (dropped when the login
@@ -286,11 +288,16 @@ public class LibraryActivity extends Activity {
         }
     };
 
-    /** Redraws an open OTHERS_PLAYLIST page when what it shows changes. */
+    /** Redraws an open OTHERS_PLAYLIST page when what it shows changes, and an untitled page Soloist names. */
     private final Runnable uiListener = new Runnable() {
         @Override public void run() {
-            if (active != LibraryActivity.this || current().type != Node.Type.OTHERS_PLAYLIST) return;
-            if (!othersKey(current()).equals(othersShown)) render();
+            if (active != LibraryActivity.this) return;
+            Node node = current();
+            if (untitled(node)) {
+                render(); // nameUntitled
+            } else if (node.type == Node.Type.OTHERS_PLAYLIST && !othersKey(node).equals(othersShown)) {
+                render();
+            }
         }
     };
 
@@ -304,11 +311,57 @@ public class LibraryActivity extends Activity {
     private void openAtContext(Intent intent) {
         String uri = intent.getStringExtra(EXTRA_CONTEXT_URI);
         if (uri == null) return;
+        String likedOwner = LibraryPath.likedOwner(uri);
+        String me = cachedMe();
+        if (likedOwner != null && me != null && !likedOwner.equals(me)) return; // someone else's liked songs
         List<Node> s = LibraryPath.atContext(stack, uri, intent.getStringExtra(EXTRA_CONTEXT_NAME),
                 intent.getStringExtra(EXTRA_CONTEXT_COVER), othersPlaylist(uri));
         if (s == stack) return;
-        Log.i(TAG, "opening at " + s.get(s.size() - 1));
+        Node old = current();
+        if (s.size() == stack.size() && s.get(s.size() - 1).samePage(old)) {
+            // Saved there without a title; its cache entry (tracks without a cover, maybe) is dropped.
+            if (cacheGeneration == spotify.generation()) cache.remove(old);
+        } else {
+            Log.i(TAG, "opening at " + s.get(s.size() - 1));
+        }
         stack = s;
+        saveStack();
+    }
+
+    /** The user's ID as a cached page of this login knows it, or null. */
+    private String cachedMe() {
+        if (cacheGeneration != spotify.generation()) return null;
+        for (Loaded l : cache.values()) {
+            if (l.me != null && !l.me.isEmpty()) return l.me;
+        }
+        return null;
+    }
+
+    private static boolean untitled(Node node) {
+        return node.uri != null && (node.title == null || node.title.isEmpty());
+    }
+
+    /**
+     * Names the page shown when it has no title (opened from the player
+     * before Soloist named its context) and Soloist names it now: the
+     * context name, and for an album the playing track's cover if it is from
+     * that album. Its cache entry moves along; saved as the stack.
+     */
+    private void nameUntitled() {
+        Node node = current();
+        if (!untitled(node)) return;
+        SoloistClient client = client();
+        if (client == null) return;
+        PlayerState s = client.getState();
+        String name = s.getContextName();
+        if (!node.uri.equals(s.getContextUri()) || name == null || name.isEmpty()) return;
+        String cover = node.coverUrl;
+        if (cover == null && node.uri.equals(s.getAlbumUri())) cover = s.getSmallCoverUrl();
+        Node named = node.named(name, cover);
+        Loaded l = cacheGeneration == spotify.generation() ? cache.remove(node) : null;
+        // An album's tracks carry its cover: with a new one they load again.
+        if (l != null && (cover == null || cover.equals(node.coverUrl))) cache.put(named, l);
+        LibraryPath.replace(stack, node, named);
         saveStack();
     }
 
@@ -333,13 +386,15 @@ public class LibraryActivity extends Activity {
     }
 
     /**
-     * Puts to where from was, in this stack and the saved one (another
-     * instance may have saved it since this one started from's load).
+     * Puts to where from's page was, in the saved stack, this one and the
+     * resumed instance's (another instance may have saved since this one
+     * started from's load). This stack is saved only while it is still the
+     * live one: a finishing instance would save a stale stack over a newer.
      */
     private void replaceNode(Node from, Node to) {
         List<Node> saved = LibraryPath.decode(prefs.getLibraryPath());
         if (LibraryPath.replace(saved, from, to)) prefs.setLibraryPath(LibraryPath.encode(saved));
-        if (!destroyed && LibraryPath.replace(stack, from, to)) {
+        if (!destroyed && LibraryPath.replace(stack, from, to) && !isFinishing()) {
             saveStack();
             if (active == this) render();
         }
@@ -457,7 +512,15 @@ public class LibraryActivity extends Activity {
             @Override public Fetched run(SpotifyApi api) throws IOException {
                 String me = api.me();
                 if (node.type == Node.Type.SEARCH) return new Fetched(me, null, api.search(q));
-                return new Fetched(me, fetch(api, node, next), null);
+                try {
+                    return new Fetched(me, fetch(api, node, next), null);
+                } catch (SpotifyException e) {
+                    if (node.type == Node.Type.PLAYLIST && next == null && e.reason == SpotifyException.Reason.HTTP
+                            && (e.status == 403 || e.status == 404)) {
+                        throw new Refused(e);
+                    }
+                    throw e;
+                }
             }
         }, new Spotify.Callback<Fetched>() {
             @Override public void done(Fetched f) {
@@ -476,11 +539,10 @@ public class LibraryActivity extends Activity {
 
             @Override public void failed(IOException e) {
                 l.loading = false;
-                if (refusedPlaylist(node, l, e)) {
+                if (e instanceof Refused && dropCached(l)) {
                     // Someone else's after all: its page lists Soloist's queue instead.
                     Log.i(TAG, node + " refused (" + e.getMessage() + "): another user's playlist");
-                    cache.remove(node);
-                    replaceNode(node, Node.playlist(node.uri, node.title, true));
+                    replaceNode(node, Node.playlist(node.uri, titleOf(node), true));
                     return;
                 }
                 l.error = e;
@@ -491,16 +553,34 @@ public class LibraryActivity extends Activity {
     }
 
     /**
-     * The first page of a PLAYLIST, still l in the cache, failed with HTTP
-     * 403 or 404: the Web API refuses the tracks of others' playlists
-     * (Spotify's own 37i9… ones included), which a playlist opened from the
-     * player's context may be.
+     * The first page of a PLAYLIST's tracks failed with HTTP 403 or 404: the
+     * Web API refuses the tracks of others' playlists (Spotify's own 37i9…
+     * ones included), which a playlist opened from the player's context may
+     * be. A deleted playlist of the user's own (404) turns up so too.
      */
-    private static boolean refusedPlaylist(Node node, Loaded l, IOException e) {
-        if (node.type != Node.Type.PLAYLIST || !l.items.isEmpty() || cache.get(node) != l) return false;
-        if (!(e instanceof SpotifyException)) return false;
-        SpotifyException se = (SpotifyException) e;
-        return se.reason == SpotifyException.Reason.HTTP && (se.status == 403 || se.status == 404);
+    private static final class Refused extends IOException {
+        Refused(SpotifyException e) {
+            super(e.getMessage());
+        }
+    }
+
+    /** Drops l from the cache; whether it was there (not reloaded or dropped with a login meanwhile). */
+    private static boolean dropCached(Loaded l) {
+        for (Iterator<Loaded> i = cache.values().iterator(); i.hasNext(); ) {
+            if (i.next() == l) {
+                i.remove();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** node's title as the stack shown has it now (nameUntitled may have named it since). */
+    private String titleOf(Node node) {
+        for (Node n : stack) {
+            if (n.samePage(node) && n.title != null) return n.title;
+        }
+        return node.title;
     }
 
     private void retry(Node node, Loaded l) {
@@ -532,6 +612,7 @@ public class LibraryActivity extends Activity {
     // --- rendering ---
 
     private void render() {
+        nameUntitled();
         Node node = current();
         boolean search = node.type == Node.Type.SEARCH;
         pageTitle.setText(title(node));

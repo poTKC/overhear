@@ -227,4 +227,54 @@ public class LibraryPathTest {
         assertFalse(LibraryPath.replace(s, own, others));
         assertEquals(Arrays.asList(TOP, PLAYLISTS, others), s);
     }
+
+    @Test public void replaceGoesByTypeAndUri() {
+        LibraryPath.Node untitled = LibraryPath.Node.playlist("spotify:playlist:P", null, false);
+        LibraryPath.Node others = LibraryPath.Node.playlist("spotify:playlist:P", "Mix", true);
+        List<LibraryPath.Node> s = new ArrayList<LibraryPath.Node>(Arrays.asList(TOP, PLAYLISTS,
+                LibraryPath.Node.playlist("spotify:playlist:P", "Mix", false)));
+        assertTrue(LibraryPath.replace(s, untitled, others));
+        assertEquals(Arrays.asList(TOP, PLAYLISTS, others), s);
+    }
+
+    @Test public void emptyNameCountsAsNone() {
+        assertEquals(Arrays.asList(TOP, ARTISTS, LibraryPath.Node.artist("spotify:artist:R", null)),
+                LibraryPath.atContext(saved(), "spotify:artist:R", "", null, null));
+    }
+
+    @Test public void namedKeepsThePage() {
+        LibraryPath.Node a = LibraryPath.Node.album("spotify:album:A", null, null);
+        LibraryPath.Node named = a.named("Discovery", "https://c");
+        assertTrue(a.samePage(named));
+        assertEquals(LibraryPath.Node.album("spotify:album:A", "Discovery", "https://c"), named);
+        assertNull(LibraryPath.Node.artist("spotify:artist:R", null).named("x", "https://c").coverUrl);
+        assertFalse(a.samePage(LibraryPath.Node.album("spotify:album:B", null, null)));
+    }
+
+    @Test public void likedOwnerReadsTheUserId() {
+        assertEquals("potkc", LibraryPath.likedOwner("spotify:user:potkc:collection"));
+        assertNull(LibraryPath.likedOwner("spotify:user::collection"));
+        assertNull(LibraryPath.likedOwner("spotify:user:potkc:playlist"));
+        assertNull(LibraryPath.likedOwner("spotify:collection:tracks"));
+        assertNull(LibraryPath.likedOwner(null));
+    }
+
+    @Test public void savedUntitledPageTakesTheName() {
+        List<LibraryPath.Node> s = new ArrayList<LibraryPath.Node>(Arrays.asList(TOP, ALBUMS,
+                LibraryPath.Node.album("spotify:album:A", null, null)));
+        assertEquals(Arrays.asList(TOP, ALBUMS, LibraryPath.Node.album("spotify:album:A", "Discovery", "https://c")),
+                LibraryPath.atContext(s, "spotify:album:A", "Discovery", "https://c", null));
+        assertSame(s, LibraryPath.atContext(s, "spotify:album:A", "", "https://c", null));
+        List<LibraryPath.Node> t = new ArrayList<LibraryPath.Node>(Arrays.asList(TOP, PLAYLISTS,
+                LibraryPath.Node.playlist("spotify:playlist:P", "", true)));
+        assertEquals(Arrays.asList(TOP, PLAYLISTS, LibraryPath.Node.playlist("spotify:playlist:P", "Mix", true)),
+                LibraryPath.atContext(t, "spotify:playlist:P", "Mix", null, null));
+    }
+
+    @Test public void knownTitleStays() {
+        List<LibraryPath.Node> s = new ArrayList<LibraryPath.Node>(Arrays.asList(TOP, ARTISTS,
+                LibraryPath.Node.artist("spotify:artist:R", "Daft Punk")));
+        assertSame(s, LibraryPath.atContext(s, "spotify:artist:R", null, null, null));
+        assertSame(s, LibraryPath.atContext(s, "spotify:artist:R", "Other", null, null));
+    }
 }
