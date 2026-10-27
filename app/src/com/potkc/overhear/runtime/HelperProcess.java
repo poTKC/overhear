@@ -131,7 +131,6 @@ public final class HelperProcess {
             code = p.waitFor();
             finished = true;
         } catch (InterruptedException e) {
-            p.destroy();
             Thread.currentThread().interrupt();
             throw new IOException("interrupted");
         } finally {
