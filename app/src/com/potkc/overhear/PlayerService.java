@@ -68,6 +68,12 @@ import com.potkc.overhear.spotify.SpotifyApi;
  * call fails, QueueJump steps skip_next to the entry with the track muted
  * (AudioSink.setJumpMuted); any control pressed meanwhile ends it.
  *
+ * While Soloist waits (connected, not the active device), its play does
+ * nothing useful: play (▶, the notification, media keys) and queue taps go
+ * through ResumePlan instead, a Web API play on this device (the last track
+ * at its last position, or the tapped entry) with Soloist's play from the
+ * top as the fallback (playHere, one at a time).
+ *
  * Another user's playlist (the library cannot list it): from the play
  * the library asks for, an OthersTracker follows Soloist's state and its
  * whole queue (FULL_QUEUE_LIMIT) here, outliving the library screen, and
