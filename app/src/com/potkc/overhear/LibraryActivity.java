@@ -482,11 +482,11 @@ public class LibraryActivity extends Activity {
         list.setSelection(at == null ? 0 : at);
     }
 
-    /** Fades out over the player, which stays (as PlayerActivity.openLibrary fades it in). */
+    /** Back to the player without an animation, as PlayerActivity.openLibrary opens this. */
     @Override
     public void finish() {
         super.finish();
-        overridePendingTransition(R.anim.hold, R.anim.fade_out);
+        overridePendingTransition(0, 0);
     }
 
     /** ♫: back to the player screen, keeping the saved path for the next visit. */
