@@ -92,6 +92,9 @@ import com.potkc.overhear.spotify.SpotifyJson;
  * album, playlist or artist (or the liked songs' menu row) that is Soloist's
  * context with its title in green. The rows redraw when either changes.
  *
+ * Full screen follows the player (Prefs.isFullscreen, TopStrip): the status
+ * bar hidden and the same top strip (time, battery) above the bar.
+ *
  * Main thread only. Spotify callbacks can arrive after the Activity that
  * started them is gone: they still fill the cache and redraw the resumed
  * instance, if any (active), so a reopened screen sees the result too.
@@ -154,6 +157,7 @@ public class LibraryActivity extends Activity {
 
     private Spotify spotify;
     private Prefs prefs;
+    private TopStrip topStrip;
     private ArtworkLoader<Artwork.Cover> artwork;
     private int thumbPx;
     private float thumbRadius;
@@ -183,9 +187,11 @@ public class LibraryActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_library);
-        spotify = Spotify.get(this);
         prefs = new Prefs(this);
+        TopStrip.apply(this, null, prefs); // before the first layout: no jump
+        setContentView(R.layout.activity_library);
+        topStrip = new TopStrip(this);
+        spotify = Spotify.get(this);
         artwork = Artwork.loader(this);
         float density = getResources().getDisplayMetrics().density;
         thumbPx = Math.round(40 * density);
@@ -264,6 +270,8 @@ public class LibraryActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        TopStrip.apply(this, topStrip, prefs); // setup may have changed it
+        topStrip.resume();
         active = this;
         if (spotify.generation() != stackGeneration) {
             // Logged out or in again (LoginActivity) meanwhile: the pages may be another account's.
@@ -282,6 +290,7 @@ public class LibraryActivity extends Activity {
     protected void onPause() {
         if (active == this) active = null;
         if (service != null) service.removeUiListener(uiListener);
+        topStrip.pause();
         super.onPause();
     }
 
