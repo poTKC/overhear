@@ -20,7 +20,9 @@
 // the bearer token from $OVERHEAR_TOKEN and a JSON body read from stdin.
 // Secrets never appear on the command line, which other apps can read.
 // Both print "status N", an optional "retry-after V", a blank line and the
-// reply body; any HTTP reply, whatever its status, exits 0.
+// reply body; any HTTP reply, whatever its status, exits 0. Neither follows
+// redirects (a 3xx is reported as its status), so the request body is never
+// re-sent to another host. Both read stdin to EOF, so callers must close it.
 //
 // Errors go to stderr with exit status 1. SIGINT/SIGTERM abort cleanly (exit 1).
 package main
@@ -70,6 +72,7 @@ var (
 const (
 	apiTimeout   = 30 * time.Second
 	maxReplyBody = 4 << 20
+	maxStdinBody = 64 << 10
 )
 
 func main() {
@@ -139,6 +142,10 @@ func runWithStdin(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 	if rest[0] == "token" || rest[0] == "api" {
 		ctx, cancel := context.WithTimeout(ctx, apiTimeout)
 		defer cancel()
+		// A followed 307/308 would re-send the body (tokens, verifier).
+		noRedirects := *client
+		noRedirects.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+		client = &noRedirects
 		if rest[0] == "token" {
 			err = postToken(ctx, client, stdin, stdout)
 		} else {
@@ -166,9 +173,22 @@ func runWithStdin(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 	return 0
 }
 
+// readStdin reads the request body, refusing more than maxStdinBody bytes
+// rather than sending a truncated one.
+func readStdin(stdin io.Reader) ([]byte, error) {
+	b, err := io.ReadAll(io.LimitReader(stdin, maxStdinBody+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(b) > maxStdinBody {
+		return nil, fmt.Errorf("stdin larger than %d bytes", maxStdinBody)
+	}
+	return b, nil
+}
+
 // postToken sends the form read from stdin to the token endpoint.
 func postToken(ctx context.Context, client *http.Client, stdin io.Reader, stdout io.Writer) error {
-	form, err := io.ReadAll(io.LimitReader(stdin, 64<<10))
+	form, err := readStdin(stdin)
 	if err != nil {
 		return err
 	}
@@ -201,7 +221,7 @@ func checkAPIPath(p string) error {
 // callAPI sends METHOD apiBase+path with the bearer token from
 // $OVERHEAR_TOKEN and the body read from stdin (JSON when not empty).
 func callAPI(ctx context.Context, client *http.Client, method, path string, stdin io.Reader, stdout io.Writer) error {
-	body, err := io.ReadAll(io.LimitReader(stdin, 64<<10))
+	body, err := readStdin(stdin)
 	if err != nil {
 		return err
 	}

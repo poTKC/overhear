@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -629,5 +630,78 @@ func TestAPIRejectsBadInput(t *testing.T) {
 	t.Setenv("OVERHEAR_TOKEN", "")
 	if code := runWithStdin([]string{"api", "GET", "/me"}, strings.NewReader(""), io.Discard, io.Discard); code == 0 {
 		t.Error("missing token: want failure")
+	}
+}
+
+func TestTokenDoesNotFollowRedirects(t *testing.T) {
+	var followed atomic.Bool
+	other := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		followed.Store(true)
+	}))
+	t.Cleanup(other.Close)
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, other.URL+"/api/token", http.StatusTemporaryRedirect)
+	}))
+	t.Cleanup(srv.Close)
+	old := accountsBase
+	accountsBase = srv.URL
+	t.Cleanup(func() { accountsBase = old })
+
+	var stdout, stderr bytes.Buffer
+	code := runWithStdin([]string{"--ca", caFor(t, srv), "token"}, strings.NewReader("refresh_token=r"), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("exit %d, stderr: %s", code, stderr.String())
+	}
+	if !strings.HasPrefix(stdout.String(), "status 307\n") {
+		t.Errorf("stdout = %q", stdout.String())
+	}
+	if followed.Load() {
+		t.Error("redirect was followed")
+	}
+}
+
+func TestTokenSendsNoAuthorization(t *testing.T) {
+	srv, last, _ := replyServer(t, 200, "", "{}")
+	old := accountsBase
+	accountsBase = srv.URL
+	t.Cleanup(func() { accountsBase = old })
+	t.Setenv("OVERHEAR_TOKEN", "tok")
+
+	if code := runWithStdin([]string{"--ca", caFor(t, srv), "token"}, strings.NewReader("x=1"), io.Discard, io.Discard); code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	if got := last.Header.Get("Authorization"); got != "" {
+		t.Errorf("authorization = %q, want none", got)
+	}
+}
+
+func TestTokenRejectsOversizedStdin(t *testing.T) {
+	srv, last, _ := replyServer(t, 200, "", "{}")
+	old := accountsBase
+	accountsBase = srv.URL
+	t.Cleanup(func() { accountsBase = old })
+
+	form := strings.NewReader(strings.Repeat("x", maxStdinBody+1))
+	if code := runWithStdin([]string{"--ca", caFor(t, srv), "token"}, form, io.Discard, io.Discard); code == 0 {
+		t.Error("oversized stdin: want failure")
+	}
+	if last.Method != "" {
+		t.Errorf("request sent: %s %s", last.Method, last.URL)
+	}
+}
+
+func TestAPIRejectsOversizedReply(t *testing.T) {
+	srv, _, _ := replyServer(t, 200, "", strings.Repeat("x", maxReplyBody+1))
+	old := apiBase
+	apiBase = srv.URL + "/v1"
+	t.Cleanup(func() { apiBase = old })
+	t.Setenv("OVERHEAR_TOKEN", "tok")
+
+	var stdout bytes.Buffer
+	if code := runWithStdin([]string{"--ca", caFor(t, srv), "api", "GET", "/me"}, strings.NewReader(""), &stdout, io.Discard); code == 0 {
+		t.Error("oversized reply: want failure")
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("stdout has %d bytes, want none", stdout.Len())
 	}
 }
