@@ -65,6 +65,8 @@ public final class PlayerState {
         public final String title;
         public final List<String> artists;
         public final String album;
+        /** decorations.parent.entity.uri (e.g. spotify:album:...), or null. */
+        public final String albumUri;
         /** The largest useful cover (640 px): large, else default, else any. */
         public final String coverUrl;
         /** About 300 px: default, else large, else any. */
@@ -89,6 +91,7 @@ public final class PlayerState {
             artists = Collections.unmodifiableList(a);
             JSONObject parent = d == null ? null : d.optJSONObject("parent");
             album = name(entityDecorations(parent));
+            albumUri = str(entity(parent), "uri");
             coverUrl = cover(d);
             mediumCoverUrl = cover(d, "default", "large");
             smallCoverUrl = cover(d, "small", "default", "large");
@@ -293,6 +296,9 @@ public final class PlayerState {
     public List<String> getArtists() { return track.artists; }
 
     public String getAlbum() { return track.album; }
+
+    /** The album the track is in (spotify:album:...), or null. */
+    public String getAlbumUri() { return track.albumUri; }
 
     public String getCoverUrl() { return track.coverUrl; }
 

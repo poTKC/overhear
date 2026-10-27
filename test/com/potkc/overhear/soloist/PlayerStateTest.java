@@ -320,4 +320,11 @@ public class PlayerStateTest {
         assertEquals(10, c.getQueue().size());
         assertSame(c.getQueue(), c.copy().getQueue()); // immutable lists are shared
     }
+
+    @Test public void trackKnowsItsAlbumUri() {
+        s.apply(fixture("playback_state"));
+        assertEquals("spotify:album:1UP8wDVpZ3VCDjzbLsZ5AP", s.getAlbumUri());
+        assertEquals("spotify:album:1UP8wDVpZ3VCDjzbLsZ5AP", s.copy().getAlbumUri());
+        assertNull(new PlayerState().getAlbumUri());
+    }
 }
