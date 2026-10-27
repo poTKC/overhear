@@ -414,6 +414,23 @@ public class QueueJumpTest {
         assertTrue(fx.isEmpty());
     }
 
+    @Test public void refusesAQueueOlderThanTheTrack() throws Exception {
+        // The track moved on to a, but get_queue has not answered yet: the
+        // queue still lists a first.
+        apply("{\"type\":\"track_changed\",\"item\":{\"uri\":\"spotify:track:a\"}}");
+        assertTrue(state.isQueueStale());
+        PlayerState.QueueItem item = state.getQueue().get(0);
+        QueueJump j = new QueueJump(0, item.uid, item.uri, clock, TIMEOUT, effects);
+        assertFalse(j.start(state.copy()));
+        assertTrue(fx.isEmpty());
+
+        setQueue("u1=b", "u2=c", "u3=d", "u4=e");
+        assertFalse(state.isQueueStale());
+        item = state.getQueue().get(0);
+        j = new QueueJump(0, item.uid, item.uri, clock, TIMEOUT, effects);
+        assertTrue(j.start(state.copy()));
+    }
+
     @Test public void refusesWhenNotActive() throws Exception {
         apply("{\"type\":\"device_changed\",\"is_active\":false}");
         PlayerState.QueueItem item = state.getQueue().get(0);

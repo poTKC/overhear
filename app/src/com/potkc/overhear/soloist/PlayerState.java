@@ -127,6 +127,8 @@ public final class PlayerState {
     private Set<String> actions;
     /** track_changed events folded so far (not playback_state's item). */
     private int trackChanges;
+    /** trackChanges when the queue last arrived. */
+    private int queueTrackChanges;
 
     public PlayerState copy() {
         PlayerState c = new PlayerState();
@@ -146,6 +148,7 @@ public final class PlayerState {
         c.queue = queue;
         c.actions = actions;
         c.trackChanges = trackChanges;
+        c.queueTrackChanges = queueTrackChanges;
         return c;
     }
 
@@ -186,6 +189,7 @@ public final class PlayerState {
             setPosition(e.optJSONObject("position"));
         } else if ("queue_changed".equals(type)) {
             setQueue(e.optJSONArray("upcoming"));
+            queueTrackChanges = trackChanges;
         } else {
             return false;
         }
@@ -337,6 +341,12 @@ public final class PlayerState {
 
     /** Upcoming tracks, unmodifiable. A new list on every queue_changed. */
     public List<QueueItem> getQueue() { return queue; }
+
+    /**
+     * The track changed after the queue last arrived: until the queue asked
+     * for on track_changed comes, it still lists the now current track first.
+     */
+    public boolean isQueueStale() { return trackChanges != queueTrackChanges; }
 
     // --- JSON helpers (Android's optString turns JSON null into "null") ---
 

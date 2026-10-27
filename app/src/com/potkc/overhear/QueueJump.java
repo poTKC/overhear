@@ -102,12 +102,13 @@ final class QueueJump {
 
     /**
      * Mutes and sends the first skip. False (and no effects) when the entry is
-     * not at index in s's queue any more, or this device is not active.
+     * not at index in s's queue any more, the queue is stale, or this device
+     * is not active.
      */
     boolean start(PlayerState s) {
         if (phase != null) throw new IllegalStateException("started twice");
         List<PlayerState.QueueItem> q = s.getQueue();
-        if (!s.isActive() || index >= q.size() || !matches(q.get(index))) return false;
+        if (!s.isActive() || s.isQueueStale() || index >= q.size() || !matches(q.get(index))) return false;
         PlayerState.Status st = s.getStatus();
         wasPlaying = st == PlayerState.Status.PLAYING || st == PlayerState.Status.BUFFERING;
         trackChanges = s.getTrackChanges();

@@ -147,6 +147,11 @@ public class PlayerTextTest {
         assertFalse(PlayerText.queueTappable(true, state(true, true), true));
         assertFalse(PlayerText.queueTappable(false, state(true, true), false));
         assertFalse(PlayerText.queueTappable(true, state(true, false), false));
+        PlayerState stale = state(true, true);
+        stale.apply(new JSONObject("{\"type\":\"track_changed\",\"item\":{\"uri\":\"spotify:track:a\"}}"));
+        assertFalse(PlayerText.queueTappable(true, stale, false));
+        stale.apply(new JSONObject("{\"type\":\"queue_changed\",\"upcoming\":[]}"));
+        assertTrue(PlayerText.queueTappable(true, stale, false));
     }
 
     @Test public void subtitleJoinsArtistsAndAlbum() {
