@@ -24,8 +24,10 @@ import com.potkc.overhear.runtime.RuntimeInstaller;
 import com.potkc.overhear.spotify.SpotifyApi;
 
 /**
- * The API key, device name and auto start, the Spotify Web API login (which
- * takes effect at once, not on save), and the licence notices. Saving installs the runtime and downloads
+ * In three sections: アカウント (the Soloist API key; the Spotify Web API
+ * login for the library, which takes effect at once, not on save), 再生 (the
+ * device name, the service row in edit mode, auto start) and 表示 (full
+ * screen for the player and the library); then save and the licence notices. Saving installs the runtime and downloads
  * Soloist (with progress, cancellable) when the service is not running yet,
  * then starts the service and opens the player; from the player
  * (EXTRA_EDIT) a change restarts Soloist through the running service and

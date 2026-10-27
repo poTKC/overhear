@@ -3,7 +3,7 @@
     <string name="app_name">Overhear</string>
 
     <!-- service status (status line and notification) -->
-    <string name="notify_no_key">API キーを設定してください</string>
+    <string name="notify_no_key">Soloist API キーを設定してください</string>
     <string name="status_starting_service">起動中…</string>
     <string name="status_wait_wifi">Wi-Fi を待っています</string>
     <string name="status_starting">Soloist を起動中…</string>
@@ -15,8 +15,8 @@
     <string name="status_connecting">Soloist に接続中…</string>
     <string name="status_start_failed">起動失敗: %s</string>
     <string name="status_login_error">ログインエラー: %s</string>
-    <string name="error_no_key">API キーがありません</string>
-    <string name="error_bad_key">API キーが不正です: %s</string>
+    <string name="error_no_key">Soloist API キーがありません</string>
+    <string name="error_bad_key">Soloist API キーが不正です: %s</string>
 
     <!-- player -->
     <string name="no_track">再生中の曲はありません</string>
@@ -48,27 +48,30 @@
 
     <!-- setup -->
     <string name="setup_title">Overhear の設定</string>
-    <string name="setup_key_label">Spotify API キー</string>
-    <string name="setup_key_hint">API キーを貼り付け</string>
+    <string name="setup_key_label">Soloist API キー</string>
+    <string name="setup_key_hint">Soloist の API キーを貼り付け</string>
     <string name="setup_key_saved_hint">保存済み（変更する場合のみ入力）</string>
     <string name="setup_cancel">キャンセル</string>
     <string name="setup_cancelled">キャンセルしました</string>
     <string name="setup_show_key">キーを表示</string>
     <string name="setup_name_label">デバイス名（Spotify に表示）</string>
     <string name="setup_auto_start">起動時・アプリを開いたときに自動で開始</string>
-    <string name="setup_fullscreen">再生画面を全画面表示</string>
+    <string name="setup_fullscreen">再生画面とライブラリを全画面表示</string>
     <string name="licenses">ライセンス</string>
     <string name="licenses_missing">ライセンス情報を読み込めませんでした</string>
     <string name="setup_save">保存して開始</string>
     <string name="setup_save_edit">保存</string>
-    <string name="setup_need_key">API キーを入力してください</string>
+    <string name="setup_need_key">Soloist API キーを入力してください</string>
     <string name="setup_installing">ランタイムを準備中…</string>
     <string name="setup_downloading">Soloist をダウンロード中… %d%%</string>
     <string name="setup_extracting">Soloist を展開中…</string>
     <string name="setup_failed">失敗しました: %s</string>
     <string name="setup_retry">再試行</string>
     <string name="setup_save_failed">設定を保存できませんでした</string>
-    <string name="setup_spotify_label">Spotify</string>
+    <string name="setup_spotify_label">Spotify（ライブラリ）</string>
+    <string name="setup_section_account">アカウント</string>
+    <string name="setup_section_playback">再生</string>
+    <string name="setup_section_display">表示</string>
     <string name="setup_spotify_logged_out">ログインしていません</string>
     <string name="setup_spotify_logged_in">ログイン中</string>
     <string name="setup_spotify_logged_in_as">ログイン中: %s</string>
