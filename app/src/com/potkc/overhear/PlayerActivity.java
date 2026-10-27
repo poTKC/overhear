@@ -60,7 +60,8 @@ import com.potkc.overhear.soloist.SoloistClient;
  * The player: in full screen a top strip with the time and battery, artwork
  * in the middle (rounded corners), track text, seek bar and controls, and at
  * the bottom the status line (left; English) with the library (opens
- * LibraryActivity), queue and settings buttons (right). The queue panel
+ * LibraryActivity, as Back does once the queue is closed), queue and
+ * settings buttons (right). The queue panel
  * slides up over the player, under the bottom row. State comes from
  * PlayerService (bound with flags 0, so the screen never starts or keeps
  * the service); commands go through the service's SoloistClient.
@@ -292,7 +293,7 @@ public class PlayerActivity extends Activity {
         });
         findViewById(R.id.library_button).setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
-                startActivity(new Intent(PlayerActivity.this, LibraryActivity.class));
+                openLibrary();
             }
         });
         findViewById(R.id.queue_button).setOnClickListener(new View.OnClickListener() {
@@ -743,7 +744,12 @@ public class PlayerActivity extends Activity {
             closeQueue();
             return;
         }
-        super.onBackPressed();
+        // Back goes to the library, as its ♫ comes back here; Home leaves the app.
+        openLibrary();
+    }
+
+    private void openLibrary() {
+        startActivity(new Intent(this, LibraryActivity.class));
     }
 
     private final class QueueAdapter extends BaseAdapter {
