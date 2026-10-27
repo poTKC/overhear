@@ -56,6 +56,30 @@
     <string name="setup_failed">失敗しました: %s</string>
     <string name="setup_retry">再試行</string>
     <string name="setup_save_failed">設定を保存できませんでした</string>
+    <string name="setup_spotify_label">Spotify</string>
+    <string name="setup_spotify_logged_out">ログインしていません</string>
+    <string name="setup_spotify_logged_in">ログイン中</string>
+    <string name="setup_spotify_logged_in_as">ログイン中: %s</string>
+    <string name="setup_spotify_login">ログイン</string>
+    <string name="setup_spotify_logout">ログアウト</string>
+
+    <!-- Spotify login (the html_* pages are shown on the phone) -->
+    <string name="login_title">Spotify にログイン</string>
+    <string name="login_explain">スマホで QR コードを読み取り、Spotify にログインしてください。スマホと端末は同じ Wi-Fi につないでください。</string>
+    <string name="login_cancel">キャンセル</string>
+    <string name="login_waiting">読み取りを待っています（5 分間）</string>
+    <string name="login_need_wifi">Wi-Fi につないでください</string>
+    <string name="login_no_random">乱数を用意できないため、ログインを始められません</string>
+    <string name="login_listen_failed">待ち受けを始められませんでした: %s</string>
+    <string name="login_exchanging">ログインしています…</string>
+    <string name="login_denied">キャンセルされました。もう一度読み取れます</string>
+    <string name="login_failed">ログインできませんでした: %s。もう一度読み取れます</string>
+    <string name="login_done">ログインしました</string>
+    <string name="login_done_as">ログインしました: %s</string>
+    <string name="login_expired">時間切れです。開き直してください</string>
+    <string name="login_html_done">ログインしました。このページは閉じてかまいません。</string>
+    <string name="login_html_failed">ログインできませんでした。端末の画面を確認してください。</string>
+    <string name="login_html_denied">キャンセルされました。</string>
 
     <!-- debug (debuggable builds only) -->
     <string name="debug_title">デバッグ</string>
