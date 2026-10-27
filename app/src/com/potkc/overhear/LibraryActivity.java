@@ -57,9 +57,10 @@ import com.potkc.overhear.spotify.SpotifyJson;
  * track (or context, when playing from the top) is checked, again after
  * PLAY_RECHECK_MS; only if it is not what was asked does Soloist play the
  * context from the top instead. The ▶ and ⇄ rows of a list of tracks
- * play it from the top with shuffle off or on (set through the Web API
- * first, checked again SHUFFLE_CHECK_MS after the play); the artist's ▶ and
- * a tapped track leave shuffle as it is.
+ * play it with shuffle off from the first track, or with shuffle on from a
+ * random one (shuffle set through the Web API first, checked again
+ * SHUFFLE_CHECK_MS after the play); the artist's ▶ and a tapped track leave
+ * shuffle as it is.
  *
  * Another user's playlist (OTHERS_PLAYLIST), whose tracks the Web API
  * refuses, opens with its ▶ and ⇄ rows and a note only. ▶ or ⇄ has
@@ -633,7 +634,10 @@ public class LibraryActivity extends Activity {
     /**
      * As play(contextUri, trackUri) with shuffle set first (null: left as it
      * is), through the Web API unless Soloist already has it; a failure there
-     * only gets logged (the play reports login and device trouble).
+     * only gets logged (the play reports login and device trouble). Shuffle
+     * off from the top plays from the first track (offset 0): the shuffle
+     * call does not always take, and Soloist's own shuffle can be stale (it
+     * was seen off while Spotify's was on, after a restart of Soloist).
      * SHUFFLE_CHECK_MS after the play Soloist gets it again if the context
      * plays without it. others (or null) is told when the request returned.
      */
@@ -643,6 +647,8 @@ public class LibraryActivity extends Activity {
         playingNoted = false;
         final String device = prefs.getDeviceName();
         final boolean setShuffle = shuffle != null && !hasShuffle(shuffle);
+        if (shuffle != null) Log.i(TAG, "play " + contextUri + " with shuffle " + shuffle
+                + (setShuffle ? "" : " (Soloist has it)"));
         spotify.run(new Spotify.Call<Void>() {
             @Override public Void run(SpotifyApi api) throws IOException {
                 if (setShuffle) {
@@ -652,7 +658,9 @@ public class LibraryActivity extends Activity {
                         Log.w(TAG, "shuffle " + shuffle + " failed (" + e.getMessage() + "), playing anyway");
                     }
                 }
-                api.play(device, contextUri, trackUri);
+                // In order from the top: from the first track even if shuffle did not take.
+                if (Boolean.FALSE.equals(shuffle) && trackUri == null) api.playFirst(device, contextUri);
+                else api.play(device, contextUri, trackUri);
                 return null;
             }
         }, new Spotify.Callback<Void>() {

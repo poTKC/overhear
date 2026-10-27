@@ -427,6 +427,14 @@ public class SpotifyApiTest {
         assertEquals(2, t.log.size());
     }
 
+    @Test public void playFirstSendsPositionZero() throws IOException {
+        FakeTransport t = withToken().reply(200, DEVICES).reply(204, "");
+        loggedIn(t).playFirst("ST15i", "spotify:playlist:P");
+        assertPut("/me/player/play?device_id=d2 A",
+                "{\"context_uri\":\"spotify:playlist:P\",\"offset\":{\"position\":0}}", t.log.get(2));
+        assertEquals(3, t.log.size());
+    }
+
     @Test public void shuffleSharesTheCachedDeviceWithPlay() throws IOException {
         FakeTransport t = withToken().reply(200, DEVICES).reply(204, "").reply(204, "").reply(204, "");
         SpotifyApi a = loggedIn(t);

@@ -127,7 +127,20 @@ public final class SpotifyApi {
      * (null: from the top), or offsetUri alone when contextUri is null.
      */
     public void play(String deviceName, String contextUri, String offsetUri) throws IOException {
-        putOnDevice(deviceName, "/me/player/play?", playBody(contextUri, offsetUri));
+        JSONObject offset = null;
+        if (contextUri != null && offsetUri != null) offset = put(new JSONObject(), "uri", offsetUri);
+        putOnDevice(deviceName, "/me/player/play?", playBody(contextUri, offsetUri, offset));
+    }
+
+    /**
+     * Plays contextUri from its first track (offset.position 0) on the device
+     * named deviceName. Unlike a play without an offset, this starts there
+     * even if shuffle is on (a shuffle set just before does not always take).
+     */
+    public void playFirst(String deviceName, String contextUri) throws IOException {
+        if (contextUri == null) throw new IllegalArgumentException("nothing to play");
+        putOnDevice(deviceName, "/me/player/play?",
+                playBody(contextUri, null, put(new JSONObject(), "position", 0)));
     }
 
     /**
@@ -177,17 +190,22 @@ public final class SpotifyApi {
                 && ((SpotifyException) e).status == 404 && DEVICE_NOT_LISTED.equals(e.getMessage());
     }
 
-    private static String playBody(String contextUri, String offsetUri) {
-        if (contextUri == null && offsetUri == null) throw new IllegalArgumentException("nothing to play");
+    /** contextUri with offset (or null), else trackUri alone. */
+    private static String playBody(String contextUri, String trackUri, JSONObject offset) {
+        if (contextUri == null && trackUri == null) throw new IllegalArgumentException("nothing to play");
+        JSONObject o = new JSONObject();
+        if (contextUri == null) {
+            put(o, "uris", new JSONArray().put(trackUri));
+        } else {
+            put(o, "context_uri", contextUri);
+            if (offset != null) put(o, "offset", offset);
+        }
+        return o.toString();
+    }
+
+    private static JSONObject put(JSONObject o, String key, Object value) {
         try {
-            JSONObject o = new JSONObject();
-            if (contextUri == null) {
-                o.put("uris", new JSONArray().put(offsetUri));
-            } else {
-                o.put("context_uri", contextUri);
-                if (offsetUri != null) o.put("offset", new JSONObject().put("uri", offsetUri));
-            }
-            return o.toString();
+            return o.put(key, value);
         } catch (JSONException e) {
             throw new AssertionError(e);
         }
