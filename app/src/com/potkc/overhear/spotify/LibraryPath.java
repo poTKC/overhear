@@ -12,7 +12,11 @@ import java.util.List;
  * encoder never emits). The Node.Type names are part of this persisted
  * format: renaming one makes saved stacks stop at that page. decode() never
  * throws: it keeps what it can read up to the first unreadable line, always
- * starts with TOP and keeps at most MAX_DEPTH nodes. Pure Java.
+ * starts with TOP and keeps at most MAX_DEPTH nodes.
+ *
+ * atContext() picks the stack the player's library button (and Back) opens:
+ * the page of Soloist's context, under its category, unless the saved stack
+ * already ends there. Pure Java.
  */
 public final class LibraryPath {
     /** The deepest stack decode() restores, TOP included. */
@@ -112,6 +116,70 @@ public final class LibraryPath {
     }
 
     private LibraryPath() {}
+
+    /**
+     * The stack that opens the library at the page of what plays now, from
+     * Soloist's context: an album as TOP › ALBUMS › album (title name, cover
+     * coverUrl), a playlist as TOP › PLAYLISTS › playlist, the liked songs
+     * (spotify:user:<id>:collection) as TOP › LIKED, an artist as TOP ›
+     * ARTISTS › artist. othersPlaylist says whether a playlist is someone
+     * else's (OTHERS_PLAYLIST); null when unknown, which opens it as the
+     * user's own. Returns saved itself when the context names none of these
+     * pages (null, radio, anything else), or when saved already ends at that
+     * page (same type and uri, so the user keeps their place there; with
+     * othersPlaylist unknown, either kind of playlist page counts).
+     */
+    public static List<Node> atContext(List<Node> saved, String contextUri, String name, String coverUrl,
+            Boolean othersPlaylist) {
+        Node page = contextPage(contextUri, name, coverUrl, othersPlaylist);
+        if (page == null) return saved;
+        Node last = saved.get(saved.size() - 1);
+        if (page.uri == null ? last.type == page.type
+                : page.uri.equals(last.uri) && (last.type == page.type
+                        || (othersPlaylist == null && isPlaylist(last.type) && isPlaylist(page.type)))) {
+            return saved;
+        }
+        List<Node> stack = new ArrayList<Node>();
+        stack.add(Node.top());
+        switch (page.type) {
+            case ALBUM: stack.add(Node.of(Node.Type.ALBUMS)); break;
+            case PLAYLIST:
+            case OTHERS_PLAYLIST: stack.add(Node.of(Node.Type.PLAYLISTS)); break;
+            case ARTIST: stack.add(Node.of(Node.Type.ARTISTS)); break;
+            default: break; // LIKED sits right under TOP
+        }
+        stack.add(page);
+        return stack;
+    }
+
+    /** The page contextUri opens (see atContext), or null if none. */
+    static Node contextPage(String contextUri, String name, String coverUrl, Boolean othersPlaylist) {
+        if (contextUri == null) return null;
+        String[] f = contextUri.split(":", -1);
+        if (f.length < 3 || !"spotify".equals(f[0]) || f[2].isEmpty()) return null;
+        if (f.length == 4 && "user".equals(f[1]) && "collection".equals(f[3])) return Node.of(Node.Type.LIKED);
+        if (f.length != 3) return null;
+        if ("album".equals(f[1])) return Node.album(contextUri, name, coverUrl);
+        if ("playlist".equals(f[1])) return Node.playlist(contextUri, name, Boolean.TRUE.equals(othersPlaylist));
+        if ("artist".equals(f[1])) return Node.artist(contextUri, name);
+        return null;
+    }
+
+    private static boolean isPlaylist(Node.Type type) {
+        return type == Node.Type.PLAYLIST || type == Node.Type.OTHERS_PLAYLIST;
+    }
+
+    /** Replaces every from in stack with to; whether there was one. */
+    public static boolean replace(List<Node> stack, Node from, Node to) {
+        boolean found = false;
+        for (int i = 0; i < stack.size(); i++) {
+            if (stack.get(i).equals(from)) {
+                stack.set(i, to);
+                found = true;
+            }
+        }
+        return found;
+    }
 
     public static String encode(List<Node> stack) {
         StringBuilder sb = new StringBuilder();

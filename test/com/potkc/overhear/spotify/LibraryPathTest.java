@@ -3,6 +3,8 @@ package com.potkc.overhear.spotify;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -119,5 +121,110 @@ public class LibraryPathTest {
     @Test(expected = IllegalArgumentException.class)
     public void artistNeedsAUri() {
         LibraryPath.Node.artist("", "t");
+    }
+
+    // --- atContext ---
+
+    private static final LibraryPath.Node ALBUMS = LibraryPath.Node.of(LibraryPath.Node.Type.ALBUMS);
+    private static final LibraryPath.Node PLAYLISTS = LibraryPath.Node.of(LibraryPath.Node.Type.PLAYLISTS);
+    private static final LibraryPath.Node ARTISTS = LibraryPath.Node.of(LibraryPath.Node.Type.ARTISTS);
+    private static final LibraryPath.Node LIKED = LibraryPath.Node.of(LibraryPath.Node.Type.LIKED);
+
+    private static List<LibraryPath.Node> saved() {
+        return new ArrayList<LibraryPath.Node>(Arrays.asList(TOP, LibraryPath.Node.of(LibraryPath.Node.Type.RECENT)));
+    }
+
+    @Test public void albumOpensUnderAlbums() {
+        assertEquals(Arrays.asList(TOP, ALBUMS,
+                        LibraryPath.Node.album("spotify:album:A", "Discovery", "https://i.scdn.co/s")),
+                LibraryPath.atContext(saved(), "spotify:album:A", "Discovery", "https://i.scdn.co/s", null));
+    }
+
+    @Test public void playlistOpensUnderPlaylistsAsOwnUnlessKnownOthers() {
+        assertEquals(Arrays.asList(TOP, PLAYLISTS, LibraryPath.Node.playlist("spotify:playlist:P", "Mix", false)),
+                LibraryPath.atContext(saved(), "spotify:playlist:P", "Mix", "https://c", null));
+        assertEquals(Arrays.asList(TOP, PLAYLISTS, LibraryPath.Node.playlist("spotify:playlist:P", "Mix", false)),
+                LibraryPath.atContext(saved(), "spotify:playlist:P", "Mix", null, Boolean.FALSE));
+        assertEquals(Arrays.asList(TOP, PLAYLISTS, LibraryPath.Node.playlist("spotify:playlist:P", "Mix", true)),
+                LibraryPath.atContext(saved(), "spotify:playlist:P", "Mix", null, Boolean.TRUE));
+    }
+
+    @Test public void likedSongsOpenRightUnderTop() {
+        assertEquals(Arrays.asList(TOP, LIKED),
+                LibraryPath.atContext(saved(), "spotify:user:someone:collection", "Liked Songs", null, null));
+    }
+
+    @Test public void artistOpensUnderArtists() {
+        assertEquals(Arrays.asList(TOP, ARTISTS, LibraryPath.Node.artist("spotify:artist:R", "Daft Punk")),
+                LibraryPath.atContext(saved(), "spotify:artist:R", "Daft Punk", "https://c", null));
+    }
+
+    @Test public void otherContextsKeepTheSavedStack() {
+        String[] uris = {null, "", "spotify", "spotify:album:", "spotify:album:A:x", "spotify:station:track:T",
+                "spotify:track:T", "spotify:show:S", "spotify:user:u:playlist:P", "spotify:user::collection",
+                "spotify:user:u:collection:x", "spotify:collection:tracks", "spotify:internal:radio",
+                "spotify:playlist", "spotify:artist:", "http://open.spotify.com/album/A"};
+        for (String uri : uris) {
+            List<LibraryPath.Node> s = saved();
+            assertSame(uri, s, LibraryPath.atContext(s, uri, "x", null, null));
+        }
+    }
+
+    @Test public void savedStackEndingThereStays() {
+        List<LibraryPath.Node> s = new ArrayList<LibraryPath.Node>(Arrays.asList(TOP, ARTISTS,
+                LibraryPath.Node.artist("spotify:artist:R", "Daft Punk"),
+                LibraryPath.Node.album("spotify:album:A", "Discovery (from the API)", "https://i.scdn.co/api")));
+        // The title and cover may differ from what Soloist says: type and uri decide.
+        assertSame(s, LibraryPath.atContext(s, "spotify:album:A", "Discovery", "https://i.scdn.co/soloist", null));
+        List<LibraryPath.Node> liked = new ArrayList<LibraryPath.Node>(Arrays.asList(TOP, PLAYLISTS, LIKED));
+        assertSame(liked, LibraryPath.atContext(liked, "spotify:user:me:collection", null, null, null));
+    }
+
+    @Test public void savedStackBelowThatPageIsReplaced() {
+        List<LibraryPath.Node> s = new ArrayList<LibraryPath.Node>(Arrays.asList(TOP, ARTISTS,
+                LibraryPath.Node.artist("spotify:artist:R", "Daft Punk"),
+                LibraryPath.Node.album("spotify:album:A", "Discovery", null)));
+        assertEquals(Arrays.asList(TOP, ARTISTS, LibraryPath.Node.artist("spotify:artist:R", "Daft Punk")),
+                LibraryPath.atContext(s, "spotify:artist:R", "Daft Punk", null, null));
+        assertEquals(Arrays.asList(TOP, ALBUMS, LibraryPath.Node.album("spotify:album:B", "Homework", null)),
+                LibraryPath.atContext(s, "spotify:album:B", "Homework", null, null));
+    }
+
+    @Test public void eitherPlaylistPageStaysWhileOwnershipIsUnknown() {
+        LibraryPath.Node others = LibraryPath.Node.playlist("spotify:playlist:P", "Mix", true);
+        LibraryPath.Node own = LibraryPath.Node.playlist("spotify:playlist:P", "Mix", false);
+        List<LibraryPath.Node> s = new ArrayList<LibraryPath.Node>(Arrays.asList(TOP, PLAYLISTS, others));
+        assertSame(s, LibraryPath.atContext(s, "spotify:playlist:P", "Mix", null, null));
+        assertSame(s, LibraryPath.atContext(s, "spotify:playlist:P", "Mix", null, Boolean.TRUE));
+        assertEquals(Arrays.asList(TOP, PLAYLISTS, own),
+                LibraryPath.atContext(s, "spotify:playlist:P", "Mix", null, Boolean.FALSE));
+        List<LibraryPath.Node> o = new ArrayList<LibraryPath.Node>(Arrays.asList(TOP, PLAYLISTS, own));
+        assertSame(o, LibraryPath.atContext(o, "spotify:playlist:P", "Mix", null, null));
+        assertEquals(Arrays.asList(TOP, PLAYLISTS, others),
+                LibraryPath.atContext(o, "spotify:playlist:P", "Mix", null, Boolean.TRUE));
+        // Another playlist, or an album with the same ID, is another page.
+        assertEquals(Arrays.asList(TOP, PLAYLISTS, LibraryPath.Node.playlist("spotify:playlist:Q", "Q", false)),
+                LibraryPath.atContext(s, "spotify:playlist:Q", "Q", null, null));
+    }
+
+    @Test public void topAloneOpensThePage() {
+        List<LibraryPath.Node> s = new ArrayList<LibraryPath.Node>(Collections.singletonList(TOP));
+        assertEquals(Arrays.asList(TOP, LIKED),
+                LibraryPath.atContext(s, "spotify:user:me:collection", null, null, null));
+    }
+
+    @Test public void contextStackRoundTrips() {
+        List<LibraryPath.Node> s = LibraryPath.atContext(saved(), "spotify:album:A", null, null, null);
+        assertEquals(s, LibraryPath.decode(LibraryPath.encode(s)));
+    }
+
+    @Test public void replaceSwapsEveryMatch() {
+        LibraryPath.Node own = LibraryPath.Node.playlist("spotify:playlist:P", "Mix", false);
+        LibraryPath.Node others = LibraryPath.Node.playlist("spotify:playlist:P", "Mix", true);
+        List<LibraryPath.Node> s = new ArrayList<LibraryPath.Node>(Arrays.asList(TOP, PLAYLISTS, own));
+        assertTrue(LibraryPath.replace(s, own, others));
+        assertEquals(Arrays.asList(TOP, PLAYLISTS, others), s);
+        assertFalse(LibraryPath.replace(s, own, others));
+        assertEquals(Arrays.asList(TOP, PLAYLISTS, others), s);
     }
 }
