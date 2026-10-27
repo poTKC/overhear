@@ -125,7 +125,6 @@ public final class HelperProcess {
             }
             out = readAll(p.getInputStream());
             if (out == null) {
-                p.destroy();
                 throw new IOException("overhear-fetch printed more than " + MAX_STDOUT_BYTES + " bytes");
             }
             code = p.waitFor();
