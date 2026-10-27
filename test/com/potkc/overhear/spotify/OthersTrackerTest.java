@@ -217,6 +217,21 @@ public class OthersTrackerTest {
         assertEquals(OthersTracker.Status.FAILED, tracker.status());
     }
 
+    @Test public void aListKeepsItsStatusButNotesTheContextLeft() {
+        contextChanged(PLAYLIST);
+        trackChanged("a");
+        queue("b");
+        tracker.onPlayReturned(T0);
+        assertFalse(tracker.hasLeft());
+        int v = tracker.version();
+        contextChanged(OTHER);
+        assertTrue(tracker.hasLeft());
+        assertTrue(tracker.version() != v);
+        assertEquals(OthersTracker.Status.READY, tracker.status());
+        contextChanged(PLAYLIST); // played again (e.g. from the phone): still left
+        assertTrue(tracker.hasLeft());
+    }
+
     @Test public void theOldContextBeforeTheSwitchIsNotAFailure() {
         tracker.onPlayReturned(T0);
         trackChanged("y"); // still the old context

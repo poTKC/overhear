@@ -22,7 +22,10 @@ import com.potkc.overhear.soloist.PlayerState;
  * just adopted the first track: then the next tick, at the latest the one
  * LAST_CHECK_AFTER_MS after, gives up), or if the context leaves the
  * playlist first, the status is FAILED (playing it again takes a new
- * tracker).
+ * tracker). Once the context has left the playlist after the request
+ * (hasLeft), the list may not match a later play of it (from the phone,
+ * maybe shuffled otherwise); a replay while it is still the context is not
+ * noticed.
  *
  * Pure Java, one thread (the caller's); times come from the caller.
  */
@@ -48,6 +51,7 @@ public final class OthersTracker {
     private String currentTrackUri;
     private boolean queueAsked;
     private boolean failed;
+    private boolean left;
     private List<Item> items;
     /** Bumped whenever status or items change. */
     private int version;
@@ -95,8 +99,9 @@ public final class OthersTracker {
             firstTrackUri = track;
         }
         collect(s);
-        if (items == null && !failed && playReturnedMs >= 0 && sawContext && !inPlaylist && !isEmpty(context)) {
-            failed = true; // played something else before the list came
+        if (playReturnedMs >= 0 && sawContext && !inPlaylist && !isEmpty(context) && !left) {
+            left = true;
+            if (items == null) failed = true; // played something else before the list came
             version++;
         }
     }
@@ -141,6 +146,11 @@ public final class OthersTracker {
         return failed ? Status.FAILED : Status.STARTING;
     }
 
+    /** The context left the playlist after the request returned. */
+    public boolean hasLeft() {
+        return left;
+    }
+
     /** The longest list so far; null until one. */
     public List<Item> items() {
         return items;
@@ -151,7 +161,7 @@ public final class OthersTracker {
         return firstTrackUri;
     }
 
-    /** Changes whenever status() or items() may have. */
+    /** Changes whenever status(), items() or hasLeft() may have. */
     public int version() {
         return version;
     }

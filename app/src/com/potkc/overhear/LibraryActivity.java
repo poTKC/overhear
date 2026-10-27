@@ -803,11 +803,15 @@ public class LibraryActivity extends Activity {
         finish();
     }
 
-    /** The service's tracker for node's playlist while that is Soloist's context; else null. */
+    /**
+     * The service's tracker for node's playlist while that is Soloist's
+     * context and has not left it since (a later play of it, from the phone
+     * say, may be in another order); else null.
+     */
     private OthersTracker liveOthers(Node node) {
         PlayerService p = player();
         OthersTracker o = p == null ? null : p.getOthers();
-        if (o == null || !node.uri.equals(o.playlistUri())) return null;
+        if (o == null || o.hasLeft() || !node.uri.equals(o.playlistUri())) return null;
         return node.uri.equals(p.client().getState().getContextUri()) ? o : null;
     }
 
