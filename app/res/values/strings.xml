@@ -104,6 +104,7 @@
     <string name="library_no_results">見つかりませんでした</string>
     <string name="library_others_starting">再生を始めています…</string>
     <string name="library_others_shuffled">シャッフル順です</string>
+    <string name="library_others_failed">プレイリストの曲を取得できませんでした — タップでやり直す</string>
     <string name="library_others_no_player">再生サービスに接続していません</string>
     <string name="library_login_expired">Spotify のログインが切れました — タップしてログイン</string>
     <string name="library_rate_limited">混み合っています。しばらくしてから ↻ を押してください</string>

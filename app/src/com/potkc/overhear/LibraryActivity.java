@@ -36,7 +36,7 @@ import com.potkc.overhear.spotify.Item;
 import com.potkc.overhear.spotify.LibraryPath;
 import com.potkc.overhear.spotify.LibraryPath.Node;
 import com.potkc.overhear.spotify.Page;
-import com.potkc.overhear.spotify.QueueTracks;
+import com.potkc.overhear.spotify.OthersTracker;
 import com.potkc.overhear.spotify.SpotifyApi;
 import com.potkc.overhear.spotify.SpotifyException;
 import com.potkc.overhear.spotify.SpotifyJson;
@@ -54,8 +54,8 @@ import com.potkc.overhear.spotify.SpotifyJson;
  *
  * Another user's playlist (OTHERS_PLAYLIST), whose tracks the Web API
  * refuses, starts playing from the top when opened and lists what Soloist's
- * queue shows while its first track plays (QueueTracks). That list belongs
- * to the open page only (Others), never to the cache; tapping a track there
+ * queue shows while its first track plays (OthersTracker). That list
+ * belongs to the open page only, never to the cache; tapping a track there
  * plays it and stays on the page.
  *
  * Main thread only. Spotify callbacks can arrive after the Activity that
@@ -92,28 +92,6 @@ public class LibraryActivity extends Activity {
         }
     }
 
-    /** The OTHERS_PLAYLIST page while it is open; main thread only. */
-    private static final class Others {
-        final String playlistUri;
-        /** The state before asking to play (-1 and null if unknown), to skip what it still shows. */
-        final int openTrackChanges;
-        final String openTrackUri;
-        /** The first track seen playing in the playlist since it was asked to play; null until then. */
-        String firstTrackUri;
-        /** The full queue was asked for on the current connection. */
-        boolean queueAsked;
-        boolean shuffle;
-        /** The longest list QueueTracks gave so far; null until one. */
-        List<Item> items;
-
-        Others(String playlistUri, PlayerState before) {
-            this.playlistUri = playlistUri;
-            openTrackChanges = before == null ? -1 : before.getTrackChanges();
-            openTrackUri = before == null ? null : before.getTrackUri();
-            shuffle = before != null && before.isShuffle();
-        }
-    }
-
     private static final int CACHE_MAX = 30;
     /** The loaded pages, least recently used first; main thread only. */
     private static final Map<Node, Loaded> cache = new LinkedHashMap<Node, Loaded>(16, 0.75f, true) {
@@ -145,10 +123,15 @@ public class LibraryActivity extends Activity {
     private boolean playing;
     private PlayerService service;
     private boolean bound;
-    /** The open OTHERS_PLAYLIST page; null while none is. */
-    private Others others;
+    /** The open OTHERS_PLAYLIST page; null while none is. A retry starts a new one. */
+    private OthersTracker others;
     /** The client othersListener is added to (while resumed with others open); null otherwise. */
     private SoloistClient listening;
+    /** The client others last heard of, to tell it about a new one. */
+    private SoloistClient othersClient;
+    /** What the OTHERS_PLAYLIST rows were last built from, to skip renders that change nothing. */
+    private int othersRendered = -1;
+    private boolean noPlayerRendered;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -228,8 +211,7 @@ public class LibraryActivity extends Activity {
     protected void onDestroy() {
         destroyed = true;
         if (active == this) active = null;
-        unlisten();
-        others = null;
+        closeOthers();
         if (artwork != null) artwork.cancelAll();
         if (bound) unbindService(connection);
         bound = false;
@@ -245,6 +227,8 @@ public class LibraryActivity extends Activity {
 
         @Override public void onServiceDisconnected(ComponentName name) {
             service = null;
+            unlisten(); // its client is gone; a restarted service brings a new one
+            if (active == LibraryActivity.this && others != null) render();
         }
     };
 
@@ -624,12 +608,20 @@ public class LibraryActivity extends Activity {
 
     // --- another user's playlist ---
 
-    /** Starts the playlist from the top and waits for Soloist to list it. */
     private void openOthers(Node node) {
+        others = new OthersTracker(node.uri);
+        startOthers();
+    }
+
+    /** Plays others' playlist from the top and follows Soloist until it lists the tracks. */
+    private void startOthers() {
+        final OthersTracker t = others;
         unlisten();
+        list.removeCallbacks(othersTick);
         SoloistClient client = client();
-        others = new Others(node.uri, client == null ? null : client.getState());
-        final String uri = node.uri;
+        othersClient = client;
+        t.onOpen(client == null ? null : client.getState());
+        final String uri = t.playlistUri();
         final String device = prefs.getDeviceName();
         playing = true;
         spotify.run(new Spotify.Call<Void>() {
@@ -640,6 +632,7 @@ public class LibraryActivity extends Activity {
         }, new Spotify.Callback<Void>() {
             @Override public void done(Void result) {
                 playing = false;
+                played(t);
             }
 
             @Override public void failed(IOException e) {
@@ -647,14 +640,33 @@ public class LibraryActivity extends Activity {
                 SoloistClient c = client();
                 if (c != null) c.play(uri); // from the top, as asked
                 else Toast.makeText(getApplicationContext(), R.string.library_play_failed, Toast.LENGTH_SHORT).show();
+                played(t);
             }
         });
         listen();
     }
 
+    /** The play request for t returned: schedules the timed checks while t is still open. */
+    private void played(OthersTracker t) {
+        if (destroyed || others != t) return;
+        t.onPlayReturned(System.currentTimeMillis());
+        list.postDelayed(othersTick, OthersTracker.ADOPT_AFTER_MS + 100);
+        list.postDelayed(othersTick, OthersTracker.GIVE_UP_AFTER_MS + 100);
+    }
+
+    private final Runnable othersTick = new Runnable() {
+        @Override public void run() {
+            if (destroyed || others == null || listening == null) return; // listen() ticks on resume
+            others.onTick(listening.getState(), System.currentTimeMillis());
+            othersChanged();
+        }
+    };
+
     private void closeOthers() {
         unlisten();
+        list.removeCallbacks(othersTick);
         others = null;
+        othersClient = null;
     }
 
     /**
@@ -662,12 +674,18 @@ public class LibraryActivity extends Activity {
      * instance resumed; true if it attached just now (the caller renders).
      */
     private boolean listen() {
-        if (others == null || listening != null || destroyed) return false;
+        if (others == null || destroyed) return false;
         SoloistClient client = client();
-        if (client == null) return false;
+        if (client == null || client == listening) return false;
+        unlisten();
         listening = client;
         client.addListener(othersListener);
-        othersState(client.getState());
+        if (client != othersClient) { // the service restarted
+            othersClient = client;
+            others.onConnected(client.isConnected(), client.getState());
+        }
+        others.onTick(client.getState(), System.currentTimeMillis());
+        askQueue();
         return true;
     }
 
@@ -678,63 +696,64 @@ public class LibraryActivity extends Activity {
 
     private final SoloistClient.Listener othersListener = new SoloistClient.Listener() {
         @Override public void onState(PlayerState state) {
-            if (listening == null) return; // removed after this was posted
-            othersState(state);
-            render();
+            if (listening == null || others == null) return; // removed after this was posted
+            others.onState(state);
+            othersChanged();
         }
 
         @Override public void onConnected(boolean connected) {
-            if (listening == null) return;
-            if (others != null && !connected) others.queueAsked = false; // ask the new connection
-            if (connected) othersState(listening.getState());
-            render();
+            if (listening == null || others == null) return;
+            others.onConnected(connected, listening.getState());
+            othersChanged();
         }
 
         @Override public void onError(String message) {}
     };
 
-    /**
-     * Records the playlist's first track once it plays, asks for the whole
-     * queue once, and keeps the longest list QueueTracks gives: the regular
-     * 10-entry queue that follows must not shorten it, and once another
-     * track plays QueueTracks gives none, so the list stays in order.
-     */
-    private void othersState(PlayerState s) {
-        Others o = others;
-        if (o == null || listening == null) return;
-        o.shuffle = s.isShuffle();
-        String track = s.getTrackUri();
-        // The context_changed comes before the track_changed: until a track
-        // event, the state still shows the track from before the request,
-        // and then briefly none ("").
-        if (o.firstTrackUri == null && track != null && !track.isEmpty()
-                && o.playlistUri.equals(s.getContextUri())
-                && (s.getTrackChanges() != o.openTrackChanges || !track.equals(o.openTrackUri))) {
-            o.firstTrackUri = track;
-        }
-        if (o.firstTrackUri != null && !o.queueAsked && listening.isConnected()) {
-            o.queueAsked = true;
+    /** Asks for the whole queue if others wants it, then renders if the rows would change. */
+    private void othersChanged() {
+        askQueue();
+        if (others.version() != othersRendered || noPlayer() != noPlayerRendered) render();
+    }
+
+    private void askQueue() {
+        if (others != null && listening != null && others.takeQueueRequest(listening.isConnected())) {
             listening.requestQueue(SoloistClient.FULL_QUEUE_LIMIT);
         }
-        List<Item> got = QueueTracks.fromState(s, o.playlistUri, o.firstTrackUri);
-        if (got != null && (o.items == null || got.size() > o.items.size())) o.items = got;
+    }
+
+    private boolean noPlayer() {
+        SoloistClient client = client();
+        return client == null || !client.isConnected();
     }
 
     private void othersRows(List<Row> rows) {
-        final Others o = others;
+        final OthersTracker o = others;
         if (o == null) return;
-        if (listening == null || !listening.isConnected()) {
-            rows.add(Row.note(getString(R.string.library_others_no_player), null));
+        othersRendered = o.version();
+        noPlayerRendered = noPlayer();
+        if (noPlayerRendered) rows.add(Row.note(getString(R.string.library_others_no_player), null));
+        switch (o.status()) {
+            case STARTING:
+                rows.add(Row.note(getString(R.string.library_others_starting), null));
+                return;
+            case FAILED:
+                rows.add(Row.note(getString(R.string.library_others_failed), new Runnable() {
+                    @Override public void run() {
+                        others = new OthersTracker(o.playlistUri());
+                        startOthers();
+                        render();
+                    }
+                }));
+                return;
+            default:
+                break;
         }
-        if (o.items == null) {
-            rows.add(Row.note(getString(R.string.library_others_starting), null));
-            return;
-        }
-        if (o.shuffle) rows.add(Row.note(getString(R.string.library_others_shuffled), null));
-        for (final Item item : o.items) {
+        if (o.isShuffle()) rows.add(Row.note(getString(R.string.library_others_shuffled), null));
+        for (final Item item : o.items()) {
             rows.add(Row.item(item, null, new Runnable() {
                 @Override public void run() {
-                    play(o.playlistUri, item.uri, true);
+                    play(o.playlistUri(), item.uri, true);
                 }
             }));
         }

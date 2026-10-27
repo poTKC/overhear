@@ -36,6 +36,7 @@ app/src/com/potkc/overhear/spotify/Page.java
 app/src/com/potkc/overhear/spotify/SpotifyJson.java
 app/src/com/potkc/overhear/spotify/LibraryPath.java
 app/src/com/potkc/overhear/spotify/QueueTracks.java
+app/src/com/potkc/overhear/spotify/OthersTracker.java
 app/src/com/potkc/overhear/spotify/SpotifyConfig.java
 app/src/io/nayuki/qrcodegen/BitBuffer.java
 app/src/io/nayuki/qrcodegen/DataTooLongException.java
