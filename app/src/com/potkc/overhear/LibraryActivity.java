@@ -1,8 +1,10 @@
 package com.potkc.overhear;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.ComponentName;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.os.Bundle;
@@ -71,6 +73,10 @@ import com.potkc.overhear.spotify.SpotifyJson;
  * random one (PlayPlan: shuffle set through the Web API first, checked again
  * PlayPlan.CHECK_MS after the play); the artist's ▶ and a tapped track leave
  * shuffle as it is.
+ *
+ * A long-press on a track or album row (in any list) offers the track's
+ * album and the artists (LibraryPath.linksOf) in a dialog; the choice is
+ * pushed like a tapped row. Rows with nothing to offer take it as a tap.
  *
  * Another user's playlist (OTHERS_PLAYLIST), whose tracks the Web API
  * refuses, opens with its ▶ and ⇄ rows and a note only. ▶ or ⇄ has
@@ -168,6 +174,8 @@ public class LibraryActivity extends Activity {
     private boolean playingNoted;
     private PlayerService service;
     private boolean bound;
+    /** The long-press choices on screen, or null. */
+    private AlertDialog links;
     /** What the OTHERS_PLAYLIST rows were last built from (othersKey), to skip renders that change nothing. */
     private String othersShown;
 
@@ -200,6 +208,13 @@ public class LibraryActivity extends Activity {
                     playingNoted = true;
                     Toast.makeText(LibraryActivity.this, R.string.library_playing, Toast.LENGTH_SHORT).show();
                 }
+            }
+        });
+        list.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
+            @Override public boolean onItemLongClick(AdapterView<?> parent, View view, int position, long id) {
+                Row row = adapter.getItem(position);
+                // true: the dialog shows (or a play is in flight), so no tap follows.
+                return row.item != null && (playing || showLinks(row.item));
             }
         });
         list.setOnScrollListener(new AbsListView.OnScrollListener() {
@@ -275,6 +290,8 @@ public class LibraryActivity extends Activity {
         if (active == this) active = null;
         if (service != null) service.removeUiListener(uiListener);
         if (artwork != null) artwork.cancelAll(Artwork.viewsOf(this));
+        if (links != null) links.dismiss();
+        links = null;
         if (bound) unbindService(connection);
         bound = false;
         service = null;
@@ -805,6 +822,35 @@ public class LibraryActivity extends Activity {
                 boolean others = me == null || me.isEmpty() || !me.equals(item.ownerId);
                 return Row.item(item, true, pushing(Node.playlist(item.uri, item.title, others)));
         }
+    }
+
+    /** The pages item links to, as a dialog of choices; false (no dialog) when there are none. */
+    private boolean showLinks(Item item) {
+        final List<Node> nodes = LibraryPath.linksOf(item, current());
+        if (nodes.isEmpty()) return false;
+        String[] labels = new String[nodes.size()];
+        for (int i = 0; i < labels.length; i++) {
+            Node n = nodes.get(i);
+            if (n.type == Node.Type.ALBUM) {
+                labels[i] = getString(R.string.library_open_album);
+            } else {
+                // The name, even for a sole artist: it says whose page opens.
+                labels[i] = n.title == null || n.title.isEmpty() ? getString(R.string.library_open_artist)
+                        : getString(R.string.library_open_named, n.title);
+            }
+        }
+        if (links != null) links.dismiss();
+        links = new AlertDialog.Builder(this)
+                .setTitle(item.title)
+                .setItems(labels, new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface d, int which) {
+                        links = null;
+                        if (!destroyed) push(nodes.get(which));
+                    }
+                })
+                .show();
+        Dialogs.neutral(links);
+        return true;
     }
 
     private Runnable pushing(final Node node) {
