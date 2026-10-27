@@ -39,6 +39,8 @@ SVGS = {
     "System/close-line.svg": "db3b4dcebb2d962a0231a191538bf6939620798b18f0ba52d4b91c5a4649ce54",
     "Media/music-2-line.svg": "beaf516b74a065afb95022f9b311ecc981cbdd22af446b96e8a8b353f7b49342",
     "Media/music-2-fill.svg": "70a5c81119274e9b6c0a6286afa125c15414f42d0aa3a799e8c971bebecb1221",
+    "Arrows/arrow-left-line.svg": "83326466c9ea5f3b18eab5051003cb5a6666c9ebc6d9e794aa49721a886987fe",
+    "System/refresh-line.svg": "6768ce94b9e55f865945bf27ae1a238303f0d1d5d0f6e2bedfd4d4123a578d23",
 }
 DENSITIES = {"mdpi": 1.0, "hdpi": 1.5, "xhdpi": 2.0}
 
@@ -148,7 +150,9 @@ def main():
         plain(density, f, "ic_queue", "Media/play-list-2-fill.svg", GREY, 20, 18)
         plain(density, f, "ic_settings", "System/settings-3-line.svg", GREY, 20, 18)
         plain(density, f, "ic_close", "System/close-line.svg", WHITE, 24, 22)
-        # library bar: back to the player
+        # library bar: back, reload, back to the player
+        plain(density, f, "ic_back", "Arrows/arrow-left-line.svg", WHITE, 24, 20)
+        plain(density, f, "ic_reload", "System/refresh-line.svg", GREY, 24, 20)
         plain(density, f, "ic_to_player", "Media/music-2-line.svg", WHITE, 24, 20)
         placeholder(density, f)
         # notification row (40 dp wide buttons) and status bar icon (white on transparent)
