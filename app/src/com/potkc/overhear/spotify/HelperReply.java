@@ -5,7 +5,8 @@ import java.io.UnsupportedEncodingException;
 
 /**
  * One reply of overhear-fetch's token and api subcommands: "status N", an
- * optional "retry-after V", a blank line, then the body as sent. Pure Java.
+ * optional "retry-after V", a blank line, then the body as sent. Lines end
+ * with "\n" only, as overhear-fetch writes them. Pure Java.
  */
 public final class HelperReply {
     public final int status;
@@ -31,7 +32,7 @@ public final class HelperReply {
         int status = -1, retry = -1;
         for (String line : s.substring(0, end).split("\n")) {
             if (line.startsWith("status ")) status = parseInt(line.substring(7), -1);
-            else if (line.startsWith("retry-after ")) retry = parseInt(line.substring(12), -1);
+            else if (line.startsWith("retry-after ")) retry = Math.max(-1, parseInt(line.substring(12), -1));
         }
         if (status < 100) throw new IOException("no status in helper reply");
         return new HelperReply(status, retry, s.substring(end + 2));

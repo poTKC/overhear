@@ -36,4 +36,8 @@ public class HelperReplyTest {
     @Test(expected = IOException.class) public void missingBlankLine() throws IOException {
         parse("status 200\n");
     }
+
+    @Test public void negativeRetryAfterReadsAsAbsent() throws IOException {
+        assertEquals(-1, parse("status 429\nretry-after -5\n\n").retryAfterSeconds);
+    }
 }

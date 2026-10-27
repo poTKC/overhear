@@ -44,4 +44,32 @@ public class OAuthCallbackTest {
         assertEquals(OAuthCallback.Kind.REJECT,
                 OAuthCallback.parse("GET /callback?state=" + Q_STATE + " HTTP/1.1", STATE).kind);
     }
+
+    @Test public void repeatedStateIsRejected() {
+        assertEquals(OAuthCallback.Kind.REJECT,
+                OAuthCallback.parse("GET /callback?state=x&code=a&state=" + Q_STATE + " HTTP/1.1", STATE).kind);
+    }
+
+    @Test public void repeatedCodeIsRejected() {
+        assertEquals(OAuthCallback.Kind.REJECT,
+                OAuthCallback.parse("GET /callback?code=a&code=b&state=" + Q_STATE + " HTTP/1.1", STATE).kind);
+    }
+
+    @Test public void errorWinsOverCode() {
+        OAuthCallback r = OAuthCallback.parse(
+                "GET /callback?code=abc&error=access_denied&state=" + Q_STATE + " HTTP/1.1", STATE);
+        assertEquals(OAuthCallback.Kind.ERROR, r.kind);
+        assertEquals("access_denied", r.value);
+    }
+
+    @Test public void badEscapeIsRejected() {
+        assertEquals(OAuthCallback.Kind.REJECT,
+                OAuthCallback.parse("GET /callback?code=a%zz&state=" + Q_STATE + " HTTP/1.1", STATE).kind);
+    }
+
+    @Test public void trailingCarriageReturnIsAccepted() {
+        OAuthCallback r = OAuthCallback.parse("GET /callback?code=abc&state=" + Q_STATE + " HTTP/1.1\r", STATE);
+        assertEquals(OAuthCallback.Kind.CODE, r.kind);
+        assertEquals("abc", r.value);
+    }
 }

@@ -35,4 +35,13 @@ public class PkceTest {
         assertTrue(u.contains("scope=a+b") || u.contains("scope=a%20b"));
         assertTrue(u.contains("state=1.2.3.4%3A5%7En"));
     }
+
+    @Test public void base64UrlMatchesRfc4648VectorsWithoutPadding() throws Exception {
+        // RFC 4648 section 10
+        String[][] v = {
+            {"", ""}, {"f", "Zg"}, {"fo", "Zm8"}, {"foo", "Zm9v"},
+            {"foob", "Zm9vYg"}, {"fooba", "Zm9vYmE"}, {"foobar", "Zm9vYmFy"},
+        };
+        for (String[] p : v) assertEquals(p[1], Pkce.base64Url(p[0].getBytes("US-ASCII")));
+    }
 }

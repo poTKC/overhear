@@ -6,7 +6,8 @@ import java.net.URLDecoder;
 /**
  * Classifies the request line the login listener received: the code, an
  * error Spotify sent back (e.g. access_denied), or anything else, which is
- * rejected. Only "GET /callback?..." with exactly the expected state counts.
+ * rejected. Only "GET /callback?..." with exactly the expected state counts,
+ * and a repeated code, error or state rejects the whole request.
  * Pure Java.
  */
 public final class OAuthCallback {
@@ -35,9 +36,16 @@ public final class OAuthCallback {
             if (eq <= 0) continue;
             String k = pair.substring(0, eq), v = dec(pair.substring(eq + 1));
             if (v == null) return REJECTED;
-            if ("code".equals(k)) code = v;
-            else if ("error".equals(k)) error = v;
-            else if ("state".equals(k)) state = v;
+            if ("code".equals(k)) {
+                if (code != null) return REJECTED;
+                code = v;
+            } else if ("error".equals(k)) {
+                if (error != null) return REJECTED;
+                error = v;
+            } else if ("state".equals(k)) {
+                if (state != null) return REJECTED;
+                state = v;
+            }
         }
         if (state == null || !state.equals(expectedState)) return REJECTED;
         if (error != null) return new OAuthCallback(Kind.ERROR, error);
