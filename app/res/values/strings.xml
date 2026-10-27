@@ -21,6 +21,7 @@
     <!-- player -->
     <string name="no_track">再生中の曲はありません</string>
     <string name="settings">設定</string>
+    <string name="library">ライブラリ</string>
     <string name="queue">キュー</string>
     <string name="queue_title">次に再生</string>
     <string name="queue_empty">キューは空です</string>

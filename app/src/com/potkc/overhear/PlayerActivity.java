@@ -59,11 +59,11 @@ import com.potkc.overhear.soloist.SoloistClient;
 /**
  * The player: in full screen a top strip with the time and battery, artwork
  * in the middle (rounded corners), track text, seek bar and controls, and at
- * the bottom the status line (left; English) with the queue and settings
- * buttons (right). The queue panel slides up over the player, under the
- * bottom row. State comes from PlayerService (bound with flags 0, so
- * the screen never starts or keeps the service); commands go through the
- * service's SoloistClient.
+ * the bottom the status line (left; English) with the library (opens
+ * LibraryActivity), queue and settings buttons (right). The queue panel
+ * slides up over the player, under the bottom row. State comes from
+ * PlayerService (bound with flags 0, so the screen never starts or keeps
+ * the service); commands go through the service's SoloistClient.
  *
  * Full screen (Prefs.isFullscreen, default on): FLAG_FULLSCREEN hides the
  * status bar; set before the first layout and re-read on every resume, so a
@@ -288,6 +288,11 @@ public class PlayerActivity extends Activity {
                 if (c == null) return;
                 c.seek(bar.getProgress());
                 seekHold.seeked(bar.getProgress(), System.currentTimeMillis(), state.getPositionTimestampMs());
+            }
+        });
+        findViewById(R.id.library_button).setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                startActivity(new Intent(PlayerActivity.this, LibraryActivity.class));
             }
         });
         findViewById(R.id.queue_button).setOnClickListener(new View.OnClickListener() {
@@ -544,6 +549,8 @@ public class PlayerActivity extends Activity {
 
         QueueJump jump = service == null ? null : service.getJump();
         boolean jumping = jump != null;
+        // A Web API jump only blocks the queue: it is one call, and a control pressed meanwhile simply wins.
+        boolean webJumping = service != null && service.isWebJumping();
         // While a jump skips, the controls rest (and the queue takes no other tap).
         boolean enabled = PlayerText.controlsEnabled(connected, state) && !jumping;
         PlayerState.Status ps = state.getStatus();
@@ -562,8 +569,16 @@ public class PlayerActivity extends Activity {
 
         List<PlayerState.QueueItem> q = connected ? state.getQueue()
                 : Collections.<PlayerState.QueueItem>emptyList();
-        queueAdapter.setItems(q.size() > QUEUE_SHOWN ? q.subList(0, QUEUE_SHOWN) : q,
-                PlayerText.queueTappable(connected, state, jumping), jump);
+        List<PlayerState.QueueItem> shown = q.size() > QUEUE_SHOWN ? q.subList(0, QUEUE_SHOWN) : q;
+        boolean tappable = PlayerText.queueTappable(connected, state, jumping || webJumping);
+        if (webJumping) {
+            queueAdapter.setItems(shown, tappable, service.getWebJumpUid(), service.getWebJumpUri(),
+                    service.getWebJumpIndex());
+        } else if (jump != null) {
+            queueAdapter.setItems(shown, tappable, jump.getUid(), jump.getUri(), jump.getIndex() - jump.getSteps());
+        } else {
+            queueAdapter.setItems(shown, tappable, null, null, -1);
+        }
         queueList.setVisibility(q.isEmpty() ? View.GONE : View.VISIBLE);
         queueEmpty.setVisibility(q.isEmpty() ? View.VISIBLE : View.GONE);
         if (awaitedJump >= 0 && (service == null || service.getJumpsFinished() > awaitedJump)) {
@@ -684,7 +699,7 @@ public class PlayerActivity extends Activity {
 
     // --- queue panel ---
 
-    /** A tap on queue entry position: skip there (PlayerService, QueueJump). */
+    /** A tap on queue entry position: jump there (PlayerService: the Web API or QueueJump). */
     private void jumpTo(int position) {
         if (service == null || !connected || position >= queueAdapter.getCount()) return;
         int before = service.getJumpsFinished();
@@ -736,10 +751,8 @@ public class PlayerActivity extends Activity {
         private String busyUri;
         private int busyIndex = -1;
 
-        void setItems(List<PlayerState.QueueItem> list, boolean tap, QueueJump jump) {
-            String uid = jump == null ? null : jump.getUid();
-            String uri = jump == null ? null : jump.getUri();
-            int index = jump == null ? -1 : jump.getIndex() - jump.getSteps();
+        /** uid, uri, index: the jump's target (uri null: none), index its current place in list. */
+        void setItems(List<PlayerState.QueueItem> list, boolean tap, String uid, String uri, int index) {
             if (sameItems(items, list) && tap == tappable && eq(uid, busyUid) && eq(uri, busyUri)
                     && index == busyIndex) {
                 return;

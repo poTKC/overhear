@@ -123,7 +123,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
   `tools/make_icons.py`) from Remix Icon 4.5.0 (npm package
   `remixicon@4.5.0`): shuffle-line, repeat-2-line, repeat-one-line,
   skip-back-fill, skip-forward-fill, play-fill, pause-fill, play-circle-fill,
-  pause-circle-fill, play-list-2-fill,
+  pause-circle-fill, play-list-2-fill, album-line,
   settings-3-line, close-line, music-2-line and music-2-fill. Recoloured,
   resized and composed (the toggle dot, the artwork placeholder); otherwise
   unmodified.

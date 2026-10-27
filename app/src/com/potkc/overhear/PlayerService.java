@@ -41,6 +41,7 @@ import com.potkc.overhear.runtime.SoloistProcess;
 import com.potkc.overhear.soloist.MainThreadExecutor;
 import com.potkc.overhear.soloist.PlayerState;
 import com.potkc.overhear.soloist.SoloistClient;
+import com.potkc.overhear.spotify.SpotifyApi;
 
 /**
  * The foreground service that makes the phone a Spotify Connect speaker. It
@@ -59,8 +60,11 @@ import com.potkc.overhear.soloist.SoloistClient;
  * through a RemoteControlClient, audio focus through AudioSink, and
  * "becoming noisy" (headphones unplugged) pauses.
  *
- * Queue jumps: QueueJump steps skip_next to a tapped queue entry with the
- * track muted (AudioSink.setJumpMuted); any control pressed meanwhile ends it.
+ * Queue jumps: where QueueRoute allows (logged in, a track of an album,
+ * playlist or liked songs context ahead of any queued row, no shuffle), one
+ * Web API play of the context from the tapped track; otherwise, or if that
+ * call fails, QueueJump steps skip_next to the entry with the track muted
+ * (AudioSink.setJumpMuted); any control pressed meanwhile ends it.
  *
  * Volume: fakepulse plays at unity gain and VolumeSync ties Soloist's volume
  * (the phone's Spotify slider) to the STREAM_MUSIC index both ways, while
@@ -147,6 +151,12 @@ public final class PlayerService extends Service {
     /** Jumps finished so far, and whether the last one reached its target (for the player screen). */
     private int jumpsFinished;
     private boolean lastJumpOk;
+    /** The track a Web API jump (jumpTo) is playing, until the call answers; or null. */
+    private String webJumpUri;
+    private String webJumpUid;
+    private int webJumpIndex = -1;
+    /** A control was pressed while the Web API jump waited: no QueueJump if it fails. */
+    private boolean webJumpCancelled;
     private final IBinder binder = new LocalBinder();
     private final CopyOnWriteArrayList<Runnable> uiListeners = new CopyOnWriteArrayList<Runnable>();
 
@@ -411,17 +421,86 @@ public final class PlayerService extends Service {
     /** A control was pressed (here, in the notification or by a media key): a queue jump ends. */
     void userInput() {
         if (jump != null) jump.onUserInput();
+        if (webJumpUri != null) webJumpCancelled = true;
     }
 
     // --- queue jump ---
 
     /**
-     * Starts skipping to entry index of the upcoming queue (item as the
-     * screen shows it). False if a jump runs, the API is down, or the entry
-     * is no longer there.
+     * Starts a jump to entry index of the upcoming queue (item as the screen
+     * shows it): a Web API play of the context from item when QueueRoute
+     * allows, else QueueJump. Either way it counts in getJumpsFinished once
+     * done. False if a jump runs, the API is down, or the entry is no longer
+     * there.
      */
     boolean jumpTo(int index, PlayerState.QueueItem item) {
-        if (jump != null || !connected || item.uri == null) return false;
+        if (jump != null || webJumpUri != null || !connected || item.uri == null) return false;
+        Spotify spotify = Spotify.get(this);
+        if (QueueRoute.useWebApi(state.getQueue(), index, state.getTrackUri(), state.getContextUri(),
+                state.isShuffle(), spotify.isLoggedIn())) {
+            webJump(spotify, index, item, state.getContextUri());
+            return true;
+        }
+        return startQueueJump(index, item);
+    }
+
+    /**
+     * Plays contextUri from item through the Web API; on failure falls back
+     * to QueueJump for the same entry, if it is still there. The callback can
+     * come after onDestroy (Spotify.run), when it does nothing.
+     */
+    private void webJump(Spotify spotify, final int index, final PlayerState.QueueItem item,
+            final String contextUri) {
+        webJumpUri = item.uri;
+        webJumpUid = item.uid;
+        webJumpIndex = index;
+        webJumpCancelled = false;
+        final String device = prefs.getDeviceName();
+        Log.i(TAG, "web jump: to entry " + index + " " + item.uri);
+        notifyUi();
+        spotify.run(new Spotify.Call<Void>() {
+            @Override public Void run(SpotifyApi api) throws IOException {
+                api.play(device, contextUri, item.uri);
+                return null;
+            }
+        }, new Spotify.Callback<Void>() {
+            @Override public void done(Void result) {
+                if (destroyed) return;
+                // Soloist reports the new track (track_changed); nothing more to do.
+                Log.i(TAG, "web jump: done");
+                endWebJump(true);
+                notifyUi();
+            }
+
+            @Override public void failed(IOException e) {
+                if (destroyed) return;
+                boolean cancelled = webJumpCancelled;
+                Log.w(TAG, "web jump: failed (" + e.getMessage() + ")"
+                        + (cancelled ? ", a control was pressed meanwhile" : ", skipping there instead"));
+                endWebJump(false);
+                if (cancelled || !startQueueJump(index, item)) {
+                    jumpsFinished++; // nothing more to wait for
+                    lastJumpOk = false;
+                }
+                notifyUi();
+            }
+        });
+    }
+
+    /** ok: counts as a finished jump (a failure hands over to QueueJump, which counts itself). */
+    private void endWebJump(boolean ok) {
+        webJumpUri = null;
+        webJumpUid = null;
+        webJumpIndex = -1;
+        if (ok) {
+            jumpsFinished++;
+            lastJumpOk = true;
+        }
+    }
+
+    /** QueueJump's skip_next steps to entry index; false if the entry is gone or the API is down. */
+    private boolean startQueueJump(int index, PlayerState.QueueItem item) {
+        if (jump != null || !connected) return false;
         QueueJump j = new QueueJump(index, item.uid, item.uri, jumpClock, QueueJump.DEFAULT_TIMEOUT_MS,
                 jumpEffects);
         jump = j;
@@ -440,6 +519,24 @@ public final class PlayerService extends Service {
     /** The running queue jump, or null. */
     QueueJump getJump() {
         return jump;
+    }
+
+    /** A Web API jump is waiting for its answer (getWebJumpUri and the rest describe its target). */
+    boolean isWebJumping() {
+        return webJumpUri != null;
+    }
+
+    String getWebJumpUri() {
+        return webJumpUri;
+    }
+
+    /** The target's uid as tapped, or null if it had none. */
+    String getWebJumpUid() {
+        return webJumpUid;
+    }
+
+    int getWebJumpIndex() {
+        return webJumpIndex;
     }
 
     int getJumpsFinished() {
@@ -1071,6 +1168,7 @@ public final class PlayerService extends Service {
         sb.append("locks: mc=").append(multicastLock.isHeld()).append(" wifi=").append(wifiLock.isHeld())
                 .append(" wake=").append(wakeLock.isHeld()).append('\n');
         if (sink.isFocusMuted()) sb.append("muted (audio focus)\n");
+        if (webJumpUri != null) sb.append("web jump to entry ").append(webJumpIndex).append('\n');
         if (jump != null) sb.append("queue jump to entry ").append(jump.getIndex()).append(", ")
                 .append(jump.getSteps()).append(" skips done\n");
         sb.append("fakepulse underflows: ").append(soloist.getUnderflowCount())
