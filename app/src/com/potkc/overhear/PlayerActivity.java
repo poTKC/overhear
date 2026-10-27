@@ -60,7 +60,8 @@ import com.potkc.overhear.soloist.SoloistClient;
  * The player: in full screen a top strip with the time and battery, artwork
  * in the middle (rounded corners), track text, seek bar and controls, and at
  * the bottom the status line (left; English) with the library (opens
- * LibraryActivity, as Back does once the queue is closed), queue and
+ * LibraryActivity at the page of what plays now, as Back does once the queue
+ * is closed), queue and
  * settings buttons (right). The queue panel
  * slides up over the player, under the bottom row. State comes from
  * PlayerService (bound with flags 0, so the screen never starts or keeps
@@ -748,8 +749,25 @@ public class PlayerActivity extends Activity {
         openLibrary();
     }
 
+    /**
+     * Opens the library at the page of what plays now: Soloist's context as
+     * of the last render (none while no player is connected), which
+     * LibraryActivity turns into its stack.
+     */
     private void openLibrary() {
-        startActivity(new Intent(this, LibraryActivity.class));
+        Intent i = new Intent(this, LibraryActivity.class);
+        if (connected && state.getContextUri() != null) {
+            String name = state.getContextName();
+            // The name can lag a fresh play by a moment; an album's is the track's album.
+            if ((name == null || name.isEmpty()) && state.getContextUri().startsWith("spotify:album:")) {
+                name = state.getAlbum();
+            }
+            String cover = state.getSmallCoverUrl() != null ? state.getSmallCoverUrl() : state.getCoverUrl();
+            i.putExtra(LibraryActivity.EXTRA_CONTEXT_URI, state.getContextUri())
+                    .putExtra(LibraryActivity.EXTRA_CONTEXT_NAME, name)
+                    .putExtra(LibraryActivity.EXTRA_CONTEXT_COVER, cover);
+        }
+        startActivity(i);
     }
 
     private final class QueueAdapter extends BaseAdapter {
