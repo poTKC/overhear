@@ -316,12 +316,16 @@ public class LibraryActivity extends Activity {
         }
     };
 
-    /** Marks what plays now (Soloist's track and context) in the rows shown, if that changed. */
+    /**
+     * Marks what plays now (Soloist's track and context) in the rows shown, if
+     * that changed; nothing without a track, as the player shows (an idle
+     * Soloist may still report the last context).
+     */
     private void showNow() {
         SoloistClient client = client();
-        boolean on = client != null && client.isConnected();
-        PlayerState s = on ? client.getState() : null;
-        adapter.setNow(on ? s.getTrackUri() : null, on ? s.getContextUri() : null);
+        PlayerState s = client != null && client.isConnected() ? client.getState() : null;
+        if (s != null && s.getTitle() == null) s = null;
+        adapter.setNow(s == null ? null : s.getTrackUri(), s == null ? null : s.getContextUri());
     }
 
     // --- the stack ---
