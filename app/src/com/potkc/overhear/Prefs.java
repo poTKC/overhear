@@ -6,7 +6,8 @@ import android.os.Build;
 
 /**
  * App settings in MODE_PRIVATE SharedPreferences (only this app's uid can
- * read them). The Spotify developer API key lives here; never log it.
+ * read them). The Spotify developer API key and the Spotify Web API refresh
+ * token live here; never log either.
  */
 public final class Prefs {
     private static final String FILE = "overhear";
@@ -14,6 +15,8 @@ public final class Prefs {
     private static final String DEVICE_NAME = "device_name";
     private static final String AUTO_START = "auto_start";
     private static final String FULLSCREEN = "fullscreen";
+    private static final String SPOTIFY_REFRESH = "spotify_refresh";
+    private static final String LIBRARY_PATH = "library_path";
 
     private final SharedPreferences prefs;
 
@@ -78,5 +81,30 @@ public final class Prefs {
 
     public void setAutoStart(boolean autoStart) {
         prefs.edit().putBoolean(AUTO_START, autoStart).commit();
+    }
+
+    /** The Spotify refresh token or null. Never log it. */
+    public String getSpotifyRefresh() {
+        String t = prefs.getString(SPOTIFY_REFRESH, null);
+        return t == null || t.isEmpty() ? null : t;
+    }
+
+    /** Stores the refresh token (commit, so a login survives a crash); null or "" clears it. */
+    public void setSpotifyRefresh(String token) {
+        if (token == null || token.isEmpty()) clearSpotifyRefresh();
+        else prefs.edit().putString(SPOTIFY_REFRESH, token).commit();
+    }
+
+    public void clearSpotifyRefresh() {
+        prefs.edit().remove(SPOTIFY_REFRESH).commit();
+    }
+
+    /** The library page stack as LibraryPath encodes it, or "" when none. */
+    public String getLibraryPath() {
+        return prefs.getString(LIBRARY_PATH, "");
+    }
+
+    public void setLibraryPath(String encoded) {
+        prefs.edit().putString(LIBRARY_PATH, encoded == null ? "" : encoded).apply();
     }
 }
