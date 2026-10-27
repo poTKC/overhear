@@ -56,7 +56,10 @@ import com.potkc.overhear.spotify.SpotifyJson;
  * unless it certainly sent nothing (no login, device not listed) Soloist's
  * track (or context, when playing from the top) is checked, again after
  * PLAY_RECHECK_MS; only if it is not what was asked does Soloist play the
- * context from the top instead.
+ * context from the top instead. The ▶ and ⇄ rows of a list of tracks
+ * play it from the top with shuffle off or on (set through the Web API
+ * first, checked again SHUFFLE_CHECK_MS after the play); the artist's ▶ and
+ * a tapped track leave shuffle as it is.
  *
  * Another user's playlist (OTHERS_PLAYLIST), whose tracks the Web API
  * refuses, starts playing from the top when opened and lists what Soloist's
@@ -102,6 +105,8 @@ public class LibraryActivity extends Activity {
     private static final int CACHE_MAX = 30;
     /** After a failed play call, how long to wait for a play that may have gone through anyway. */
     private static final long PLAY_RECHECK_MS = 1500;
+    /** After a play with a wanted shuffle, when to check that Soloist has it. */
+    private static final long SHUFFLE_CHECK_MS = 2000;
     /** Outlives the Activity: a recheck still runs after it is gone. */
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     /** The loaded pages, least recently used first; main thread only. */
@@ -499,22 +504,26 @@ public class LibraryActivity extends Activity {
     }
 
     /** Rows for the pages that list one kind of item, with their fixed first row. */
-    private void listRows(List<Row> rows, Node node, Loaded l) {
+    private void listRows(List<Row> rows, final Node node, Loaded l) {
         switch (node.type) {
             case PLAYLISTS:
                 rows.add(menuRow("♥", R.string.library_liked, Node.Type.LIKED));
                 break;
             case LIKED:
                 if (l.me != null && !l.me.isEmpty() && !l.items.isEmpty()) {
-                    rows.add(playRow(R.string.library_play, "spotify:user:" + l.me + ":collection"));
+                    playRows(rows, "spotify:user:" + l.me + ":collection");
                 }
                 break;
             case ALBUM:
             case PLAYLIST:
-                rows.add(playRow(R.string.library_play, node.uri));
+                playRows(rows, node.uri);
                 break;
             case ARTIST:
-                rows.add(playRow(R.string.library_play_artist, node.uri));
+                rows.add(Row.menu("▶", getString(R.string.library_play_artist), null, new Runnable() {
+                    @Override public void run() {
+                        play(node.uri, null);
+                    }
+                }));
                 break;
             default:
                 break;
@@ -566,12 +575,18 @@ public class LibraryActivity extends Activity {
         }
     }
 
-    private Row playRow(int title, final String contextUri) {
-        return Row.menu("▶", getString(title), null, new Runnable() {
+    /** ▶ plays contextUri in order from its first track, ⇄ shuffled from a random one. */
+    private void playRows(List<Row> rows, final String contextUri) {
+        rows.add(Row.menu("▶", getString(R.string.library_play), null, new Runnable() {
             @Override public void run() {
-                play(contextUri, null);
+                play(contextUri, null, Boolean.FALSE);
             }
-        });
+        }));
+        rows.add(Row.menu("⇄", getString(R.string.shuffle), null, new Runnable() {
+            @Override public void run() {
+                play(contextUri, null, Boolean.TRUE);
+            }
+        }));
     }
 
     /** me: the user's ID ("" if unknown), to tell their own playlists from others'. */
@@ -607,38 +622,59 @@ public class LibraryActivity extends Activity {
 
     /**
      * Plays contextUri from trackUri (null: from the top), or trackUri alone
-     * when contextUri is null, and returns to the player.
+     * when contextUri is null, leaving shuffle as it is, and returns to the
+     * player.
      */
     private void play(String contextUri, String trackUri) {
-        play(contextUri, trackUri, false);
+        play(contextUri, trackUri, null, false);
     }
 
-    /** As play(contextUri, trackUri), staying on this screen if stay. */
-    private void play(final String contextUri, final String trackUri, final boolean stay) {
+    /** As play(contextUri, trackUri) with shuffle set first (null: left as it is). */
+    private void play(String contextUri, String trackUri, Boolean shuffle) {
+        play(contextUri, trackUri, shuffle, false);
+    }
+
+    /**
+     * As play(contextUri, trackUri), staying on this screen if stay. A
+     * shuffle (non-null) is set through the Web API before the play unless
+     * Soloist already has it; a failure there only gets logged (the play
+     * reports login and device trouble). SHUFFLE_CHECK_MS after the play
+     * Soloist gets it again if the context plays without it.
+     */
+    private void play(final String contextUri, final String trackUri, final Boolean shuffle, final boolean stay) {
         playing = true;
         playingNoted = false;
         final String device = prefs.getDeviceName();
+        final boolean setShuffle = shuffle != null && !hasShuffle(shuffle);
         spotify.run(new Spotify.Call<Void>() {
             @Override public Void run(SpotifyApi api) throws IOException {
+                if (setShuffle) {
+                    try {
+                        api.shuffle(device, shuffle);
+                    } catch (IOException e) {
+                        Log.w(TAG, "shuffle " + shuffle + " failed (" + e.getMessage() + "), playing anyway");
+                    }
+                }
                 api.play(device, contextUri, trackUri);
                 return null;
             }
         }, new Spotify.Callback<Void>() {
             @Override public void done(Void result) {
                 playing = false;
+                checkShuffleLater(contextUri, shuffle);
                 if (!destroyed && !stay) finish();
             }
 
             @Override public void failed(final IOException e) {
                 if (sentNothing(e) || playsNow(contextUri, trackUri)) {
                     // Login or device trouble sent nothing; otherwise the play went through after all.
-                    afterFailedPlay(e, contextUri, trackUri, stay);
+                    afterFailedPlay(e, contextUri, trackUri, shuffle, stay);
                     return;
                 }
                 // A failed call (timeout, 5xx) may still have been applied: look again shortly.
                 MAIN.postDelayed(new Runnable() {
                     @Override public void run() {
-                        afterFailedPlay(e, contextUri, trackUri, stay);
+                        afterFailedPlay(e, contextUri, trackUri, shuffle, stay);
                     }
                 }, PLAY_RECHECK_MS);
             }
@@ -646,7 +682,8 @@ public class LibraryActivity extends Activity {
     }
 
     /** After a failed play: done if Soloist plays what was asked, else Soloist plays it from the top. */
-    private void afterFailedPlay(IOException e, String contextUri, String trackUri, boolean stay) {
+    private void afterFailedPlay(IOException e, String contextUri, String trackUri, Boolean shuffle,
+            boolean stay) {
         playing = false;
         if (!sentNothing(e) && playsNow(contextUri, trackUri)) {
             Log.i(TAG, "play failed (" + e.getMessage() + "), but it plays");
@@ -655,7 +692,34 @@ public class LibraryActivity extends Activity {
             // Still wanted after leaving the screen: the user asked for it.
             playFromTop(contextUri != null ? contextUri : trackUri);
         }
+        checkShuffleLater(contextUri, shuffle);
         if (!destroyed && !stay) finish();
+    }
+
+    /** Soloist is connected and its shuffle is already on (or off) as wanted. */
+    private boolean hasShuffle(boolean wanted) {
+        SoloistClient client = client();
+        return client != null && client.isConnected() && client.getState().isShuffle() == wanted;
+    }
+
+    /**
+     * The Web API's shuffle does not always take (once in 8 runs it started
+     * the context in order): SHUFFLE_CHECK_MS from now, if Soloist plays
+     * contextUri with the other shuffle, Soloist sets the wanted one. Runs
+     * after this screen is gone too.
+     */
+    private void checkShuffleLater(final String contextUri, final Boolean shuffle) {
+        if (shuffle == null || contextUri == null) return;
+        MAIN.postDelayed(new Runnable() {
+            @Override public void run() {
+                SoloistClient client = client();
+                if (client == null || !client.isConnected()) return;
+                PlayerState s = client.getState();
+                if (!contextUri.equals(s.getContextUri()) || s.isShuffle() == shuffle) return;
+                Log.i(TAG, "shuffle is not " + shuffle + " after the play: setting it through Soloist");
+                client.setShuffle(shuffle);
+            }
+        }, SHUFFLE_CHECK_MS);
     }
 
     /** A failure that certainly sent no play: no login, or this device is not in the user's list. */
@@ -840,7 +904,7 @@ public class LibraryActivity extends Activity {
         for (final Item item : o.items()) {
             rows.add(Row.item(item, null, new Runnable() {
                 @Override public void run() {
-                    play(o.playlistUri(), item.uri, true);
+                    play(o.playlistUri(), item.uri, null, true);
                 }
             }));
         }
