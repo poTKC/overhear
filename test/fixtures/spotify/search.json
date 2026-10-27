@@ -1,0 +1,43 @@
+{"tracks": {"href": "https://api.spotify.com/v1/search?offset=0&limit=2&query=test&type=track", "limit": 2,
+  "next": "https://api.spotify.com/v1/search?offset=2&limit=2&query=test&type=track", "offset": 0,
+  "previous": null, "total": 10,
+  "items": [
+   {"album": {"album_type": "album", "id": "S1", "name": "Search Album", "type": "album", "uri": "spotify:album:S1",
+     "images": [{"height": 640, "width": 640, "url": "https://i.example/s1-640"},
+                {"height": 64, "width": 64, "url": "https://i.example/s1-64"}],
+     "artists": [{"id": "R9", "name": "Artist Nine", "type": "artist", "uri": "spotify:artist:R9"}]},
+    "artists": [{"id": "R9", "name": "Artist Nine", "type": "artist", "uri": "spotify:artist:R9"}],
+    "disc_number": 1, "duration_ms": 226413, "id": "ST1", "is_local": false, "is_playable": true,
+    "name": "Search Track", "track_number": 4, "type": "track", "uri": "spotify:track:ST1"},
+   {"artists": [{"id": "R9", "name": "Artist Nine", "type": "artist", "uri": "spotify:artist:R9"}],
+    "disc_number": 1, "duration_ms": 200000, "id": "ST2", "is_local": false, "is_playable": true,
+    "name": "Albumless Track", "track_number": 1, "type": "track", "uri": "spotify:track:ST2"}
+  ]},
+ "artists": {"href": "https://api.spotify.com/v1/search?offset=0&limit=2&query=test&type=artist", "limit": 2,
+  "next": null, "offset": 0, "previous": null, "total": 1,
+  "items": [
+   {"id": "R9", "name": "Artist Nine", "type": "artist", "uri": "spotify:artist:R9",
+    "images": [{"url": "https://i.example/r9-640", "height": 640, "width": 640},
+               {"url": "https://i.example/r9-160", "height": 160, "width": 160}]}
+  ]},
+ "albums": {"href": "https://api.spotify.com/v1/search?offset=0&limit=2&query=test&type=album", "limit": 2,
+  "next": null, "offset": 0, "previous": null, "total": 1,
+  "items": [
+   {"album_type": "album", "total_tracks": 14, "id": "S1", "name": "Search Album",
+    "images": [{"height": 640, "url": "https://i.example/s1-640", "width": 640},
+               {"height": 64, "url": "https://i.example/s1-64", "width": 64}],
+    "release_date": "2001-03-12", "release_date_precision": "day", "type": "album", "uri": "spotify:album:S1",
+    "artists": [{"id": "R9", "name": "Artist Nine", "type": "artist", "uri": "spotify:artist:R9"}]}
+  ]},
+ "playlists": {"href": "https://api.spotify.com/v1/search?offset=0&limit=3&query=test&type=playlist", "limit": 3,
+  "next": "https://api.spotify.com/v1/search?offset=3&limit=3&query=test&type=playlist", "offset": 0,
+  "previous": null, "total": 9,
+  "items": [
+   null,
+   {"collaborative": false, "description": "", "id": "SP1", "name": "Search Playlist",
+    "images": [{"height": 640, "url": "https://i.example/sp1-640", "width": 640},
+               {"height": 60, "url": "https://i.example/sp1-60", "width": 60}],
+    "owner": {"display_name": "Owner Nine", "id": "owner9", "type": "user", "uri": "spotify:user:owner9"},
+    "public": true, "items": {"href": "https://api.spotify.com/v1/playlists/SP1/items", "total": 18},
+    "type": "playlist", "uri": "spotify:playlist:SP1"}
+  ]}}

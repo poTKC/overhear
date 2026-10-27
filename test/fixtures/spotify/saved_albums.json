@@ -1,0 +1,19 @@
+{"href": "https://api.spotify.com/v1/me/albums?offset=0&limit=2", "limit": 2, "next": null, "offset": 0,
+ "previous": null, "total": 2,
+ "items": [
+  {"added_at": "2026-01-01T00:00:00Z", "album": {"album_type": "album", "total_tracks": 12, "id": "A1",
+   "images": [{"url": "https://i.example/a1-640", "height": 640, "width": 640},
+              {"url": "https://i.example/a1-300", "height": 300, "width": 300},
+              {"url": "https://i.example/a1-64", "height": 64, "width": 64}],
+   "name": "Album One", "release_date": "2001-03-12", "release_date_precision": "day", "type": "album",
+   "uri": "spotify:album:A1",
+   "artists": [{"id": "R1", "name": "Artist One", "type": "artist", "uri": "spotify:artist:R1"},
+               {"id": "R2", "name": "Artist Two", "type": "artist", "uri": "spotify:artist:R2"}],
+   "tracks": {"limit": 50, "next": null, "offset": 0, "total": 12, "items": []}}},
+  {"added_at": "2026-01-02T00:00:00Z", "album": {"album_type": "single", "total_tracks": 1, "id": "A2",
+   "images": [{"url": "https://i.example/a2-64", "height": 64, "width": 64}],
+   "name": "Album Two", "release_date": "2020", "release_date_precision": "year", "type": "album",
+   "uri": "spotify:album:A2",
+   "artists": [{"id": "R3", "name": "Artist Three", "type": "artist", "uri": "spotify:artist:R3"}],
+   "tracks": {"limit": 50, "next": null, "offset": 0, "total": 1, "items": []}}}
+ ]}

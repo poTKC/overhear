@@ -1,0 +1,21 @@
+{"href": "https://api.spotify.com/v1/me/tracks?offset=0&limit=2", "limit": 2,
+ "next": "https://api.spotify.com/v1/me/tracks?offset=2&limit=2", "offset": 0, "previous": null, "total": 5,
+ "items": [
+  {"added_at": "2026-01-01T00:00:00Z", "track": {
+   "album": {"album_type": "single", "id": "A3", "name": "Album Three", "type": "album", "uri": "spotify:album:A3",
+    "artists": [{"id": "R1", "name": "Artist One", "type": "artist", "uri": "spotify:artist:R1"}],
+    "images": [{"height": 640, "width": 640, "url": "https://i.example/a3-640"},
+               {"height": 300, "width": 300, "url": "https://i.example/a3-300"},
+               {"height": 64, "width": 64, "url": "https://i.example/a3-64"}]},
+   "artists": [{"id": "R1", "name": "Artist One", "type": "artist", "uri": "spotify:artist:R1"},
+               {"id": "R2", "name": "Artist Two", "type": "artist", "uri": "spotify:artist:R2"}],
+   "disc_number": 1, "duration_ms": 163480, "id": "T1", "is_local": false, "is_playable": true,
+   "name": "Track One", "track_number": 2, "type": "track", "uri": "spotify:track:T1"}},
+  {"added_at": "2026-01-02T00:00:00Z", "track": {
+   "album": {"album_type": "album", "id": "A4", "name": "Album Four", "type": "album", "uri": "spotify:album:A4",
+    "artists": [{"id": "R4", "name": "Artist Four", "type": "artist", "uri": "spotify:artist:R4"}],
+    "images": [{"height": 64, "width": 64, "url": "https://i.example/a4-64"}]},
+   "artists": [{"id": "R4", "name": "Artist Four", "type": "artist", "uri": "spotify:artist:R4"}],
+   "disc_number": 1, "duration_ms": 158240, "id": "T2", "is_local": false, "is_playable": true,
+   "name": "Track Two", "track_number": 1, "type": "track", "uri": "spotify:track:T2"}}
+ ]}
