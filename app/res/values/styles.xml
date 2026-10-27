@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- App themes. API 18 has no colorAccent, so the widgets point at recoloured
      copies of the AOSP Holo drawables (tools/make_holo_green.py):
-     holo_g_* green (#1DB954) for the player, holo_w_* neutral for setup. -->
+     holo_g_* green (#1ED760) for the player, holo_w_* neutral for setup. -->
 <resources>
 
     <!-- The player: list and popup menu rows highlight in green. -->

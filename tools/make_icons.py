@@ -55,7 +55,7 @@ DENSITIES = {"mdpi": 1.0, "hdpi": 1.5, "xhdpi": 2.0}
 
 WHITE = "#ffffff"
 GREY = "#b3b3b3"  # inactive toggles, small buttons
-GREEN = "#1db954"  # active toggles
+GREEN = "#1ed760"  # active toggles (Spotify's brand green)
 NOTE_GREY = "#7a7a7a"
 MARKER_GREY = "#aaaaaa"  # the library's drill-down chevron, as its secondary text
 PLACEHOLDER_BG = (0x28, 0x28, 0x28, 255)
