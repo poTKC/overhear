@@ -65,8 +65,6 @@ public final class PlayerState {
         public final String title;
         public final List<String> artists;
         public final String album;
-        /** decorations.parent.entity.uri (e.g. spotify:album:...), or null. */
-        public final String albumUri;
         /** The largest useful cover (640 px): large, else default, else any. */
         public final String coverUrl;
         /** About 300 px: default, else large, else any. */
@@ -91,7 +89,6 @@ public final class PlayerState {
             artists = Collections.unmodifiableList(a);
             JSONObject parent = d == null ? null : d.optJSONObject("parent");
             album = name(entityDecorations(parent));
-            albumUri = str(entity(parent), "uri");
             coverUrl = cover(d);
             mediumCoverUrl = cover(d, "default", "large");
             smallCoverUrl = cover(d, "small", "default", "large");
@@ -122,7 +119,6 @@ public final class PlayerState {
     private Track track = NO_TRACK;
     private String contextUri;
     private String contextName;
-    private String contextCoverUrl;
     private long positionMs;
     private long positionTimestampMs;
     private double speed;
@@ -146,7 +142,6 @@ public final class PlayerState {
         c.track = track;
         c.contextUri = contextUri;
         c.contextName = contextName;
-        c.contextCoverUrl = contextCoverUrl;
         c.positionMs = positionMs;
         c.positionTimestampMs = positionTimestampMs;
         c.speed = speed;
@@ -221,7 +216,6 @@ public final class PlayerState {
     private void setContext(JSONObject c) {
         contextUri = c == null ? null : str(c, "uri");
         contextName = c == null ? null : name(c.optJSONObject("decorations"));
-        contextCoverUrl = c == null ? null : cover(c.optJSONObject("decorations"), "default", "large");
     }
 
     private void setPosition(JSONObject p) {
@@ -300,9 +294,6 @@ public final class PlayerState {
 
     public String getAlbum() { return track.album; }
 
-    /** The album the track is in (spotify:album:...), or null. */
-    public String getAlbumUri() { return track.albumUri; }
-
     public String getCoverUrl() { return track.coverUrl; }
 
     /** A cover of about 300 px (what a 240 px view needs), or null. */
@@ -317,9 +308,6 @@ public final class PlayerState {
     public String getContextUri() { return contextUri; }
 
     public String getContextName() { return contextName; }
-
-    /** The context's cover of about 300 px (default, else large, else any), or null. */
-    public String getContextCoverUrl() { return contextCoverUrl; }
 
     public long getPositionMs() { return positionMs; }
 

@@ -322,6 +322,8 @@ public class LoginActivity extends Activity {
                 @Override public void done(String id) {
                     ok[0] = true;
                     done.countDown();
+                    // A new login (perhaps another account): the library starts from its top.
+                    new Prefs(getApplicationContext()).setLibraryPath("");
                     if (!destroyed) onLoggedIn(id);
                 }
 

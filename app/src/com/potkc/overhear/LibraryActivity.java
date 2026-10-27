@@ -127,11 +127,15 @@ public class LibraryActivity extends Activity {
     private TextView empty;
     private final RowAdapter adapter = new RowAdapter();
     private List<Node> stack;
+    /** The login (Spotify.generation) stack belongs to; another one starts again from the top. */
+    private int stackGeneration;
     /** The first visible row of the pages below the top one, by stack size, to return to. */
     private final Map<Integer, Integer> scroll = new HashMap<Integer, Integer>();
     private boolean destroyed;
     /** A play request is in flight: further taps are ignored. */
     private boolean playing;
+    /** The library_playing toast was shown for the play in flight. */
+    private boolean playingNoted;
     private PlayerService service;
     private boolean bound;
     /** The open OTHERS_PLAYLIST page; null while none is. A retry starts a new one. */
@@ -165,7 +169,14 @@ public class LibraryActivity extends Activity {
         list.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
                 Row row = adapter.getItem(position);
-                if (row.action != null && !playing) row.action.run();
+                if (row.action == null) return;
+                if (!playing) {
+                    row.action.run();
+                } else if (!playingNoted) {
+                    // Taps wait for the play in flight; say so once.
+                    playingNoted = true;
+                    Toast.makeText(LibraryActivity.this, R.string.library_playing, Toast.LENGTH_SHORT).show();
+                }
             }
         });
         list.setOnScrollListener(new AbsListView.OnScrollListener() {
@@ -197,6 +208,7 @@ public class LibraryActivity extends Activity {
 
         // Logged out, only TOP has something to show (its login row).
         stack = spotify.isLoggedIn() ? LibraryPath.decode(prefs.getLibraryPath()) : LibraryPath.decode(null);
+        stackGeneration = spotify.generation();
         Loaded l = cache.get(Node.of(Node.Type.SEARCH));
         if (l != null && l.query != null) query.setText(l.query);
         // Flags 0: connects when the service runs, never creates or keeps it.
@@ -207,6 +219,16 @@ public class LibraryActivity extends Activity {
     protected void onResume() {
         super.onResume();
         active = this;
+        if (spotify.generation() != stackGeneration) {
+            // Logged out or in again (LoginActivity) meanwhile: the pages may be another account's.
+            stackGeneration = spotify.generation();
+            if (stack.size() > 1) {
+                if (current().type == Node.Type.OTHERS_PLAYLIST) closeOthers();
+                stack = LibraryPath.decode(null);
+                scroll.clear();
+                saveStack();
+            }
+        }
         listen(); // renders when it attaches
         render(); // the login may have changed in LoginActivity
     }
@@ -520,7 +542,9 @@ public class LibraryActivity extends Activity {
                 }
             }));
         } else if (reason == SpotifyException.Reason.RATE_LIMITED) {
-            rows.add(Row.note(getString(R.string.library_rate_limited), null)); // ↻ retries
+            int wait = ((SpotifyException) l.error).retryAfterSeconds;
+            rows.add(Row.note(wait > 0 ? getString(R.string.library_rate_limited_wait, wait)
+                    : getString(R.string.library_rate_limited), null)); // ↻ retries
         } else {
             rows.add(Row.note(getString(R.string.library_load_failed), new Runnable() {
                 @Override public void run() {
@@ -538,7 +562,7 @@ public class LibraryActivity extends Activity {
         });
     }
 
-    /** me: the user's ID, to tell their own playlists from others'. */
+    /** me: the user's ID ("" if unknown), to tell their own playlists from others'. */
     private Row itemRow(final Item item, String me) {
         switch (item.kind) {
             case TRACK:
@@ -552,7 +576,9 @@ public class LibraryActivity extends Activity {
             case ARTIST:
                 return Row.item(item, "›", pushing(Node.artist(item.uri, item.title)));
             default: // PLAYLIST
-                boolean others = item.ownerId != null && me != null && !me.isEmpty() && !me.equals(item.ownerId);
+                // Unless it is surely the user's own (an unknown ID or owner included): the Web API
+                // refuses others' tracks, while Soloist's queue lists anyone's.
+                boolean others = me == null || me.isEmpty() || !me.equals(item.ownerId);
                 return Row.item(item, others ? "▶›" : "›", pushing(Node.playlist(item.uri, item.title, others)));
         }
     }
@@ -578,6 +604,7 @@ public class LibraryActivity extends Activity {
     /** As play(contextUri, trackUri), staying on this screen if stay. */
     private void play(final String contextUri, final String trackUri, final boolean stay) {
         playing = true;
+        playingNoted = false;
         final String device = prefs.getDeviceName();
         spotify.run(new Spotify.Call<Void>() {
             @Override public Void run(SpotifyApi api) throws IOException {
@@ -670,6 +697,7 @@ public class LibraryActivity extends Activity {
         final String uri = t.playlistUri();
         final String device = prefs.getDeviceName();
         playing = true;
+        playingNoted = false;
         spotify.run(new Spotify.Call<Void>() {
             @Override public Void run(SpotifyApi api) throws IOException {
                 api.play(device, uri, null);

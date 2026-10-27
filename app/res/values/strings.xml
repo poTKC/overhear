@@ -111,6 +111,8 @@
     <string name="library_load_failed">読み込めませんでした — タップで再試行</string>
     <string name="library_play_from_top">最初から再生します</string>
     <string name="library_play_failed">再生できませんでした</string>
+    <string name="library_playing">再生しています…</string>
+    <string name="library_rate_limited_wait">混み合っています。約 %d 秒後に ↻ を押してください</string>
 
     <!-- debug (debuggable builds only) -->
     <string name="debug_title">デバッグ</string>

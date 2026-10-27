@@ -60,6 +60,8 @@ final class Spotify {
 
             @Override public void clear() {
                 prefs.clearSpotifyRefresh();
+                // Logged out or expired: the next login may be another account's.
+                prefs.setLibraryPath("");
             }
         };
         SpotifyAuth.Clock clock = new SpotifyAuth.Clock() {
