@@ -233,6 +233,16 @@ public final class SpotifyApi {
                 && ((SpotifyException) e).status == 404 && DEVICE_NOT_LISTED.equals(e.getMessage());
     }
 
+    /**
+     * A play's failure that certainly sent nothing to Spotify: no login, or
+     * this device is not in the user's list (so it did not go through).
+     */
+    public static boolean sentNothing(IOException e) {
+        return (e instanceof SpotifyException
+                && ((SpotifyException) e).reason == SpotifyException.Reason.LOGIN_REQUIRED)
+                || isDeviceNotListed(e);
+    }
+
     /** contextUri with offset (or null), else trackUri alone. */
     private static String playBody(String contextUri, String trackUri, JSONObject offset) {
         if (contextUri == null && trackUri == null) throw new IllegalArgumentException("nothing to play");

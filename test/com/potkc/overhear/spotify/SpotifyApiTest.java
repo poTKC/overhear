@@ -729,4 +729,13 @@ public class SpotifyApiTest {
         assertPut("/me/player/play?device_id=d2 A",
                 "{\"context_uri\":\"spotify:album:X\",\"offset\":{\"uri\":\"spotify:track:T\"}}", t.log.get(4));
     }
+
+    @Test public void sentNothingIsANoLoginOrAnUnlistedDevice() {
+        assertTrue(SpotifyApi.sentNothing(new SpotifyException(SpotifyException.Reason.LOGIN_REQUIRED, 0, -1, "x")));
+        assertTrue(SpotifyApi.sentNothing(new SpotifyException(SpotifyException.Reason.HTTP, 404, -1,
+                "device not listed")));
+        assertFalse(SpotifyApi.sentNothing(new SpotifyException(SpotifyException.Reason.HTTP, 404, -1, "PUT x")));
+        assertFalse(SpotifyApi.sentNothing(new SpotifyException(SpotifyException.Reason.HTTP, 502, -1, "x")));
+        assertFalse(SpotifyApi.sentNothing(new IOException("timeout")));
+    }
 }

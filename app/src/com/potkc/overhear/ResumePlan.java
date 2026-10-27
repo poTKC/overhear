@@ -17,11 +17,19 @@ package com.potkc.overhear;
  * Soloist's play of soloistUri from the top (the context if any, else the
  * track), which Soloist accepts while inactive; SOLOIST goes there directly
  * (no Web API login; resume only). NONE: as before (Soloist's play while
- * active, nothing to start from, or a queue row without the Web API).
+ * active, Soloist not logged in, nothing to start from, or a queue row
+ * without the Web API).
+ *
+ * A WEB play that fails may still have gone through (afterFailure): the
+ * fallback runs at once only when the call certainly sent nothing, else
+ * once more after a recheck, unless Soloist has become active.
  * Immutable. Pure Java.
  */
 final class ResumePlan {
     enum Kind { NONE, WEB, SOLOIST }
+
+    /** After a failed WEB play: Soloist's play now, after a recheck (fallBackAfterRecheck), or not at all. */
+    enum Fallback { NOW, LATER, NEVER }
 
     /** Within this of the end, a resume starts the track again rather than its last second. */
     static final long END_MARGIN_MS = 1000;
@@ -47,12 +55,13 @@ final class ResumePlan {
     }
 
     /**
-     * active: Soloist is logged in and the active device; loggedIn: the Web
-     * API is; positionMs, durationMs: the last known (durationMs 0 if unknown).
+     * soloistLoggedIn, active: Soloist is logged in, and the active device;
+     * loggedIn: the Web API is; positionMs, durationMs: the last known
+     * (durationMs 0 if unknown).
      */
-    static ResumePlan resume(boolean active, boolean loggedIn, String trackUri, String contextUri, long positionMs,
-            long durationMs) {
-        if (active) return NONE;
+    static ResumePlan resume(boolean soloistLoggedIn, boolean active, boolean loggedIn, String trackUri,
+            String contextUri, long positionMs, long durationMs) {
+        if (!soloistLoggedIn || active) return NONE;
         if (trackUri == null) {
             if (!(takesOffset(contextUri) || (contextUri != null && contextUri.startsWith("spotify:artist:")))) {
                 return NONE;
@@ -64,6 +73,21 @@ final class ResumePlan {
         String soloist = contextUri != null && contextUri.startsWith("spotify:") ? contextUri : trackUri;
         return new ResumePlan(loggedIn ? Kind.WEB : Kind.SOLOIST, takesOffset(contextUri) ? contextUri : null,
                 trackUri, p, soloist);
+    }
+
+    /**
+     * A WEB play failed: sentNothing (no login, device not listed: nothing
+     * reached Spotify) falls back now; otherwise the play may have gone
+     * through: none if Soloist is already active, else LATER.
+     */
+    static Fallback afterFailure(boolean sentNothing, boolean activeNow) {
+        if (sentNothing) return Fallback.NOW;
+        return activeNow ? Fallback.NEVER : Fallback.LATER;
+    }
+
+    /** The recheck after Fallback.LATER: fall back unless Soloist became active (the play went through). */
+    static boolean fallBackAfterRecheck(boolean activeNow) {
+        return !activeNow;
     }
 
     /** A tapped queue row (its uri and source: "context", "queue", "autoplay" ...) while inactive. */

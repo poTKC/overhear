@@ -1107,11 +1107,8 @@ public class LibraryActivity extends Activity {
     }
 
     /** A failure that certainly sent no play: no login, or this device is not in the user's list. */
-
     private static boolean sentNothing(IOException e) {
-        return (e instanceof SpotifyException
-                && ((SpotifyException) e).reason == SpotifyException.Reason.LOGIN_REQUIRED)
-                || SpotifyApi.isDeviceNotListed(e);
+        return SpotifyApi.sentNothing(e);
     }
 
     /** Soloist's current track is trackUri, or (when none was asked for) its context is contextUri. */

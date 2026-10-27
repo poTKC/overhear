@@ -171,6 +171,14 @@ public final class PlayerService extends Service {
     private long lastControlMs;
     /** A play on this device while Soloist was inactive (playHere) is in flight: further presses wait. */
     private boolean playingHere;
+    /** Counts playHere requests: callbacks of an older one do nothing. */
+    private int playHereSeq;
+    /** When Soloist was first seen inactive since it was last active (wall clock); 0 while active or unknown. */
+    private long inactiveSinceMs;
+    /** After a failed play here that may have gone through, when to look at Soloist again. */
+    private static final long PLAY_HERE_RECHECK_MS = 1500;
+    /** How long ▶ waits for Soloist to report itself active after a play here (or for the call's answer). */
+    private static final long PLAY_HERE_TIMEOUT_MS = 5000;
     /** The last play of another user's playlist the library asked for; or null. */
     private OthersTracker others;
     private final IBinder binder = new LocalBinder();
@@ -1024,22 +1032,35 @@ public final class PlayerService extends Service {
      */
     private boolean resume() {
         if (!connected) return false;
-        ResumePlan p = ResumePlan.resume(soloistActive(), Spotify.get(this).isLoggedIn(), state.getTrackUri(),
-                state.getContextUri(), state.getPositionMs(), state.getDurationMs());
+        // Where it stopped here: the position as of when Soloist was first seen inactive (a final
+        // position_sync normally arrives then; if not, positionAt advances to that moment), else the last sync.
+        long position = inactiveSinceMs > 0 ? state.positionAt(inactiveSinceMs) : state.getPositionMs();
+        ResumePlan p = ResumePlan.resume(state.isLoggedIn(), soloistActive(), Spotify.get(this).isLoggedIn(),
+                state.getTrackUri(), state.getContextUri(), position, state.getDurationMs());
         if (p.kind == ResumePlan.Kind.NONE) return false;
         Log.i(TAG, "resume while inactive: " + p.kind + " " + (p.contextUri != null ? p.contextUri + " from " : "")
-                + p.trackUri + " at " + p.positionMs + " ms");
+                + p.trackUri + " at " + p.positionMs + " ms (last sync " + state.getPositionMs() + " ms, "
+                + state.getStatus() + ")");
         playHere(p);
         return true;
     }
 
     /**
-     * Plays p on this device: through the Web API (WEB), falling back to
-     * Soloist's play of p.soloistUri from the top when that fails and Soloist
-     * has not become active meanwhile (a failed call may still have gone
-     * through), with the library's toast; or Soloist's play at once
-     * (SOLOIST). One at a time: a press while one is in flight is ignored
-     * (logged), as the Web API takes seconds.
+     * Plays p on this device: through the Web API (WEB), or Soloist's play
+     * at once (SOLOIST). A failed WEB play falls back to Soloist's play of
+     * p.soloistUri from the top (with the library's toast) at once only if it
+     * certainly sent nothing; otherwise it may have gone through, so Soloist
+     * is checked again after PLAY_HERE_RECHECK_MS (ResumePlan.afterFailure).
+     *
+     * One at a time: playingHere holds from the request until a state reports
+     * Soloist active, the fallback ran, or PLAY_HERE_TIMEOUT_MS passed (after
+     * the answer, or from the start if none comes: the call may wait behind
+     * others); presses meanwhile are ignored (logged). A disconnect or
+     * onDestroy clears it, and callbacks of an older request do nothing.
+     *
+     * If the user moves playback to another device while the request is in
+     * flight, the PUT, landing later, takes it back here: Spotify gives no
+     * way to cancel it (as with the library's plays).
      */
     private void playHere(final ResumePlan p) {
         if (playingHere) {
@@ -1050,7 +1071,9 @@ public final class PlayerService extends Service {
             soloistFromTop(p.soloistUri);
             return;
         }
+        final int seq = ++playHereSeq;
         playingHere = true;
+        armPlayHereTimeout();
         notifyUi();
         final String device = prefs.getDeviceName();
         Spotify.get(this).run(new Spotify.Call<Void>() {
@@ -1060,24 +1083,64 @@ public final class PlayerService extends Service {
             }
         }, new Spotify.Callback<Void>() {
             @Override public void done(Void result) {
-                playingHere = false;
-                if (destroyed) return;
+                if (destroyed || seq != playHereSeq || !playingHere) return;
                 Log.i(TAG, "play here: done");
-                notifyUi();
+                if (soloistActive()) endPlayHere();
+                else armPlayHereTimeout(); // until a state reports Soloist active
             }
 
             @Override public void failed(IOException e) {
-                playingHere = false;
-                if (destroyed) return;
-                if (soloistActive()) {
-                    Log.i(TAG, "play here failed (" + e.getMessage() + "), but Soloist is active now");
-                } else {
-                    Log.w(TAG, "play here failed (" + e.getMessage() + "): from the top through Soloist");
-                    soloistFromTop(p.soloistUri);
+                if (destroyed || seq != playHereSeq || !playingHere) return;
+                switch (ResumePlan.afterFailure(SpotifyApi.sentNothing(e), soloistActive())) {
+                    case NOW:
+                        Log.w(TAG, "play here failed (" + e.getMessage() + "): from the top through Soloist");
+                        soloistFromTop(p.soloistUri);
+                        endPlayHere();
+                        break;
+                    case NEVER:
+                        Log.i(TAG, "play here failed (" + e.getMessage() + "), but Soloist is active now");
+                        endPlayHere();
+                        break;
+                    default:
+                        Log.w(TAG, "play here failed (" + e.getMessage() + "): checking again shortly");
+                        main.removeCallbacks(playHereTimeout);
+                        main.postDelayed(new Runnable() {
+                            @Override public void run() {
+                                if (destroyed || seq != playHereSeq || !playingHere) return;
+                                if (ResumePlan.fallBackAfterRecheck(soloistActive())) {
+                                    Log.w(TAG, "play here: still inactive, from the top through Soloist");
+                                    soloistFromTop(p.soloistUri);
+                                } else {
+                                    Log.i(TAG, "play here: it went through after all");
+                                }
+                                endPlayHere();
+                            }
+                        }, PLAY_HERE_RECHECK_MS);
+                        break;
                 }
-                notifyUi();
             }
         });
+    }
+
+    private void armPlayHereTimeout() {
+        main.removeCallbacks(playHereTimeout);
+        main.postDelayed(playHereTimeout, PLAY_HERE_TIMEOUT_MS);
+    }
+
+    private final Runnable playHereTimeout = new Runnable() {
+        @Override public void run() {
+            if (!playingHere) return;
+            Log.i(TAG, "play here: no active state in time, ▶ takes presses again");
+            endPlayHere();
+        }
+    };
+
+    /** The play here is over (or given up on): ▶ takes presses again. */
+    private void endPlayHere() {
+        main.removeCallbacks(playHereTimeout);
+        if (!playingHere) return;
+        playingHere = false;
+        notifyUi();
     }
 
     /** Soloist plays uri from its start (it becomes the active device); says so in a toast. */
@@ -1227,6 +1290,12 @@ public final class PlayerService extends Service {
     private final SoloistClient.Listener clientListener = new SoloistClient.Listener() {
         @Override public void onState(PlayerState s) {
             state = s;
+            if (soloistActive()) {
+                inactiveSinceMs = 0;
+                endPlayHere(); // the play here took
+            } else if (inactiveSinceMs == 0) {
+                inactiveSinceMs = System.currentTimeMillis();
+            }
             if (webJump != null) webJump.onState(s);
             if (jump != null) {
                 jump.onState(s);
@@ -1259,6 +1328,9 @@ public final class PlayerService extends Service {
                 if (jump != null) jump.onDisconnected();
                 volumeSync.reset();
                 state = new PlayerState();
+                inactiveSinceMs = 0;
+                playHereSeq++; // a late answer belongs to the old connection
+                endPlayHere();
                 if (webJump != null) webJump.onState(state);
                 updateNotification();
                 updateRemoteControl();
@@ -1303,7 +1375,9 @@ public final class PlayerService extends Service {
         notifyUi();
     }
 
+    /** Playing here: Soloist active (while it waits, its last status is shown as paused, so ▶ resumes). */
     private boolean isPlaying() {
+        if (!soloistActive()) return false;
         PlayerState.Status s = state.getStatus();
         return s == PlayerState.Status.PLAYING || s == PlayerState.Status.BUFFERING;
     }
@@ -1367,7 +1441,12 @@ public final class PlayerService extends Service {
     private void updateRemoteControl() {
         if (rcc == null || !mediaRegistered) return;
         int ps;
-        switch (client.isConnected() ? state.getStatus() : PlayerState.Status.IDLE) {
+        PlayerState.Status status = client.isConnected() ? state.getStatus() : PlayerState.Status.IDLE;
+        // While Soloist waits, its last playing status reads paused: AVRCP's play then reaches resume().
+        if (!soloistActive() && (status == PlayerState.Status.PLAYING || status == PlayerState.Status.BUFFERING)) {
+            status = PlayerState.Status.PAUSED;
+        }
+        switch (status) {
             case PLAYING:
                 ps = RemoteControlClient.PLAYSTATE_PLAYING;
                 break;

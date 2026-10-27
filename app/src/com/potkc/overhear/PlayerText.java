@@ -165,9 +165,9 @@ final class PlayerText {
         return webLoggedIn && !playingHere;
     }
 
-    /** Playback controls work only on the active device. */
+    /** Playback controls work only on the active device, logged in (as PlayerService.soloistActive). */
     static boolean controlsEnabled(boolean connected, PlayerState ps) {
-        return connected && ps.isActive();
+        return connected && ps.isLoggedIn() && ps.isActive();
     }
 
     /**
@@ -180,7 +180,7 @@ final class PlayerText {
             boolean playingHere) {
         if (controlsEnabled(connected, ps)) return !jumping;
         if (!connected || playingHere) return false;
-        return ResumePlan.resume(ps.isLoggedIn() && ps.isActive(), webLoggedIn, ps.getTrackUri(), ps.getContextUri(),
+        return ResumePlan.resume(ps.isLoggedIn(), ps.isActive(), webLoggedIn, ps.getTrackUri(), ps.getContextUri(),
                 ps.getPositionMs(), ps.getDurationMs()).kind != ResumePlan.Kind.NONE;
     }
 

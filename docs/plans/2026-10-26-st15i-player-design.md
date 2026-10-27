@@ -480,4 +480,13 @@ set_volume・set_shuffle・set_repeat_*・add_to_queue・activate・deactivate�
   緑の印は再生画面の表示と合わせてそのままにした。
 - 実機（2026-10-28）: Echo Dot に再生を移して（`play: false`）待機中にし、▶ で同じ曲が 36 秒の位置から ST15i で再生された。
   ライブラリの印の付いた曲のタップ、キューのタップも ST15i で再生された。
+- レビューを受けての修正: Web API の再生が失敗したとき、すぐ Soloist で最初から再生するのは、確実に何も送っていない
+  （未ログイン、端末が一覧にない: `SpotifyApi.sentNothing`）ときだけ。それ以外は通っていることがあるので、1.5 秒後に
+  Soloist がアクティブか確かめ、まだなら最初から（`ResumePlan.afterFailure` / `fallBackAfterRecheck`）。送っている印
+  （▶ を無効にする）は、応答のあとも Soloist がアクティブと報告するまで、または 5 秒まで続け、切断と onDestroy で消す。
+  Soloist がログインしていなければ ▶ は何もしない（ResumePlan も NONE）。controlsEnabled もログインを見るようにして、
+  サービスの soloistActive とそろえた。通知とロック画面（RemoteControlClient）は、待機中は「一時停止」として出す
+  （▶ が出て、AVRCP の再生も resume に届く）。
+- 位置: 実機では、ほかの端末に移したとき Soloist は最後に一時停止と位置（移した時点、29.7 秒。Web API が直前に 29.5 秒）を
+  送ってきた。念のため、待機を最初に見た時刻での `positionAt` を使う（最後の同期が速度 0 なら同じ値）。
 
