@@ -89,7 +89,6 @@
     <string name="login_done">ログインしました</string>
     <string name="login_done_as">ログインしました: %s</string>
     <string name="login_expired">時間切れです。開き直してください</string>
-    <string name="login_html_done">ログインしました。このページは閉じてかまいません。</string>
     <string name="login_html_failed">ログインできませんでした。端末の画面を確認してください。</string>
     <string name="login_html_denied">キャンセルされました。</string>
 
