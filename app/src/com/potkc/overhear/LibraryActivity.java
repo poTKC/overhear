@@ -30,11 +30,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.potkc.overhear.soloist.PlayerState;
 import com.potkc.overhear.soloist.SoloistClient;
 import com.potkc.overhear.spotify.Item;
 import com.potkc.overhear.spotify.LibraryPath;
 import com.potkc.overhear.spotify.LibraryPath.Node;
 import com.potkc.overhear.spotify.Page;
+import com.potkc.overhear.spotify.QueueTracks;
 import com.potkc.overhear.spotify.SpotifyApi;
 import com.potkc.overhear.spotify.SpotifyException;
 import com.potkc.overhear.spotify.SpotifyJson;
@@ -49,6 +51,12 @@ import com.potkc.overhear.spotify.SpotifyJson;
  * Tapping something playable asks the Web API to play it on this device and
  * returns to the player; if that fails, Soloist plays the context from the
  * top instead.
+ *
+ * Another user's playlist (OTHERS_PLAYLIST), whose tracks the Web API
+ * refuses, starts playing from the top when opened and lists what Soloist's
+ * queue shows while its first track plays (QueueTracks). That list belongs
+ * to the open page only (Others), never to the cache; tapping a track there
+ * plays it and stays on the page.
  *
  * Main thread only. Spotify callbacks can arrive after the Activity that
  * started them is gone: they still fill the cache and redraw the resumed
@@ -84,6 +92,28 @@ public class LibraryActivity extends Activity {
         }
     }
 
+    /** The OTHERS_PLAYLIST page while it is open; main thread only. */
+    private static final class Others {
+        final String playlistUri;
+        /** The state before asking to play (-1 and null if unknown), to skip what it still shows. */
+        final int openTrackChanges;
+        final String openTrackUri;
+        /** The first track seen playing in the playlist since it was asked to play; null until then. */
+        String firstTrackUri;
+        /** The full queue was asked for on the current connection. */
+        boolean queueAsked;
+        boolean shuffle;
+        /** The longest list QueueTracks gave so far; null until one. */
+        List<Item> items;
+
+        Others(String playlistUri, PlayerState before) {
+            this.playlistUri = playlistUri;
+            openTrackChanges = before == null ? -1 : before.getTrackChanges();
+            openTrackUri = before == null ? null : before.getTrackUri();
+            shuffle = before != null && before.isShuffle();
+        }
+    }
+
     private static final int CACHE_MAX = 30;
     /** The loaded pages, least recently used first; main thread only. */
     private static final Map<Node, Loaded> cache = new LinkedHashMap<Node, Loaded>(16, 0.75f, true) {
@@ -115,6 +145,10 @@ public class LibraryActivity extends Activity {
     private boolean playing;
     private PlayerService service;
     private boolean bound;
+    /** The open OTHERS_PLAYLIST page; null while none is. */
+    private Others others;
+    /** The client othersListener is added to (while resumed with others open); null otherwise. */
+    private SoloistClient listening;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -179,12 +213,14 @@ public class LibraryActivity extends Activity {
     protected void onResume() {
         super.onResume();
         active = this;
+        listen(); // renders when it attaches
         render(); // the login may have changed in LoginActivity
     }
 
     @Override
     protected void onPause() {
         if (active == this) active = null;
+        unlisten();
         super.onPause();
     }
 
@@ -192,6 +228,8 @@ public class LibraryActivity extends Activity {
     protected void onDestroy() {
         destroyed = true;
         if (active == this) active = null;
+        unlisten();
+        others = null;
         if (artwork != null) artwork.cancelAll();
         if (bound) unbindService(connection);
         bound = false;
@@ -202,6 +240,7 @@ public class LibraryActivity extends Activity {
     private final ServiceConnection connection = new ServiceConnection() {
         @Override public void onServiceConnected(ComponentName name, IBinder binder) {
             service = ((PlayerService.LocalBinder) binder).service();
+            if (active == LibraryActivity.this && listen()) render();
         }
 
         @Override public void onServiceDisconnected(ComponentName name) {
@@ -220,6 +259,7 @@ public class LibraryActivity extends Activity {
         stack.add(node);
         saveStack();
         hideKeyboard();
+        if (node.type == Node.Type.OTHERS_PLAYLIST) openOthers(node);
         render();
         list.setSelection(0);
         if (node.type == Node.Type.SEARCH && query.getText().length() == 0) showKeyboard();
@@ -231,7 +271,8 @@ public class LibraryActivity extends Activity {
             finish();
             return;
         }
-        stack.remove(stack.size() - 1);
+        Node left = stack.remove(stack.size() - 1);
+        if (left.type == Node.Type.OTHERS_PLAYLIST) closeOthers();
         saveStack();
         hideKeyboard();
         render();
@@ -379,7 +420,7 @@ public class LibraryActivity extends Activity {
         List<Row> rows = new ArrayList<Row>();
         if (!loads(node)) {
             if (node.type == Node.Type.TOP) topRows(rows);
-            else rows.add(Row.note(getString(R.string.library_others_pending), null)); // Task 19
+            else othersRows(rows);
             empty.setText("");
             adapter.setRows(rows);
             return;
@@ -535,7 +576,12 @@ public class LibraryActivity extends Activity {
      * Plays contextUri from trackUri (null: from the top), or trackUri alone
      * when contextUri is null, and returns to the player.
      */
-    private void play(final String contextUri, final String trackUri) {
+    private void play(String contextUri, String trackUri) {
+        play(contextUri, trackUri, false);
+    }
+
+    /** As play(contextUri, trackUri), staying on this screen if stay. */
+    private void play(final String contextUri, final String trackUri, final boolean stay) {
         playing = true;
         final String device = prefs.getDeviceName();
         spotify.run(new Spotify.Call<Void>() {
@@ -546,22 +592,21 @@ public class LibraryActivity extends Activity {
         }, new Spotify.Callback<Void>() {
             @Override public void done(Void result) {
                 playing = false;
-                if (!destroyed) finish();
+                if (!destroyed && !stay) finish();
             }
 
             @Override public void failed(IOException e) {
                 playing = false;
                 // Still wanted after leaving the screen: the user asked for it.
                 playFromTop(contextUri != null ? contextUri : trackUri);
-                if (!destroyed) finish();
+                if (!destroyed && !stay) finish();
             }
         });
     }
 
     /** The fallback without the Web API: Soloist plays uri from its start. */
     private void playFromTop(String uri) {
-        PlayerService s = service != null ? service : PlayerService.current(); // unbound once destroyed
-        SoloistClient client = s == null ? null : s.client();
+        SoloistClient client = client();
         Context app = getApplicationContext();
         if (client == null) {
             Toast.makeText(app, R.string.library_play_failed, Toast.LENGTH_SHORT).show();
@@ -569,6 +614,130 @@ public class LibraryActivity extends Activity {
         }
         client.play(uri);
         Toast.makeText(app, R.string.library_play_from_top, Toast.LENGTH_SHORT).show();
+    }
+
+    /** The service's Soloist client, or null while the service is not running. */
+    private SoloistClient client() {
+        PlayerService s = service != null ? service : PlayerService.current(); // unbound once destroyed
+        return s == null ? null : s.client();
+    }
+
+    // --- another user's playlist ---
+
+    /** Starts the playlist from the top and waits for Soloist to list it. */
+    private void openOthers(Node node) {
+        unlisten();
+        SoloistClient client = client();
+        others = new Others(node.uri, client == null ? null : client.getState());
+        final String uri = node.uri;
+        final String device = prefs.getDeviceName();
+        playing = true;
+        spotify.run(new Spotify.Call<Void>() {
+            @Override public Void run(SpotifyApi api) throws IOException {
+                api.play(device, uri, null);
+                return null;
+            }
+        }, new Spotify.Callback<Void>() {
+            @Override public void done(Void result) {
+                playing = false;
+            }
+
+            @Override public void failed(IOException e) {
+                playing = false;
+                SoloistClient c = client();
+                if (c != null) c.play(uri); // from the top, as asked
+                else Toast.makeText(getApplicationContext(), R.string.library_play_failed, Toast.LENGTH_SHORT).show();
+            }
+        });
+        listen();
+    }
+
+    private void closeOthers() {
+        unlisten();
+        others = null;
+    }
+
+    /**
+     * Follows Soloist's state while the OTHERS_PLAYLIST page is open and this
+     * instance resumed; true if it attached just now (the caller renders).
+     */
+    private boolean listen() {
+        if (others == null || listening != null || destroyed) return false;
+        SoloistClient client = client();
+        if (client == null) return false;
+        listening = client;
+        client.addListener(othersListener);
+        othersState(client.getState());
+        return true;
+    }
+
+    private void unlisten() {
+        if (listening != null) listening.removeListener(othersListener);
+        listening = null;
+    }
+
+    private final SoloistClient.Listener othersListener = new SoloistClient.Listener() {
+        @Override public void onState(PlayerState state) {
+            if (listening == null) return; // removed after this was posted
+            othersState(state);
+            render();
+        }
+
+        @Override public void onConnected(boolean connected) {
+            if (listening == null) return;
+            if (others != null && !connected) others.queueAsked = false; // ask the new connection
+            if (connected) othersState(listening.getState());
+            render();
+        }
+
+        @Override public void onError(String message) {}
+    };
+
+    /**
+     * Records the playlist's first track once it plays, asks for the whole
+     * queue once, and keeps the longest list QueueTracks gives: the regular
+     * 10-entry queue that follows must not shorten it, and once another
+     * track plays QueueTracks gives none, so the list stays in order.
+     */
+    private void othersState(PlayerState s) {
+        Others o = others;
+        if (o == null || listening == null) return;
+        o.shuffle = s.isShuffle();
+        String track = s.getTrackUri();
+        // The context_changed comes before the track_changed: until a track
+        // event, the state still shows the track from before the request,
+        // and then briefly none ("").
+        if (o.firstTrackUri == null && track != null && !track.isEmpty()
+                && o.playlistUri.equals(s.getContextUri())
+                && (s.getTrackChanges() != o.openTrackChanges || !track.equals(o.openTrackUri))) {
+            o.firstTrackUri = track;
+        }
+        if (o.firstTrackUri != null && !o.queueAsked && listening.isConnected()) {
+            o.queueAsked = true;
+            listening.requestQueue(SoloistClient.FULL_QUEUE_LIMIT);
+        }
+        List<Item> got = QueueTracks.fromState(s, o.playlistUri, o.firstTrackUri);
+        if (got != null && (o.items == null || got.size() > o.items.size())) o.items = got;
+    }
+
+    private void othersRows(List<Row> rows) {
+        final Others o = others;
+        if (o == null) return;
+        if (listening == null || !listening.isConnected()) {
+            rows.add(Row.note(getString(R.string.library_others_no_player), null));
+        }
+        if (o.items == null) {
+            rows.add(Row.note(getString(R.string.library_others_starting), null));
+            return;
+        }
+        if (o.shuffle) rows.add(Row.note(getString(R.string.library_others_shuffled), null));
+        for (final Item item : o.items) {
+            rows.add(Row.item(item, null, new Runnable() {
+                @Override public void run() {
+                    play(o.playlistUri, item.uri, true);
+                }
+            }));
+        }
     }
 
     // --- keyboard ---
