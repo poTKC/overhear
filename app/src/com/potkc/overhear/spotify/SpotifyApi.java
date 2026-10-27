@@ -132,7 +132,7 @@ public final class SpotifyApi {
     public boolean isTrackSaved(String trackUri) throws IOException {
         String path = LIBRARY + "/contains?uris=" + Pkce.enc(trackUri);
         HelperReply r = call("GET", path, "");
-        if (r.status != 200) throw httpError("GET " + stripQuery(path), r);
+        if (r.status != 200) throw libraryError("GET " + stripQuery(path), r);
         try {
             JSONArray a = new JSONArray(r.body);
             if (a.length() != 1 || !(a.get(0) instanceof Boolean)) throw new IOException("bad reply from contains");
@@ -266,10 +266,22 @@ public final class SpotifyApi {
         if (r.status / 100 != 2) throw httpError("PUT " + stripQuery(path), r);
     }
 
-    /** method without a body; any 2xx is success. */
+    /** A library call (method without a body); any 2xx is success. */
     private void send(String method, String path) throws IOException {
         HelperReply r = call(method, path, "");
-        if (r.status / 100 != 2) throw httpError(method + " " + stripQuery(path), r);
+        if (r.status / 100 != 2) throw libraryError(method + " " + stripQuery(path), r);
+    }
+
+    /**
+     * As httpError, but a 403 that names a scope is Reason.SCOPE: a login
+     * from before user-library-modify was asked for. Library calls only, so
+     * other 403s (others' playlists) stay plain HTTP.
+     */
+    static SpotifyException libraryError(String what, HelperReply r) {
+        if (r.status == 403 && r.body != null && r.body.toLowerCase(java.util.Locale.ROOT).contains("scope")) {
+            return new SpotifyException(SpotifyException.Reason.SCOPE, 403, -1, what + ": missing scope");
+        }
+        return httpError(what, r);
     }
 
     private HelperReply call(String method, String path, String body) throws IOException {
@@ -286,9 +298,6 @@ public final class SpotifyApi {
         if (r.status == 429) {
             return new SpotifyException(SpotifyException.Reason.RATE_LIMITED, 429, r.retryAfterSeconds,
                     what + ": rate limited");
-        }
-        if (r.status == 403 && r.body != null && r.body.toLowerCase(java.util.Locale.ROOT).contains("scope")) {
-            return new SpotifyException(SpotifyException.Reason.SCOPE, 403, -1, what + ": missing scope");
         }
         return new SpotifyException(SpotifyException.Reason.HTTP, r.status, -1, what + ": HTTP " + r.status);
     }

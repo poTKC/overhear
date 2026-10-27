@@ -703,4 +703,16 @@ public class SpotifyApiTest {
             }
         }
     }
+
+    @Test public void aScopeForbiddenOutsideTheLibraryStaysPlainHttp() throws IOException {
+        FakeTransport t = withToken()
+                .reply(403, "{\"error\":{\"status\":403,\"message\":\"Insufficient client scope\"}}");
+        try {
+            loggedIn(t).playlistTracks("spotify:playlist:P", 0);
+            fail();
+        } catch (SpotifyException e) {
+            assertEquals(SpotifyException.Reason.HTTP, e.reason);
+            assertEquals(403, e.status);
+        }
+    }
 }

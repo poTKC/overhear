@@ -81,7 +81,8 @@ import com.potkc.overhear.spotify.SpotifyJson;
  * album and the artists (LibraryPath.linksOf) in a dialog; the choice is
  * pushed like a tapped row. On rows with nothing to offer it does nothing.
  * A track's dialog also saves it to Liked Songs or removes it (Likes),
- * shown at once with that row disabled while the state is checked; a change
+ * shown at once with that row disabled while the state is checked (or a
+ * save or remove runs); a change
  * drops the cached liked songs (forgetLiked), whose pages mark their tracks
  * as liked.
  *
@@ -576,6 +577,7 @@ public class LibraryActivity extends Activity {
         l.loading = true;
         final String next = l.next;
         final String q = l.query;
+        final int generation = spotify.generation(); // a LIKED page marks its tracks under this login only
         spotify.run(new Spotify.Call<Fetched>() {
             @Override public Fetched run(SpotifyApi api) throws IOException {
                 String me = api.me();
@@ -599,7 +601,7 @@ public class LibraryActivity extends Activity {
                     l.more = false;
                 } else {
                     l.items.addAll(f.page.items);
-                    if (node.type == Node.Type.LIKED) Likes.putLiked(spotify, f.page.items);
+                    if (node.type == Node.Type.LIKED) Likes.putLiked(spotify, generation, f.page.items);
                     l.next = f.page.next;
                     l.more = f.page.next != null;
                 }
@@ -888,8 +890,9 @@ public class LibraryActivity extends Activity {
                             push(nodes.get(which - first));
                             return;
                         }
-                        Boolean liked = Likes.get(spotify, like);
-                        if (liked != null) Likes.set(LibraryActivity.this, spotify, like, !liked, NOTHING);
+                        // Unknown (the check failed): 「お気に入りに追加」, whose own failure says so.
+                        Likes.set(LibraryActivity.this, spotify, like, !Boolean.TRUE.equals(Likes.get(spotify, like)),
+                                NOTHING);
                     }
                 })
                 .show();
@@ -918,10 +921,11 @@ public class LibraryActivity extends Activity {
             this.likeUri = likeUri;
         }
 
+        /** Relabels (and re-enables) the Liked Songs row once its check answered or failed. */
         void likeChanged() {
             if (likeUri == null) return;
             remove(getItem(0));
-            insert(getString(Likes.label(Likes.get(spotify, likeUri))), 0);
+            insert(getString(Likes.label(Likes.get(spotify, likeUri))), 0); // notifies: isEnabled is asked again
         }
 
         @Override public boolean areAllItemsEnabled() {
@@ -929,7 +933,7 @@ public class LibraryActivity extends Activity {
         }
 
         @Override public boolean isEnabled(int position) {
-            return position != 0 || likeUri == null || Likes.get(spotify, likeUri) != null;
+            return position != 0 || likeUri == null || !Likes.busy(spotify, likeUri);
         }
 
         @Override public View getView(int position, View convertView, ViewGroup parent) {

@@ -81,7 +81,7 @@ import com.potkc.overhear.spotify.LikedTracks;
  * (marquee). ⋮ at its right (or the Menu key) opens the library at the
  * track's album or one of its artists (PlayerText.trackLinks), and saves
  * the track to Liked Songs or removes it (Likes; checked in the background
- * once per track, the item disabled until then). It is hidden (INVISIBLE,
+ * once per track, the item disabled while that or a change is under way). It is hidden (INVISIBLE,
  * keeping the layout) without a track, with nothing to offer, or without a
  * Spotify login.
  */
@@ -503,7 +503,7 @@ public class PlayerActivity extends Activity {
         boolean web = hasTrack && spotify.isLoggedIn();
         trackLinks = web ? PlayerText.trackLinks(connected, state) : Collections.<LibraryPath.Node>emptyList();
         likeUri = web && LikedTracks.likeable(state.getTrackUri()) ? state.getTrackUri() : null;
-        if (likeUri != null) Likes.check(spotify, likeUri, likeKnown); // once per track
+        if (likeUri != null) Likes.check(spotify, likeUri, null); // once per track (a failure backs off)
         int moreVisibility = trackLinks.isEmpty() && likeUri == null ? View.INVISIBLE : View.VISIBLE;
         if (more.getVisibility() != moreVisibility) more.setVisibility(moreVisibility);
 
@@ -871,9 +871,10 @@ public class PlayerActivity extends Activity {
         final PopupMenu menu = new PopupMenu(this, more);
         menuLikeUri = like;
         if (like != null) {
-            // Disabled until the background check answers (likeKnown then updates it).
+            // Disabled while checked or changed (likeKnown then updates it).
             MenuItem item = menu.getMenu().add(Menu.NONE, MENU_LIKE, 0, R.string.like_add);
-            showLike(item, Likes.get(Spotify.get(this), like));
+            showLike(item, like);
+            Likes.check(Spotify.get(this), like, likeKnown); // waits for a check under way, or starts one
         }
         for (int i = 0; i < links.size(); i++) {
             LibraryPath.Node n = links.get(i);
@@ -889,8 +890,10 @@ public class PlayerActivity extends Activity {
         menu.setOnMenuItemClickListener(new PopupMenu.OnMenuItemClickListener() {
             @Override public boolean onMenuItemClick(MenuItem item) {
                 if (item.getItemId() == MENU_LIKE) {
-                    Boolean liked = Likes.get(Spotify.get(PlayerActivity.this), like);
-                    if (liked != null) Likes.set(PlayerActivity.this, Spotify.get(PlayerActivity.this), like, !liked, NOTHING);
+                    // Unknown (the check failed): 「お気に入りに追加」, whose own failure says so.
+                    Spotify spotify = Spotify.get(PlayerActivity.this);
+                    Likes.set(PlayerActivity.this, spotify, like, !Boolean.TRUE.equals(Likes.get(spotify, like)),
+                            NOTHING);
                     return true;
                 }
                 LibraryPath.Node n = links.get(item.getItemId());
@@ -923,14 +926,15 @@ public class PlayerActivity extends Activity {
         @Override public void run() {
             if (destroyed || trackMenu == null || menuLikeUri == null) return;
             MenuItem item = trackMenu.getMenu().findItem(MENU_LIKE);
-            if (item != null) showLike(item, Likes.get(Spotify.get(PlayerActivity.this), menuLikeUri));
+            if (item != null) showLike(item, menuLikeUri);
         }
     };
 
-    /** The ⋮ menu's Liked Songs item for liked (null: unknown, disabled). */
-    private static void showLike(MenuItem item, Boolean liked) {
-        item.setTitle(Likes.label(liked));
-        item.setEnabled(liked != null);
+    /** The ⋮ menu's Liked Songs item for uri: its label, disabled while checked or changed. */
+    private void showLike(MenuItem item, String uri) {
+        Spotify spotify = Spotify.get(this);
+        item.setTitle(Likes.label(Likes.get(spotify, uri)));
+        item.setEnabled(!Likes.busy(spotify, uri));
     }
 
     private void dismissTrackMenu() {

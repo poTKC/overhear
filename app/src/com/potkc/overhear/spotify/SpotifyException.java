@@ -10,8 +10,8 @@ public class SpotifyException extends IOException {
         /** 429; retryAfterSeconds says when to try again (-1 if unknown). */
         RATE_LIMITED,
         /**
-         * 403 "Insufficient client scope": the login lacks a scope this call
-         * needs (added since); log in again.
+         * 403 "Insufficient client scope" from a library call (save, remove,
+         * contains): the login lacks a scope added since; log in again.
          */
         SCOPE,
         /** Any other HTTP status; see status. */
