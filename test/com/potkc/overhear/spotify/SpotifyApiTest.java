@@ -715,4 +715,18 @@ public class SpotifyApiTest {
             assertEquals(403, e.status);
         }
     }
+
+    @Test public void playCanStartAtAPosition() throws IOException {
+        FakeTransport t = withToken().reply(200, DEVICES).reply(204, "").reply(204, "").reply(204, "");
+        SpotifyApi a = loggedIn(t);
+        a.play("ST15i", "spotify:album:X", "spotify:track:T", 65000);
+        a.play("ST15i", null, "spotify:track:T", 1000);
+        a.play("ST15i", "spotify:album:X", "spotify:track:T", 0);
+        assertPut("/me/player/play?device_id=d2 A", "{\"context_uri\":\"spotify:album:X\","
+                + "\"offset\":{\"uri\":\"spotify:track:T\"},\"position_ms\":65000}", t.log.get(2));
+        assertPut("/me/player/play?device_id=d2 A", "{\"uris\":[\"spotify:track:T\"],\"position_ms\":1000}",
+                t.log.get(3));
+        assertPut("/me/player/play?device_id=d2 A",
+                "{\"context_uri\":\"spotify:album:X\",\"offset\":{\"uri\":\"spotify:track:T\"}}", t.log.get(4));
+    }
 }
