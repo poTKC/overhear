@@ -427,6 +427,58 @@ public class SpotifyApiTest {
         assertEquals(2, t.log.size());
     }
 
+    @Test public void shuffleSharesTheCachedDeviceWithPlay() throws IOException {
+        FakeTransport t = withToken().reply(200, DEVICES).reply(204, "").reply(204, "").reply(204, "");
+        SpotifyApi a = loggedIn(t);
+        a.shuffle("ST15i", true);
+        a.play("ST15i", "spotify:album:X", null);
+        a.shuffle("ST15i", false);
+        assertEquals("GET /me/player/devices A", t.log.get(1));
+        assertEquals("PUT /me/player/shuffle?state=true&device_id=d2 A", t.log.get(2));
+        assertPut("/me/player/play?device_id=d2 A", "{\"context_uri\":\"spotify:album:X\"}", t.log.get(3));
+        assertEquals("PUT /me/player/shuffle?state=false&device_id=d2 A", t.log.get(4));
+        assertEquals(5, t.log.size());
+    }
+
+    @Test public void shuffleLooksUpAgainWhenTheDeviceIsGone() throws IOException {
+        FakeTransport t = withToken().reply(200, DEVICES).reply(404, "{}")
+                .reply(200, "{\"devices\":[{\"id\":\"d2\",\"name\":\"ST15i\"},{\"id\":\"d3\",\"name\":\"ST15i\"}]}")
+                .reply(204, "").reply(204, "");
+        SpotifyApi a = loggedIn(t);
+        a.shuffle("ST15i", true);
+        assertEquals("GET /me/player/devices A", t.log.get(3));
+        assertEquals("PUT /me/player/shuffle?state=true&device_id=d3 A", t.log.get(4));
+        a.play("ST15i", "spotify:album:X", null);
+        assertPut("/me/player/play?device_id=d3 A", "{\"context_uri\":\"spotify:album:X\"}", t.log.get(5));
+        assertEquals(6, t.log.size());
+    }
+
+    @Test public void shuffleGivesUpAfterASecond404() {
+        FakeTransport t = withToken().reply(200, DEVICES).reply(404, "{}")
+                .reply(200, "{\"devices\":[{\"id\":\"d3\",\"name\":\"ST15i\"}]}").reply(404, "{}");
+        try {
+            loggedIn(t).shuffle("ST15i", false);
+            fail();
+        } catch (SpotifyException e) {
+            assertEquals(404, e.status);
+            assertFalse(SpotifyApi.isDeviceNotListed(e));
+        } catch (IOException e) {
+            fail(e.toString());
+        }
+        assertEquals(5, t.log.size());
+    }
+
+    @Test public void shuffleFailsWhenTheDeviceIsNotListed() {
+        FakeTransport t = withToken().reply(200, "{\"devices\":[{\"id\":\"d1\",\"name\":\"Echo\"}]}");
+        try {
+            loggedIn(t).shuffle("ST15i", true);
+            fail();
+        } catch (IOException e) {
+            assertTrue(SpotifyApi.isDeviceNotListed(e));
+        }
+        assertEquals(2, t.log.size());
+    }
+
     @Test public void listPathsAndPaging() throws IOException {
         FakeTransport t = withToken()
                 .reply(200, "{\"items\":[{\"uri\":\"spotify:playlist:P\",\"name\":\"p\"}],\"next\":\"x\"}")

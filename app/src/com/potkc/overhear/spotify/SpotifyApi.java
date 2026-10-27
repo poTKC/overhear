@@ -11,8 +11,8 @@ import org.json.JSONObject;
  * call blocks (run it off the main thread). A 401 refreshes the access token
  * and retries once. The user ID and the playback device ID are cached per
  * login (SpotifyAuth.generation()), the device also by name. Safe to call
- * from any thread; meant for one background thread (play's lookup and PUT
- * are not atomic). Pure Java.
+ * from any thread; meant for one background thread (the device lookup and
+ * PUT of play and shuffle are not atomic). Pure Java.
  */
 public final class SpotifyApi {
     public static final int PAGE = 50;
@@ -124,21 +124,35 @@ public final class SpotifyApi {
 
     /**
      * Starts playback on the device named deviceName: contextUri from offsetUri
-     * (null: from the top), or offsetUri alone when contextUri is null. A 404
-     * (the device ID changed) looks the device up again, skipping the ID that
-     * failed, and retries once.
+     * (null: from the top), or offsetUri alone when contextUri is null.
      */
     public void play(String deviceName, String contextUri, String offsetUri) throws IOException {
-        String body = playBody(contextUri, offsetUri);
+        putOnDevice(deviceName, "/me/player/play?", playBody(contextUri, offsetUri));
+    }
+
+    /**
+     * Turns shuffle on or off on the device named deviceName. With shuffle on,
+     * a following play of a context without an offset starts at a random track.
+     */
+    public void shuffle(String deviceName, boolean on) throws IOException {
+        putOnDevice(deviceName, "/me/player/shuffle?state=" + on + "&", "");
+    }
+
+    /**
+     * PUTs body to path (ending in ? or &) plus device_id. The device ID is
+     * cached; a 404 (the ID changed) looks the device up again, skipping the
+     * ID that failed, and retries once.
+     */
+    private void putOnDevice(String deviceName, String path, String body) throws IOException {
         Device d = device;
         String id = d != null && d.generation == auth.generation() && d.name.equals(deviceName)
                 ? d.id : findDevice(deviceName, null);
         try {
-            put("/me/player/play?device_id=" + Pkce.enc(id), body);
+            put(path + "device_id=" + Pkce.enc(id), body);
         } catch (SpotifyException e) {
             if (e.reason != SpotifyException.Reason.HTTP || e.status != 404) throw e;
             device = null;
-            put("/me/player/play?device_id=" + Pkce.enc(findDevice(deviceName, id)), body);
+            put(path + "device_id=" + Pkce.enc(findDevice(deviceName, id)), body);
         }
     }
 
@@ -157,7 +171,7 @@ public final class SpotifyApi {
         throw new SpotifyException(SpotifyException.Reason.HTTP, 404, -1, DEVICE_NOT_LISTED);
     }
 
-    /** play's failure when deviceName is not among the user's devices: nothing was sent. */
+    /** play's or shuffle's failure when deviceName is not among the user's devices: nothing was sent. */
     public static boolean isDeviceNotListed(IOException e) {
         return e instanceof SpotifyException && ((SpotifyException) e).reason == SpotifyException.Reason.HTTP
                 && ((SpotifyException) e).status == 404 && DEVICE_NOT_LISTED.equals(e.getMessage());
