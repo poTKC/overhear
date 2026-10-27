@@ -41,6 +41,12 @@
             android:theme="@style/Theme.Overhear.Setup"
             android:screenOrientation="portrait" />
 
+        <activity android:name=".LibraryActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Overhear.Setup"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize|stateHidden" />
+
         <!-- Started only by this app (activity, boot receiver, notification). -->
         <service android:name=".PlayerService" android:exported="false" />
 

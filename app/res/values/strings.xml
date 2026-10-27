@@ -81,6 +81,33 @@
     <string name="login_html_failed">ログインできませんでした。端末の画面を確認してください。</string>
     <string name="login_html_denied">キャンセルされました。</string>
 
+    <!-- library -->
+    <string name="library_title">ライブラリ</string>
+    <string name="library_back">戻る</string>
+    <string name="library_back_glyph">←</string>
+    <string name="library_reload">再読み込み</string>
+    <string name="library_reload_glyph">↻</string>
+    <string name="library_search">検索</string>
+    <string name="library_search_hint">曲・アルバム・アーティストを検索</string>
+    <string name="library_liked">お気に入りの曲</string>
+    <string name="library_playlists">プレイリスト</string>
+    <string name="library_albums">アルバム</string>
+    <string name="library_artists">アーティスト</string>
+    <string name="library_recent">最近再生</string>
+    <string name="library_tracks">曲</string>
+    <string name="library_login">Spotify にログイン</string>
+    <string name="library_play">再生</string>
+    <string name="library_play_artist">このアーティストを再生</string>
+    <string name="library_loading">読み込み中…</string>
+    <string name="library_empty">何もありません</string>
+    <string name="library_no_results">見つかりませんでした</string>
+    <string name="library_others_pending">準備中</string>
+    <string name="library_login_expired">Spotify のログインが切れました — タップしてログイン</string>
+    <string name="library_rate_limited">混み合っています。しばらくしてから ↻ を押してください</string>
+    <string name="library_load_failed">読み込めませんでした — タップで再試行</string>
+    <string name="library_play_from_top">最初から再生します</string>
+    <string name="library_play_failed">再生できませんでした</string>
+
     <!-- debug (debuggable builds only) -->
     <string name="debug_title">デバッグ</string>
     <string name="debug_show_log">ログを表示</string>
