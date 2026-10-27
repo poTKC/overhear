@@ -34,6 +34,13 @@
     <string name="artwork">アートワーク</string>
     <string name="track_menu">曲のメニュー</string>
     <string name="track_open_album">アルバムを開く</string>
+    <string name="like_add">お気に入りに追加</string>
+    <string name="like_remove">お気に入りから削除</string>
+    <string name="like_added">お気に入りに追加しました</string>
+    <string name="like_removed">お気に入りから削除しました</string>
+    <string name="like_failed">お気に入りを変更できませんでした</string>
+    <string name="like_relogin">お気に入りを変更するには、Spotify にログインし直してください。</string>
+    <string name="like_login">ログイン</string>
     <string name="setup_service_label">再生サービス</string>
     <string name="setup_service_running">動作中</string>
     <string name="setup_service_stopped">停止中</string>

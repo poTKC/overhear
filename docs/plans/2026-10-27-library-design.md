@@ -445,3 +445,20 @@ Web API の失敗）は、今までどおり QueueJump（`skip_next` を 1 回�
   entity の URI を使う（PlayerState.Track.artistUris を追加）。選べるページの一覧は `LibraryPath.linksOf`（純 Java、ホストテスト付き）。
 - ダイアログは onDestroy で閉じる。
 
+## お気に入りの追加・削除（2026-10-28）
+
+- 2026 年 2 月の変更で `PUT/DELETE /me/tracks` と `GET /me/tracks/contains` はなくなり、`PUT /me/library?uris=`、
+  `DELETE /me/library?uris=`、`GET /me/library/contains?uris=`（`[true]` のような真偽の配列）になった（公式リファレンスで確認）。
+  SpotifyApi の `isTrackSaved` / `saveTrack` / `removeTrack`（パスは `SpotifyApi.LIBRARY`）。overhear-fetch は DELETE も通す。
+- スコープに `user-library-modify` を足した。contains は `user-library-read` で足りる（前からのログインでも使える）。
+  追加・削除は新しいスコープが要り、403 で本文に "scope" があれば `SpotifyException.Reason.SCOPE` にする。画面は
+  「お気に入りを変更するには、Spotify にログインし直してください。」のダイアログ（「ログイン」で LoginActivity）を出す。
+- 分かっている状態は `LikedTracks`（純 Java、ホストテスト付き）に、ログインごとに曲の URI で持つ（Likes が両画面で共有）。
+  再生画面は曲が変わったとき（ログイン中だけ）に一度だけ contains を呼ぶ。失敗したら次の機会にもう一度。
+  お気に入りの曲のページを読み込むと、その曲は「お気に入り」として覚える。追加・削除のあとは状態を更新し、トーストを出し、
+  ライブラリのお気に入りの曲のキャッシュを捨てる（表示中なら読み直す）。
+- 再生画面の ⋮ の先頭に「お気に入りに追加」か「お気に入りから削除」。状態が分からない間は「お気に入りに追加」を無効で出し、
+  答えが来たら開いているメニューをその場で更新する。
+- ライブラリの曲の長押しのダイアログにも先頭に同じ行を出す。ダイアログはすぐ出し（待たせない）、分からなければその場で
+  contains を呼び、答えが来るまでその行を無効（薄く）にして、来たら書き換える。実機では contains は 1 秒足らずで返った。
+

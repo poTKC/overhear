@@ -21,6 +21,7 @@ import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.AbsListView;
 import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
 import android.widget.BaseAdapter;
 import android.widget.EditText;
 import android.widget.ImageView;
@@ -42,6 +43,7 @@ import com.potkc.overhear.soloist.SoloistClient;
 import com.potkc.overhear.spotify.Item;
 import com.potkc.overhear.spotify.LibraryPath;
 import com.potkc.overhear.spotify.LibraryPath.Node;
+import com.potkc.overhear.spotify.LikedTracks;
 import com.potkc.overhear.spotify.Page;
 import com.potkc.overhear.spotify.OthersTracker;
 import com.potkc.overhear.spotify.SpotifyApi;
@@ -78,6 +80,10 @@ import com.potkc.overhear.spotify.SpotifyJson;
  * A long-press on a track or album row (in any list) offers the track's
  * album and the artists (LibraryPath.linksOf) in a dialog; the choice is
  * pushed like a tapped row. On rows with nothing to offer it does nothing.
+ * A track's dialog also saves it to Liked Songs or removes it (Likes),
+ * shown at once with that row disabled while the state is checked; a change
+ * drops the cached liked songs (forgetLiked), whose pages mark their tracks
+ * as liked.
  *
  * Another user's playlist (OTHERS_PLAYLIST), whose tracks the Web API
  * refuses, opens with its ▶ and ⇄ rows and a note only. ▶ or ⇄ has
@@ -179,8 +185,9 @@ public class LibraryActivity extends Activity {
     private boolean playingNoted;
     private PlayerService service;
     private boolean bound;
-    /** The long-press choices on screen, or null. */
+    /** The long-press choices on screen and their rows, or null. */
     private AlertDialog links;
+    private LinksAdapter linksAdapter;
     /** What the OTHERS_PLAYLIST rows were last built from (othersKey), to skip renders that change nothing. */
     private String othersShown;
 
@@ -592,6 +599,7 @@ public class LibraryActivity extends Activity {
                     l.more = false;
                 } else {
                     l.items.addAll(f.page.items);
+                    if (node.type == Node.Type.LIKED) Likes.putLiked(spotify, f.page.items);
                     l.next = f.page.next;
                     l.more = f.page.next != null;
                 }
@@ -648,6 +656,15 @@ public class LibraryActivity extends Activity {
         l.error = null;
         startLoad(node, l);
         render();
+    }
+
+    /**
+     * Liked Songs changed (Likes.set): drops the cached liked songs, and
+     * reloads them if they are shown.
+     */
+    static void forgetLiked() {
+        cache.remove(Node.of(Node.Type.LIKED));
+        if (active != null && active.current().type == Node.Type.LIKED) active.render();
     }
 
     private static void renderActive() {
@@ -844,29 +861,84 @@ public class LibraryActivity extends Activity {
     /** The pages item links to, as a dialog of choices; nothing when there are none. */
     private void showLinks(Item item) {
         final List<Node> nodes = LibraryPath.linksOf(item, current());
-        if (nodes.isEmpty()) return;
-        String[] labels = new String[nodes.size()];
-        for (int i = 0; i < labels.length; i++) {
-            Node n = nodes.get(i);
+        final String like = spotify.isLoggedIn() && item.kind == Item.Kind.TRACK && LikedTracks.likeable(item.uri)
+                ? item.uri : null;
+        if (nodes.isEmpty() && like == null) return;
+        final int first = like == null ? 0 : 1; // the Liked Songs row first
+        List<String> labels = new ArrayList<String>();
+        if (like != null) labels.add(getString(Likes.label(Likes.get(spotify, like))));
+        for (Node n : nodes) {
             if (n.type == Node.Type.ALBUM) {
-                labels[i] = getString(R.string.library_open_album);
+                labels.add(getString(R.string.library_open_album));
             } else {
                 // The name, even for a sole artist: it says whose page opens.
-                labels[i] = n.title == null || n.title.isEmpty() ? getString(R.string.library_open_artist)
-                        : getString(R.string.library_open_named, n.title);
+                labels.add(n.title == null || n.title.isEmpty() ? getString(R.string.library_open_artist)
+                        : getString(R.string.library_open_named, n.title));
             }
         }
         if (links != null) links.dismiss();
-        links = new AlertDialog.Builder(this)
-                .setTitle(item.title)
-                .setItems(labels, new DialogInterface.OnClickListener() {
+        AlertDialog.Builder b = new AlertDialog.Builder(this).setTitle(item.title);
+        linksAdapter = new LinksAdapter(b.getContext(), labels, like);
+        links = b.setAdapter(linksAdapter, new DialogInterface.OnClickListener() {
                     @Override public void onClick(DialogInterface d, int which) {
                         links = null;
-                        if (!destroyed) push(nodes.get(which));
+                        linksAdapter = null;
+                        if (destroyed) return;
+                        if (which >= first) {
+                            push(nodes.get(which - first));
+                            return;
+                        }
+                        Boolean liked = Likes.get(spotify, like);
+                        if (liked != null) Likes.set(LibraryActivity.this, spotify, like, !liked, NOTHING);
                     }
                 })
                 .show();
         Dialogs.neutral(links);
+        // Shown at once; an unknown state is checked now, its row disabled until the answer.
+        if (like != null) Likes.check(spotify, like, likeKnown);
+    }
+
+    private static final Runnable NOTHING = new Runnable() {
+        @Override public void run() {}
+    };
+
+    /** A Liked Songs check answered: the open long-press dialog shows it. */
+    private final Runnable likeKnown = new Runnable() {
+        @Override public void run() {
+            if (!destroyed && links != null && linksAdapter != null) linksAdapter.likeChanged();
+        }
+    };
+
+    /** The long-press choices; the Liked Songs row (first, if likeUri) is disabled while unknown. */
+    private final class LinksAdapter extends ArrayAdapter<String> {
+        private final String likeUri;
+
+        LinksAdapter(Context c, List<String> labels, String likeUri) {
+            super(c, android.R.layout.select_dialog_item, labels);
+            this.likeUri = likeUri;
+        }
+
+        void likeChanged() {
+            if (likeUri == null) return;
+            remove(getItem(0));
+            insert(getString(Likes.label(Likes.get(spotify, likeUri))), 0);
+        }
+
+        @Override public boolean areAllItemsEnabled() {
+            return false;
+        }
+
+        @Override public boolean isEnabled(int position) {
+            return position != 0 || likeUri == null || Likes.get(spotify, likeUri) != null;
+        }
+
+        @Override public View getView(int position, View convertView, ViewGroup parent) {
+            View v = super.getView(position, convertView, parent);
+            boolean enabled = isEnabled(position);
+            v.setEnabled(enabled);
+            v.setAlpha(enabled ? 1f : 0.4f); // the dialog's text colour may not grey out
+            return v;
+        }
     }
 
     private Runnable pushing(final Node node) {
