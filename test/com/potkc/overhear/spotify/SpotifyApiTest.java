@@ -339,4 +339,150 @@ public class SpotifyApiTest {
             assertFalse(e.getMessage().contains("SECRET"));
         }
     }
+
+    private static SpotifyApi loggedIn(FakeTransport t) {
+        MemoryStore s = new MemoryStore();
+        s.refresh = "R";
+        return new SpotifyApi(t, new SpotifyAuth(t, s, new SpotifyAuth.Clock() {
+            @Override public long nowMs() { return 1000000; }
+        }, "cid"));
+    }
+
+    private static FakeTransport withToken() {
+        return new FakeTransport().reply(200, "{\"access_token\":\"A\",\"expires_in\":3600}");
+    }
+
+    /** Checks a logged "PUT path token body" line, comparing the body as JSON. */
+    private static void assertPut(String pathAndToken, String body, String line) {
+        assertTrue(line, line.startsWith("PUT " + pathAndToken + " "));
+        JSONObject want = new JSONObject(body);
+        JSONObject got = new JSONObject(line.substring(("PUT " + pathAndToken + " ").length()));
+        assertTrue(got.toString(), want.similar(got));
+    }
+
+    private static final String DEVICES =
+            "{\"devices\":[{\"id\":\"d1\",\"name\":\"Echo\"},{\"id\":\"d2\",\"name\":\"ST15i\"}]}";
+
+    @Test public void playLooksUpTheDeviceOnceAndSendsTheOffset() throws IOException {
+        FakeTransport t = withToken().reply(200, DEVICES).reply(204, "").reply(204, "");
+        SpotifyApi a = loggedIn(t);
+        a.play("ST15i", "spotify:album:X", "spotify:track:T");
+        a.play("ST15i", "spotify:album:X", null);
+        assertEquals("GET /me/player/devices A", t.log.get(1));
+        assertPut("/me/player/play?device_id=d2 A",
+                "{\"context_uri\":\"spotify:album:X\",\"offset\":{\"uri\":\"spotify:track:T\"}}", t.log.get(2));
+        assertPut("/me/player/play?device_id=d2 A", "{\"context_uri\":\"spotify:album:X\"}", t.log.get(3));
+        assertEquals(4, t.log.size());
+    }
+
+    @Test public void playALoneTrackSendsUris() throws IOException {
+        FakeTransport t = withToken().reply(200, DEVICES).reply(204, "");
+        loggedIn(t).play("ST15i", null, "spotify:track:T");
+        assertPut("/me/player/play?device_id=d2 A", "{\"uris\":[\"spotify:track:T\"]}", t.log.get(2));
+    }
+
+    @Test public void playLooksUpAgainWhenTheDeviceIsGone() throws IOException {
+        FakeTransport t = withToken().reply(200, DEVICES).reply(404, "{}")
+                .reply(200, "{\"devices\":[{\"id\":\"d3\",\"name\":\"ST15i\"}]}").reply(204, "").reply(204, "");
+        SpotifyApi a = loggedIn(t);
+        a.play("ST15i", "spotify:album:X", null);
+        assertEquals("GET /me/player/devices A", t.log.get(3));
+        assertPut("/me/player/play?device_id=d3 A", "{\"context_uri\":\"spotify:album:X\"}", t.log.get(4));
+        a.play("ST15i", "spotify:album:X", null);
+        assertPut("/me/player/play?device_id=d3 A", "{\"context_uri\":\"spotify:album:X\"}", t.log.get(5));
+        assertEquals(6, t.log.size());
+    }
+
+    @Test public void playGivesUpAfterASecond404() {
+        FakeTransport t = withToken().reply(200, DEVICES).reply(404, "{}").reply(200, DEVICES).reply(404, "{}");
+        try {
+            loggedIn(t).play("ST15i", "spotify:album:X", null);
+            fail();
+        } catch (SpotifyException e) {
+            assertEquals(SpotifyException.Reason.HTTP, e.reason);
+            assertEquals(404, e.status);
+        } catch (IOException e) {
+            fail(e.toString());
+        }
+        assertEquals(5, t.log.size());
+    }
+
+    @Test public void playFailsWhenTheDeviceIsNotListed() {
+        FakeTransport t = withToken().reply(200, "{\"devices\":[{\"id\":\"d1\",\"name\":\"ST15i phone\"},"
+                + "{\"id\":null,\"name\":\"ST15i\"}]}");
+        try {
+            loggedIn(t).play("ST15i", "spotify:album:X", null);
+            fail();
+        } catch (SpotifyException e) {
+            assertEquals(SpotifyException.Reason.HTTP, e.reason);
+            assertEquals(404, e.status);
+            assertEquals("device not listed", e.getMessage());
+        } catch (IOException e) {
+            fail(e.toString());
+        }
+        assertEquals(2, t.log.size());
+    }
+
+    @Test public void listPathsAndPaging() throws IOException {
+        FakeTransport t = withToken()
+                .reply(200, "{\"items\":[{\"uri\":\"spotify:playlist:P\",\"name\":\"p\"}],\"next\":\"x\"}")
+                .reply(200, "{\"items\":[]}")
+                .reply(200, "{\"items\":[]}")
+                .reply(200, "{\"items\":[]}")
+                .reply(200, "{\"artists\":{\"items\":[],\"next\":\"x\",\"cursors\":{\"after\":\"c2\"}}}")
+                .reply(200, "{\"artists\":{\"items\":[]}}")
+                .reply(200, "{\"items\":[]}")
+                .reply(200, "{\"items\":[]}")
+                .reply(200, "{\"tracks\":{\"items\":[{\"uri\":\"spotify:track:T\",\"name\":\"t\","
+                        + "\"album\":{\"uri\":\"spotify:album:B\"}}]}}");
+        SpotifyApi a = loggedIn(t);
+        Page p = a.playlists(50);
+        assertEquals("spotify:playlist:P", p.items.get(0).uri);
+        assertEquals("51", p.next);
+        a.savedAlbums(0);
+        a.albumTracks("spotify:album:B", "cover", 50);
+        a.playlistTracks("spotify:playlist:P", 100);
+        assertEquals("c2", a.followedArtists("c1").next);
+        a.followedArtists(null);
+        a.artistAlbums("spotify:artist:R", 50);
+        a.recent();
+        SpotifyJson.SearchResult r = a.search("daft punk");
+        assertEquals("spotify:album:B", r.tracks.get(0).contextUri);
+        assertEquals("GET /me/playlists?limit=50&offset=50 A", t.log.get(1));
+        assertEquals("GET /me/albums?limit=50&offset=0&market=from_token A", t.log.get(2));
+        assertEquals("GET /albums/B/tracks?limit=50&offset=50&market=from_token A", t.log.get(3));
+        assertEquals("GET /playlists/P/items?limit=50&offset=100&market=from_token A", t.log.get(4));
+        assertEquals("GET /me/following?type=artist&limit=50&after=c1 A", t.log.get(5));
+        assertEquals("GET /me/following?type=artist&limit=50 A", t.log.get(6));
+        assertEquals("GET /artists/R/albums?include_groups=album%2Csingle&limit=50&offset=50&market=from_token A",
+                t.log.get(7));
+        assertEquals("GET /me/player/recently-played?limit=50 A", t.log.get(8));
+        assertEquals("GET /search?q=daft+punk&type=track%2Calbum%2Cartist%2Cplaylist&limit=10&market=from_token A",
+                t.log.get(9));
+        assertEquals(10, t.log.size());
+    }
+
+    @Test public void meIsCachedAndGivesSavedTracksTheirContext() throws IOException {
+        FakeTransport t = withToken()
+                .reply(200, "{\"id\":\"potkc\"}")
+                .reply(200, "{\"items\":[{\"track\":{\"uri\":\"spotify:track:T\",\"name\":\"t\"}}]}")
+                .reply(200, "{\"items\":[]}");
+        SpotifyApi a = loggedIn(t);
+        Page p = a.savedTracks(0);
+        assertEquals("spotify:user:potkc:collection", p.items.get(0).contextUri);
+        a.savedTracks(50);
+        assertEquals("potkc", a.me());
+        assertEquals("GET /me A", t.log.get(1));
+        assertEquals("GET /me/tracks?limit=50&offset=0&market=from_token A", t.log.get(2));
+        assertEquals("GET /me/tracks?limit=50&offset=50&market=from_token A", t.log.get(3));
+        assertEquals(4, t.log.size());
+    }
+
+    @Test public void savedTracksWithoutAUserIdPlayAlone() throws IOException {
+        FakeTransport t = withToken()
+                .reply(200, "{}")
+                .reply(200, "{\"items\":[{\"track\":{\"uri\":\"spotify:track:T\",\"name\":\"t\"}}]}");
+        Page p = loggedIn(t).savedTracks(0);
+        assertNull(p.items.get(0).contextUri);
+    }
 }

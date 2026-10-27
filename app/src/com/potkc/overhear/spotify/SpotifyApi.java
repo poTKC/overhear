@@ -2,17 +2,26 @@ package com.potkc.overhear.spotify;
 
 import java.io.IOException;
 
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
  * The Spotify Web API calls Overhear makes, through an ApiTransport. Each
  * call blocks (run it off the main thread). A 401 refreshes the access token
- * and retries once. Pure Java.
+ * and retries once. The user ID and the playback device ID are cached in
+ * volatile fields, so calls may come from any thread. Pure Java.
  */
 public final class SpotifyApi {
+    public static final int PAGE = 50;
+    public static final int SEARCH_PAGE = 10;
+    /** Lists of tracks and albums follow the user's country for what is playable. */
+    private static final String MARKET = "&market=from_token";
+
     private final ApiTransport transport;
     private final SpotifyAuth auth;
+    private volatile String userId;
+    private volatile String deviceId;
 
     public SpotifyApi(ApiTransport transport, SpotifyAuth auth) {
         this.transport = transport;
@@ -21,6 +30,119 @@ public final class SpotifyApi {
 
     public SpotifyAuth auth() {
         return auth;
+    }
+
+    /** The user's ID ("" when the reply has none), fetched once. */
+    public String me() throws IOException {
+        String id = userId;
+        if (id == null) {
+            id = SpotifyJson.me(getJson("/me"));
+            userId = id;
+        }
+        return id;
+    }
+
+    public Page playlists(int offset) throws IOException {
+        return SpotifyJson.playlists(getJson("/me/playlists" + page(offset)), offset);
+    }
+
+    public Page savedAlbums(int offset) throws IOException {
+        return SpotifyJson.savedAlbums(getJson("/me/albums" + page(offset) + MARKET), offset);
+    }
+
+    /** The liked songs, played in the collection once me() knows the user. */
+    public Page savedTracks(int offset) throws IOException {
+        String id = me();
+        return SpotifyJson.savedTracks(getJson("/me/tracks" + page(offset) + MARKET), id, offset);
+    }
+
+    public Page albumTracks(String albumUri, String albumCover, int offset) throws IOException {
+        return SpotifyJson.albumTracks(getJson("/albums/" + id(albumUri) + "/tracks" + page(offset) + MARKET),
+                albumUri, albumCover, offset);
+    }
+
+    public Page playlistTracks(String playlistUri, int offset) throws IOException {
+        return SpotifyJson.playlistTracks(
+                getJson("/playlists/" + id(playlistUri) + "/items" + page(offset) + MARKET), playlistUri, offset);
+    }
+
+    /** after is the previous page's next cursor, null for the first page. */
+    public Page followedArtists(String after) throws IOException {
+        String path = "/me/following?type=artist&limit=" + PAGE + (after == null ? "" : "&after=" + Pkce.enc(after));
+        return SpotifyJson.followedArtists(getJson(path));
+    }
+
+    /** Albums and singles only. */
+    public Page artistAlbums(String artistUri, int offset) throws IOException {
+        return SpotifyJson.artistAlbums(getJson("/artists/" + id(artistUri) + "/albums?include_groups="
+                + Pkce.enc("album,single") + "&limit=" + PAGE + "&offset=" + offset + MARKET), offset);
+    }
+
+    /** One page of recently played tracks. */
+    public Page recent() throws IOException {
+        return SpotifyJson.recent(getJson("/me/player/recently-played?limit=" + PAGE));
+    }
+
+    public SpotifyJson.SearchResult search(String query) throws IOException {
+        return SpotifyJson.search(getJson("/search?q=" + Pkce.enc(query) + "&type="
+                + Pkce.enc("track,album,artist,playlist") + "&limit=" + SEARCH_PAGE + MARKET));
+    }
+
+    /**
+     * Starts playback on the device named deviceName: contextUri from offsetUri
+     * (null: from the top), or offsetUri alone when contextUri is null. A 404
+     * (the device ID changed) looks the device up again and retries once.
+     */
+    public void play(String deviceName, String contextUri, String offsetUri) throws IOException {
+        String body = playBody(contextUri, offsetUri);
+        String id = deviceId;
+        if (id == null) id = findDevice(deviceName);
+        try {
+            put("/me/player/play?device_id=" + Pkce.enc(id), body);
+        } catch (SpotifyException e) {
+            if (e.reason != SpotifyException.Reason.HTTP || e.status != 404) throw e;
+            deviceId = null;
+            put("/me/player/play?device_id=" + Pkce.enc(findDevice(deviceName)), body);
+        }
+    }
+
+    /** Looks deviceName up in /me/player/devices and caches its ID. */
+    private String findDevice(String deviceName) throws IOException {
+        JSONArray a = getJson("/me/player/devices").optJSONArray("devices");
+        for (int i = 0; a != null && i < a.length(); i++) {
+            JSONObject d = a.optJSONObject(i);
+            if (d == null || !deviceName.equals(SpotifyJson.string(d, "name"))) continue;
+            String id = SpotifyJson.string(d, "id");
+            if (id.isEmpty()) continue;
+            deviceId = id;
+            return id;
+        }
+        throw new SpotifyException(SpotifyException.Reason.HTTP, 404, -1, "device not listed");
+    }
+
+    private static String playBody(String contextUri, String offsetUri) {
+        if (contextUri == null && offsetUri == null) throw new IllegalArgumentException("nothing to play");
+        try {
+            JSONObject o = new JSONObject();
+            if (contextUri == null) {
+                o.put("uris", new JSONArray().put(offsetUri));
+            } else {
+                o.put("context_uri", contextUri);
+                if (offsetUri != null) o.put("offset", new JSONObject().put("uri", offsetUri));
+            }
+            return o.toString();
+        } catch (JSONException e) {
+            throw new AssertionError(e);
+        }
+    }
+
+    private static String page(int offset) {
+        return "?limit=" + PAGE + "&offset=" + offset;
+    }
+
+    /** The bare ID of a spotify: URI, URL-encoded. */
+    private static String id(String uri) {
+        return Pkce.enc(uri.substring(uri.lastIndexOf(':') + 1));
     }
 
     JSONObject getJson(String path) throws IOException {
