@@ -6,7 +6,10 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
+import android.util.Log;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -49,8 +52,11 @@ import com.potkc.overhear.spotify.SpotifyJson;
  * lists stay cached for the process lifetime (dropped when the login
  * changes); ↻ reloads the page shown, or retries the page that failed.
  * Tapping something playable asks the Web API to play it on this device and
- * returns to the player; if that fails, Soloist plays the context from the
- * top instead.
+ * returns to the player. A failed call may still have been applied, so
+ * unless it certainly sent nothing (no login, device not listed) Soloist's
+ * track (or context, when playing from the top) is checked, again after
+ * PLAY_RECHECK_MS; only if it is not what was asked does Soloist play the
+ * context from the top instead.
  *
  * Another user's playlist (OTHERS_PLAYLIST), whose tracks the Web API
  * refuses, starts playing from the top when opened and lists what Soloist's
@@ -92,7 +98,12 @@ public class LibraryActivity extends Activity {
         }
     }
 
+    private static final String TAG = "OverhearLibrary";
     private static final int CACHE_MAX = 30;
+    /** After a failed play call, how long to wait for a play that may have gone through anyway. */
+    private static final long PLAY_RECHECK_MS = 1500;
+    /** Outlives the Activity: a recheck still runs after it is gone. */
+    private static final Handler MAIN = new Handler(Looper.getMainLooper());
     /** The loaded pages, least recently used first; main thread only. */
     private static final Map<Node, Loaded> cache = new LinkedHashMap<Node, Loaded>(16, 0.75f, true) {
         @Override protected boolean removeEldestEntry(Map.Entry<Node, Loaded> eldest) {
@@ -579,13 +590,48 @@ public class LibraryActivity extends Activity {
                 if (!destroyed && !stay) finish();
             }
 
-            @Override public void failed(IOException e) {
-                playing = false;
-                // Still wanted after leaving the screen: the user asked for it.
-                playFromTop(contextUri != null ? contextUri : trackUri);
-                if (!destroyed && !stay) finish();
+            @Override public void failed(final IOException e) {
+                if (sentNothing(e) || playsNow(contextUri, trackUri)) {
+                    // Login or device trouble sent nothing; otherwise the play went through after all.
+                    afterFailedPlay(e, contextUri, trackUri, stay);
+                    return;
+                }
+                // A failed call (timeout, 5xx) may still have been applied: look again shortly.
+                MAIN.postDelayed(new Runnable() {
+                    @Override public void run() {
+                        afterFailedPlay(e, contextUri, trackUri, stay);
+                    }
+                }, PLAY_RECHECK_MS);
             }
         });
+    }
+
+    /** After a failed play: done if Soloist plays what was asked, else Soloist plays it from the top. */
+    private void afterFailedPlay(IOException e, String contextUri, String trackUri, boolean stay) {
+        playing = false;
+        if (!sentNothing(e) && playsNow(contextUri, trackUri)) {
+            Log.i(TAG, "play failed (" + e.getMessage() + "), but it plays");
+        } else {
+            Log.w(TAG, "play failed (" + e.getMessage() + "): from the top through Soloist");
+            // Still wanted after leaving the screen: the user asked for it.
+            playFromTop(contextUri != null ? contextUri : trackUri);
+        }
+        if (!destroyed && !stay) finish();
+    }
+
+    /** A failure that certainly sent no play: no login, or this device is not in the user's list. */
+    private static boolean sentNothing(IOException e) {
+        return (e instanceof SpotifyException
+                && ((SpotifyException) e).reason == SpotifyException.Reason.LOGIN_REQUIRED)
+                || SpotifyApi.isDeviceNotListed(e);
+    }
+
+    /** Soloist's current track is trackUri, or (when none was asked for) its context is contextUri. */
+    private boolean playsNow(String contextUri, String trackUri) {
+        SoloistClient client = client();
+        if (client == null) return false;
+        PlayerState s = client.getState();
+        return trackUri != null ? trackUri.equals(s.getTrackUri()) : contextUri.equals(s.getContextUri());
     }
 
     /** The fallback without the Web API: Soloist plays uri from its start. */

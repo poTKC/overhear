@@ -403,6 +403,7 @@ public class SpotifyApiTest {
         } catch (SpotifyException e) {
             assertEquals(SpotifyException.Reason.HTTP, e.reason);
             assertEquals(404, e.status);
+            assertFalse(SpotifyApi.isDeviceNotListed(e)); // the PUT itself failed
         } catch (IOException e) {
             fail(e.toString());
         }
@@ -419,6 +420,7 @@ public class SpotifyApiTest {
             assertEquals(SpotifyException.Reason.HTTP, e.reason);
             assertEquals(404, e.status);
             assertEquals("device not listed", e.getMessage());
+            assertTrue(SpotifyApi.isDeviceNotListed(e));
         } catch (IOException e) {
             fail(e.toString());
         }

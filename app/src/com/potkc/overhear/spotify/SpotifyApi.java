@@ -25,6 +25,8 @@ public final class SpotifyApi {
     private final ApiTransport transport;
     private final SpotifyAuth auth;
     private volatile Cached userId;
+    private static final String DEVICE_NOT_LISTED = "device not listed";
+
     private volatile Device device;
 
     /** The user ID and the login it was fetched under. */
@@ -152,7 +154,13 @@ public final class SpotifyApi {
             device = new Device(deviceName, id, generation);
             return id;
         }
-        throw new SpotifyException(SpotifyException.Reason.HTTP, 404, -1, "device not listed");
+        throw new SpotifyException(SpotifyException.Reason.HTTP, 404, -1, DEVICE_NOT_LISTED);
+    }
+
+    /** play's failure when deviceName is not among the user's devices: nothing was sent. */
+    public static boolean isDeviceNotListed(IOException e) {
+        return e instanceof SpotifyException && ((SpotifyException) e).reason == SpotifyException.Reason.HTTP
+                && ((SpotifyException) e).status == 404 && DEVICE_NOT_LISTED.equals(e.getMessage());
     }
 
     private static String playBody(String contextUri, String offsetUri) {
