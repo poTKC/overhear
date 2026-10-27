@@ -308,6 +308,9 @@ public final class PlayerState {
     /** A cover of about 300 px (what a 240 px view needs), or null. */
     public String getMediumCoverUrl() { return track.mediumCoverUrl; }
 
+    /** A cover of about 64 px (for a list row), or null. */
+    public String getSmallCoverUrl() { return track.smallCoverUrl; }
+
     /** 0 if unknown. */
     public long getDurationMs() { return track.durationMs; }
 
