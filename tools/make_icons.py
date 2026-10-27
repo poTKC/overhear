@@ -50,6 +50,7 @@ SVGS = {
     "System/login-box-line.svg": "24209e93d081403b9e2353f37000b05843d4f18398b01e27f54c3d3d783a74ad",
     "Media/play-line.svg": "3dcfeba5edfd64745b8357898c33094e1a6477c180c45fbda4712c58758edf9f",
     "Arrows/arrow-right-s-line.svg": "2c579a4dbaf25e19a128d71e04f4cf43b19ad2487a0076ff7e7e5a94c9b3e013",
+    "Business/bar-chart-fill.svg": "4914af6659705c720d88c6d9debf68f3ed61ca62c587834e06ef74e5f73d2eab",
 }
 DENSITIES = {"mdpi": 1.0, "hdpi": 1.5, "xhdpi": 2.0}
 
@@ -176,6 +177,8 @@ def main():
                                ("shuffle", "Media/shuffle-line.svg")):
             plain(density, f, "ic_lib_" + name, svg_name, WHITE, 24, 22)
         plain(density, f, "ic_lib_more", "Arrows/arrow-right-s-line.svg", MARKER_GREY, 20, 20)
+        # the playing track's mark, before its title (14 sp)
+        plain(density, f, "ic_lib_now", "Business/bar-chart-fill.svg", GREEN, 14, 14)
         placeholder(density, f)
         # notification row (40 dp wide buttons) and status bar icon (white on transparent)
         plain(density, f, "ic_n_prev", "Media/skip-back-fill.svg", WHITE, 28, 24)

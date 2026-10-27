@@ -80,6 +80,11 @@ import com.potkc.overhear.spotify.SpotifyJson;
  * Soloist's context, and redraws on the service's UI updates; a tapped track
  * plays as on any other list.
  *
+ * What plays now is marked in every list, paused or not: the track whose
+ * URI is Soloist's track with its title in green after a bar chart icon, the
+ * album, playlist or artist (or the liked songs' menu row) that is Soloist's
+ * context with its title in green. The rows redraw when either changes.
+ *
  * Main thread only. Spotify callbacks can arrive after the Activity that
  * started them is gone: they still fill the cache and redraw the resumed
  * instance, if any (active), so a reopened screen sees the result too.
@@ -120,6 +125,8 @@ public class LibraryActivity extends Activity {
     static final String EXTRA_CONTEXT_COVER = "context_cover";
 
     private static final String TAG = "OverhearLibrary";
+    /** Spotify's green: the title of what plays now. */
+    private static final int NOW_GREEN = 0xff1ed760;
     private static final int CACHE_MAX = 30;
     /** After a failed play call, how long to wait for a play that may have gone through anyway. */
     private static final long PLAY_RECHECK_MS = 1500;
@@ -280,15 +287,21 @@ public class LibraryActivity extends Activity {
             if (active != LibraryActivity.this) return;
             service.addUiListener(uiListener);
             if (current().type == Node.Type.OTHERS_PLAYLIST) render();
+            else showNow();
         }
 
         @Override public void onServiceDisconnected(ComponentName name) {
             service = null; // a restarted service has no tracker
-            if (active == LibraryActivity.this && current().type == Node.Type.OTHERS_PLAYLIST) render();
+            if (active != LibraryActivity.this) return;
+            if (current().type == Node.Type.OTHERS_PLAYLIST) render();
+            else showNow();
         }
     };
 
-    /** Redraws an open OTHERS_PLAYLIST page when what it shows changes, and an untitled page Soloist names. */
+    /**
+     * Redraws an open OTHERS_PLAYLIST page when what it shows changes, an
+     * untitled page Soloist names, and the rows when what plays now changes.
+     */
     private final Runnable uiListener = new Runnable() {
         @Override public void run() {
             if (active != LibraryActivity.this) return;
@@ -297,9 +310,19 @@ public class LibraryActivity extends Activity {
                 render(); // nameUntitled
             } else if (node.type == Node.Type.OTHERS_PLAYLIST && !othersKey(node).equals(othersShown)) {
                 render();
+            } else {
+                showNow();
             }
         }
     };
+
+    /** Marks what plays now (Soloist's track and context) in the rows shown, if that changed. */
+    private void showNow() {
+        SoloistClient client = client();
+        boolean on = client != null && client.isConnected();
+        PlayerState s = on ? client.getState() : null;
+        adapter.setNow(on ? s.getTrackUri() : null, on ? s.getContextUri() : null);
+    }
 
     // --- the stack ---
 
@@ -623,6 +646,7 @@ public class LibraryActivity extends Activity {
             if (node.type == Node.Type.TOP) topRows(rows);
             else othersRows(rows, node);
             empty.setText("");
+            showNow();
             adapter.setRows(rows);
             return;
         }
@@ -633,6 +657,7 @@ public class LibraryActivity extends Activity {
         statusRow(rows, node, l);
         empty.setText(search && l.query == null ? ""
                 : getString(search ? R.string.library_no_results : R.string.library_empty));
+        showNow();
         adapter.setRows(rows);
     }
 
@@ -667,7 +692,8 @@ public class LibraryActivity extends Activity {
     }
 
     private Row menuRow(int symbol, int title, Node.Type type) {
-        return Row.menu(symbol, getString(title), true, pushing(Node.of(type)));
+        Row row = Row.menu(symbol, getString(title), true, pushing(Node.of(type)));
+        return type == Node.Type.LIKED ? row.likedSongs() : row;
     }
 
     /** Rows for the pages that list one kind of item, with their fixed first row. */
@@ -1057,9 +1083,11 @@ public class LibraryActivity extends Activity {
         final boolean note;
         /** Null: not tappable. */
         final Runnable action;
+        /** The liked songs' menu row, marked while they are the context. */
+        final boolean liked;
 
         private Row(boolean header, int symbol, Item item, String title, boolean more, boolean note,
-                Runnable action) {
+                Runnable action, boolean liked) {
             this.header = header;
             this.symbol = symbol;
             this.item = item;
@@ -1067,32 +1095,58 @@ public class LibraryActivity extends Activity {
             this.more = more;
             this.note = note;
             this.action = action;
+            this.liked = liked;
+        }
+
+        Row likedSongs() {
+            return new Row(header, symbol, item, title, more, note, action, true);
+        }
+
+        /** Whether the row is what plays now (Soloist's trackUri, contextUri; either may be null). */
+        boolean playsNow(String trackUri, String contextUri) {
+            if (item != null) return item.playsNow(trackUri, contextUri);
+            return liked && LibraryPath.likedOwner(contextUri) != null;
         }
 
         /** more: true for a menu row, false for a play row. */
         static Row menu(int symbol, String title, boolean more, Runnable action) {
-            return new Row(false, symbol, null, title, more, false, action);
+            return new Row(false, symbol, null, title, more, false, action, false);
         }
 
         static Row item(Item item, boolean more, Runnable action) {
-            return new Row(false, 0, item, item.title, more, false, action);
+            return new Row(false, 0, item, item.title, more, false, action, false);
         }
 
         static Row header(String title) {
-            return new Row(true, 0, null, title, false, false, null);
+            return new Row(true, 0, null, title, false, false, null, false);
         }
 
         static Row note(String title, Runnable action) {
-            return new Row(false, 0, null, title, false, true, action);
+            return new Row(false, 0, null, title, false, true, action, false);
         }
     }
 
     private final class RowAdapter extends BaseAdapter {
         private List<Row> rows = Collections.emptyList();
+        /** Soloist's track and context as the rows show them; null if none. */
+        private String nowTrack;
+        private String nowContext;
 
         void setRows(List<Row> list) {
             rows = list;
             notifyDataSetChanged();
+        }
+
+        /** Redraws the rows (scrolled as they are) only if the track or the context changed. */
+        void setNow(String trackUri, String contextUri) {
+            if (same(trackUri, nowTrack) && same(contextUri, nowContext)) return;
+            nowTrack = trackUri;
+            nowContext = contextUri;
+            notifyDataSetChanged();
+        }
+
+        private boolean same(String a, String b) {
+            return a == null ? b == null : a.equals(b);
         }
 
         @Override public int getCount() {
@@ -1134,7 +1188,11 @@ public class LibraryActivity extends Activity {
             View marker = v.findViewById(R.id.marker);
             ImageView thumb = (ImageView) v.findViewById(R.id.thumb);
             title.setText(row.title == null ? "" : row.title);
-            title.setTextColor(row.note ? 0xffaaaaaa : 0xffffffff);
+            boolean now = !row.note && row.playsNow(nowTrack, nowContext);
+            title.setTextColor(row.note ? 0xffaaaaaa : now ? NOW_GREEN : 0xffffffff);
+            // A playing track's bar chart sits before its title; a playing context only turns green.
+            boolean nowTrackRow = now && row.item != null && row.item.kind == Item.Kind.TRACK;
+            title.setCompoundDrawablesWithIntrinsicBounds(nowTrackRow ? R.drawable.ic_lib_now : 0, 0, 0, 0);
             title.setSingleLine(!row.note);
             String sub = row.item == null ? "" : row.item.subtitle;
             subtitle.setText(sub);

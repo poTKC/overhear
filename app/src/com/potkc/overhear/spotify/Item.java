@@ -31,6 +31,15 @@ public final class Item {
         this.contextUri = contextUri;
     }
 
+    /**
+     * Whether this row is what plays now, given Soloist's current track and
+     * context (either may be null): a track by its own URI, an album,
+     * playlist or artist when it is the context.
+     */
+    public boolean playsNow(String trackUri, String contextUri) {
+        return uri != null && uri.equals(kind == Kind.TRACK ? trackUri : contextUri);
+    }
+
     /** The bare ID of a spotify:<type>:<id> URI. */
     public String id() {
         return uri.substring(uri.lastIndexOf(':') + 1);
