@@ -16,6 +16,7 @@ import io
 import os
 import subprocess
 import sys
+import urllib.parse
 
 from PIL import Image, ImageDraw
 
@@ -40,7 +41,15 @@ SVGS = {
     "Media/music-2-line.svg": "beaf516b74a065afb95022f9b311ecc981cbdd22af446b96e8a8b353f7b49342",
     "Media/music-2-fill.svg": "70a5c81119274e9b6c0a6286afa125c15414f42d0aa3a799e8c971bebecb1221",
     "Arrows/arrow-left-line.svg": "83326466c9ea5f3b18eab5051003cb5a6666c9ebc6d9e794aa49721a886987fe",
-    "System/refresh-line.svg": "6768ce94b9e55f865945bf27ae1a238303f0d1d5d0f6e2bedfd4d4123a578d23",
+    "System/loop-right-line.svg": "ff6bfe94a82962d75b6e93b2253bfea337cba37d4f5194a530824963823277f0",
+    "System/search-line.svg": "e36fd9d602a25425c6c2288005ef5a413eec710f9718bd01dbfd81cb4d6b5c19",
+    "Health & Medical/heart-line.svg": "0159f984e5bc1d5d43dbffade05cb88a6038a2384e8b34afac5967f3873f6713",
+    "Media/play-list-line.svg": "1f25ebe3d18248dede5e6ba6afc6fc6166d83f9dbd1e8ed9191a6ab78b8f5ef7",
+    "User & Faces/user-line.svg": "44ce27189cac344f59aae27ef4e353f3cc1bafc19b1112b682e4cccc6f938a02",
+    "System/history-line.svg": "8a9e56b2de2daddf64fc31414d456b07ada11f8cb93bd7a280832782b836dfd5",
+    "System/login-box-line.svg": "24209e93d081403b9e2353f37000b05843d4f18398b01e27f54c3d3d783a74ad",
+    "Media/play-line.svg": "3dcfeba5edfd64745b8357898c33094e1a6477c180c45fbda4712c58758edf9f",
+    "Arrows/arrow-right-s-line.svg": "2c579a4dbaf25e19a128d71e04f4cf43b19ad2487a0076ff7e7e5a94c9b3e013",
 }
 DENSITIES = {"mdpi": 1.0, "hdpi": 1.5, "xhdpi": 2.0}
 
@@ -48,6 +57,7 @@ WHITE = "#ffffff"
 GREY = "#b3b3b3"  # inactive toggles, small buttons
 GREEN = "#1db954"  # active toggles
 NOTE_GREY = "#7a7a7a"
+MARKER_GREY = "#aaaaaa"  # the library's drill-down chevron, as its secondary text
 PLACEHOLDER_BG = (0x28, 0x28, 0x28, 255)
 
 
@@ -55,7 +65,7 @@ def svg(name):
     path = os.path.join(CACHE, name)
     if not os.path.exists(path):
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        subprocess.run(["curl", "-fsSL", "-o", path + ".part", "%s/%s" % (BASE, name)], check=True)
+        subprocess.run(["curl", "-fsSL", "-o", path + ".part", "%s/%s" % (BASE, urllib.parse.quote(name))], check=True)
         os.rename(path + ".part", path)
     data = open(path, "rb").read()
     got = hashlib.sha256(data).hexdigest()
@@ -152,8 +162,20 @@ def main():
         plain(density, f, "ic_close", "System/close-line.svg", WHITE, 24, 22)
         # library bar: back, reload, back to the player
         plain(density, f, "ic_back", "Arrows/arrow-left-line.svg", WHITE, 24, 20)
-        plain(density, f, "ic_reload", "System/refresh-line.svg", GREY, 24, 20)
+        plain(density, f, "ic_reload", "System/loop-right-line.svg", WHITE, 24, 20)
         plain(density, f, "ic_to_player", "Media/music-2-line.svg", WHITE, 24, 20)
+        # library rows: the icon in the 40 dp cover column, the chevron at the right edge
+        for name, svg_name in (("search", "System/search-line.svg"),
+                               ("liked", "Health & Medical/heart-line.svg"),
+                               ("playlists", "Media/play-list-line.svg"),
+                               ("albums", "Media/album-line.svg"),
+                               ("artists", "User & Faces/user-line.svg"),
+                               ("recent", "System/history-line.svg"),
+                               ("login", "System/login-box-line.svg"),
+                               ("play", "Media/play-line.svg"),
+                               ("shuffle", "Media/shuffle-line.svg")):
+            plain(density, f, "ic_lib_" + name, svg_name, WHITE, 24, 22)
+        plain(density, f, "ic_lib_more", "Arrows/arrow-right-s-line.svg", MARKER_GREY, 20, 20)
         placeholder(density, f)
         # notification row (40 dp wide buttons) and status bar icon (white on transparent)
         plain(density, f, "ic_n_prev", "Media/skip-back-fill.svg", WHITE, 28, 24)

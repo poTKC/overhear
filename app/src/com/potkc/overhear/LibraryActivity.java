@@ -487,30 +487,30 @@ public class LibraryActivity extends Activity {
 
     private void topRows(List<Row> rows) {
         if (!spotify.isLoggedIn()) {
-            rows.add(Row.menu("♪", getString(R.string.library_login), "›", new Runnable() {
+            rows.add(Row.menu(R.drawable.ic_lib_login, getString(R.string.library_login), true, new Runnable() {
                 @Override public void run() {
                     startActivity(new Intent(LibraryActivity.this, LoginActivity.class));
                 }
             }));
             return;
         }
-        rows.add(menuRow("🔍", R.string.library_search, Node.Type.SEARCH));
-        rows.add(menuRow("♥", R.string.library_liked, Node.Type.LIKED));
-        rows.add(menuRow("≡", R.string.library_playlists, Node.Type.PLAYLISTS));
-        rows.add(menuRow("◉", R.string.library_albums, Node.Type.ALBUMS));
-        rows.add(menuRow("♪", R.string.library_artists, Node.Type.ARTISTS));
-        rows.add(menuRow("↺", R.string.library_recent, Node.Type.RECENT));
+        rows.add(menuRow(R.drawable.ic_lib_search, R.string.library_search, Node.Type.SEARCH));
+        rows.add(menuRow(R.drawable.ic_lib_liked, R.string.library_liked, Node.Type.LIKED));
+        rows.add(menuRow(R.drawable.ic_lib_playlists, R.string.library_playlists, Node.Type.PLAYLISTS));
+        rows.add(menuRow(R.drawable.ic_lib_albums, R.string.library_albums, Node.Type.ALBUMS));
+        rows.add(menuRow(R.drawable.ic_lib_artists, R.string.library_artists, Node.Type.ARTISTS));
+        rows.add(menuRow(R.drawable.ic_lib_recent, R.string.library_recent, Node.Type.RECENT));
     }
 
-    private Row menuRow(String symbol, int title, Node.Type type) {
-        return Row.menu(symbol, getString(title), "›", pushing(Node.of(type)));
+    private Row menuRow(int symbol, int title, Node.Type type) {
+        return Row.menu(symbol, getString(title), true, pushing(Node.of(type)));
     }
 
     /** Rows for the pages that list one kind of item, with their fixed first row. */
     private void listRows(List<Row> rows, final Node node, Loaded l) {
         switch (node.type) {
             case PLAYLISTS:
-                rows.add(menuRow("♥", R.string.library_liked, Node.Type.LIKED));
+                rows.add(menuRow(R.drawable.ic_lib_liked, R.string.library_liked, Node.Type.LIKED));
                 break;
             case LIKED:
                 if (l.me != null && !l.me.isEmpty() && !l.items.isEmpty()) {
@@ -522,7 +522,7 @@ public class LibraryActivity extends Activity {
                 playRows(rows, node.uri);
                 break;
             case ARTIST:
-                rows.add(Row.menu("▶", getString(R.string.library_play_artist), null, new Runnable() {
+                rows.add(Row.menu(R.drawable.ic_lib_play, getString(R.string.library_play_artist), false, new Runnable() {
                     @Override public void run() {
                         play(node.uri, null);
                     }
@@ -580,12 +580,12 @@ public class LibraryActivity extends Activity {
 
     /** ▶ plays contextUri in order from its first track, ⇄ shuffled from a random one. */
     private void playRows(List<Row> rows, final String contextUri) {
-        rows.add(Row.menu("▶", getString(R.string.library_play), null, new Runnable() {
+        rows.add(Row.menu(R.drawable.ic_lib_play, getString(R.string.library_play), false, new Runnable() {
             @Override public void run() {
                 play(contextUri, null, Boolean.FALSE, null);
             }
         }));
-        rows.add(Row.menu("⇄", getString(R.string.shuffle), null, new Runnable() {
+        rows.add(Row.menu(R.drawable.ic_lib_shuffle, getString(R.string.shuffle), false, new Runnable() {
             @Override public void run() {
                 play(contextUri, null, Boolean.TRUE, null);
             }
@@ -596,20 +596,20 @@ public class LibraryActivity extends Activity {
     private Row itemRow(final Item item, String me) {
         switch (item.kind) {
             case TRACK:
-                return Row.item(item, null, new Runnable() {
+                return Row.item(item, false, new Runnable() {
                     @Override public void run() {
                         play(item.contextUri, item.uri);
                     }
                 });
             case ALBUM:
-                return Row.item(item, "›", pushing(Node.album(item.uri, item.title, item.coverUrl)));
+                return Row.item(item, true, pushing(Node.album(item.uri, item.title, item.coverUrl)));
             case ARTIST:
-                return Row.item(item, "›", pushing(Node.artist(item.uri, item.title)));
+                return Row.item(item, true, pushing(Node.artist(item.uri, item.title)));
             default: // PLAYLIST
                 // Unless it is surely the user's own (an unknown ID or owner included): the Web API
                 // refuses others' tracks, while Soloist's queue lists anyone's.
                 boolean others = me == null || me.isEmpty() || !me.equals(item.ownerId);
-                return Row.item(item, "›", pushing(Node.playlist(item.uri, item.title, others)));
+                return Row.item(item, true, pushing(Node.playlist(item.uri, item.title, others)));
         }
     }
 
@@ -829,12 +829,12 @@ public class LibraryActivity extends Activity {
     private void othersRows(List<Row> rows, final Node node) {
         othersShown = othersKey(node);
         if (noPlayer()) rows.add(Row.note(getString(R.string.library_others_no_player), null));
-        rows.add(Row.menu("▶", getString(R.string.library_play), null, new Runnable() {
+        rows.add(Row.menu(R.drawable.ic_lib_play, getString(R.string.library_play), false, new Runnable() {
             @Override public void run() {
                 playOthers(node.uri, Boolean.FALSE);
             }
         }));
-        rows.add(Row.menu("⇄", getString(R.string.shuffle), null, new Runnable() {
+        rows.add(Row.menu(R.drawable.ic_lib_shuffle, getString(R.string.shuffle), false, new Runnable() {
             @Override public void run() {
                 playOthers(node.uri, Boolean.TRUE);
             }
@@ -855,7 +855,7 @@ public class LibraryActivity extends Activity {
                 break;
         }
         for (final Item item : o.items()) {
-            rows.add(Row.item(item, null, new Runnable() {
+            rows.add(Row.item(item, false, new Runnable() {
                 @Override public void run() {
                     play(o.playlistUri(), item.uri);
                 }
@@ -882,43 +882,44 @@ public class LibraryActivity extends Activity {
     /** One list row: an item, a menu or play row (a symbol), a group header or a note. Immutable. */
     private static final class Row {
         final boolean header;
-        /** Menu and play rows; null otherwise. */
-        final String symbol;
+        /** Menu and play rows: the icon's drawable; 0 otherwise. */
+        final int symbol;
         /** Item rows; null otherwise (the cover may still be null). */
         final Item item;
         final String title;
-        final String marker;
+        /** Opens a page below (a chevron at the right edge). */
+        final boolean more;
         /** A note: grey, without the cover column. */
         final boolean note;
         /** Null: not tappable. */
         final Runnable action;
 
-        private Row(boolean header, String symbol, Item item, String title, String marker, boolean note,
+        private Row(boolean header, int symbol, Item item, String title, boolean more, boolean note,
                 Runnable action) {
             this.header = header;
             this.symbol = symbol;
             this.item = item;
             this.title = title;
-            this.marker = marker;
+            this.more = more;
             this.note = note;
             this.action = action;
         }
 
-        /** marker: "›" for a menu row, null for a play row. */
-        static Row menu(String symbol, String title, String marker, Runnable action) {
-            return new Row(false, symbol, null, title, marker, false, action);
+        /** more: true for a menu row, false for a play row. */
+        static Row menu(int symbol, String title, boolean more, Runnable action) {
+            return new Row(false, symbol, null, title, more, false, action);
         }
 
-        static Row item(Item item, String marker, Runnable action) {
-            return new Row(false, null, item, item.title, marker, false, action);
+        static Row item(Item item, boolean more, Runnable action) {
+            return new Row(false, 0, item, item.title, more, false, action);
         }
 
         static Row header(String title) {
-            return new Row(true, null, null, title, null, false, null);
+            return new Row(true, 0, null, title, false, false, null);
         }
 
         static Row note(String title, Runnable action) {
-            return new Row(false, null, null, title, null, true, action);
+            return new Row(false, 0, null, title, false, true, action);
         }
     }
 
@@ -965,8 +966,8 @@ public class LibraryActivity extends Activity {
                     : LayoutInflater.from(LibraryActivity.this).inflate(R.layout.item_library, parent, false);
             TextView title = (TextView) v.findViewById(R.id.item_title);
             TextView subtitle = (TextView) v.findViewById(R.id.item_artists);
-            TextView symbol = (TextView) v.findViewById(R.id.symbol);
-            TextView marker = (TextView) v.findViewById(R.id.marker);
+            ImageView symbol = (ImageView) v.findViewById(R.id.symbol);
+            View marker = v.findViewById(R.id.marker);
             ImageView thumb = (ImageView) v.findViewById(R.id.thumb);
             title.setText(row.title == null ? "" : row.title);
             title.setTextColor(row.note ? 0xffaaaaaa : 0xffffffff);
@@ -974,10 +975,10 @@ public class LibraryActivity extends Activity {
             String sub = row.item == null ? "" : row.item.subtitle;
             subtitle.setText(sub);
             subtitle.setVisibility(sub.isEmpty() ? View.GONE : View.VISIBLE);
-            marker.setText(row.marker == null ? "" : row.marker);
+            marker.setVisibility(row.more ? View.VISIBLE : View.GONE);
             v.findViewById(R.id.thumb_frame).setVisibility(row.note ? View.GONE : View.VISIBLE);
-            symbol.setVisibility(row.symbol != null ? View.VISIBLE : View.GONE);
-            symbol.setText(row.symbol == null ? "" : row.symbol);
+            symbol.setVisibility(row.symbol != 0 ? View.VISIBLE : View.GONE);
+            if (row.symbol != 0) symbol.setImageResource(row.symbol);
             thumb.setVisibility(row.item != null ? View.VISIBLE : View.GONE);
             if (row.item != null) {
                 showThumb(thumb, row.item.coverUrl);

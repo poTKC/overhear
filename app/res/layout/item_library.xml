@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- A library row: as item_queue.xml, plus a symbol in place of the cover
-     (menu and play rows) and a marker at the right edge (drill-down). -->
+<!-- A library row: as item_queue.xml, plus an icon in place of the cover
+     (menu and play rows) and a chevron at the right edge (drill-down). -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="52dp"
@@ -22,13 +22,12 @@
             android:contentDescription="@string/artwork"
             android:scaleType="fitXY" />
 
-        <TextView
+        <ImageView
             android:id="@+id/symbol"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:gravity="center"
-            android:textColor="#ffffffff"
-            android:textSize="20sp"
+            android:importantForAccessibility="no"
+            android:scaleType="center"
             android:visibility="gone" />
     </FrameLayout>
 
@@ -57,11 +56,11 @@
             android:textSize="12sp" />
     </LinearLayout>
 
-    <TextView
+    <ImageView
         android:id="@+id/marker"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginLeft="8dp"
-        android:textColor="#ffaaaaaa"
-        android:textSize="16sp" />
+        android:importantForAccessibility="no"
+        android:src="@drawable/ic_lib_more" />
 </LinearLayout>
