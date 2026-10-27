@@ -73,7 +73,7 @@
     <string name="login_listen_failed">待ち受けを始められませんでした: %s</string>
     <string name="login_exchanging">ログインしています…</string>
     <string name="login_denied">キャンセルされました。もう一度読み取れます</string>
-    <string name="login_failed">ログインできませんでした: %s。もう一度読み取れます</string>
+    <string name="login_failed">ログインできませんでした。もう一度読み取れます</string>
     <string name="login_done">ログインしました</string>
     <string name="login_done_as">ログインしました: %s</string>
     <string name="login_expired">時間切れです。開き直してください</string>

@@ -13,6 +13,7 @@ import android.util.Log;
 import android.view.View;
 import android.widget.TextView;
 
+import java.io.BufferedInputStream;
 import java.io.Closeable;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -42,6 +43,10 @@ import io.nayuki.qrcodegen.QrCode;
  *
  * The listener runs on its own thread, one connection at a time, only while
  * this screen is open and for at most five minutes; onDestroy closes it.
+ * Each connection gets five seconds in all to send its request line and
+ * headers, so a slow peer cannot hold the listener. Leaving the screen
+ * during an exchange does not stop it: the login may still complete, and
+ * Setup then shows it (the tokens are saved either way).
  * The code, the verifier and the request line are never logged.
  */
 public class LoginActivity extends Activity {
@@ -52,9 +57,11 @@ public class LoginActivity extends Activity {
     private static final long FINISH_DELAY_MS = 2000;
     /** Longer than an exchange plus me() on the Spotify thread (40 s each at most). */
     private static final long EXCHANGE_WAIT_MS = 120 * 1000L;
-    private static final int READ_TIMEOUT_MS = 10000;
+    /** Per read; the whole request must arrive within REQUEST_MS of accept. */
+    private static final int READ_TIMEOUT_MS = 2000;
+    private static final long REQUEST_MS = 5000;
     private static final int MAX_LINE = 8 * 1024;
-    private static final int MAX_HEADER_LINES = 100;
+    private static final int MAX_HEADER_BYTES = 16 * 1024;
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private QrView qr;
@@ -199,6 +206,8 @@ public class LoginActivity extends Activity {
         private final String verifier;
         private volatile boolean stopped;
         private volatile ServerSocket server;
+        /** The connection being served, closed by shutdown() to end a pending read. */
+        private volatile Socket current;
 
         Listener(InetAddress address, String state, String verifier) {
             super("overhear-login");
@@ -212,6 +221,7 @@ public class LoginActivity extends Activity {
         void shutdown() {
             stopped = true;
             closeQuietly(server);
+            closeQuietly(current);
         }
 
         @Override public void run() {
@@ -246,29 +256,40 @@ public class LoginActivity extends Activity {
                     } catch (IOException e) {
                         break; // closed by shutdown()
                     }
+                    current = client;
                     try {
+                        if (stopped) continue; // shutdown() may have missed it
                         client.setSoTimeout(READ_TIMEOUT_MS);
                         serve(client);
                     } catch (IOException e) {
                         Log.w(TAG, "connection failed: " + e.getClass().getSimpleName());
                     } finally {
+                        current = null;
                         closeQuietly(client);
                     }
                 }
             } finally {
                 closeQuietly(ss);
             }
+            // Timed out here rather than stopped: the main thread's timer may
+            // have been held up while the device slept.
+            if (!stopped) ui(expire);
         }
 
         private void serve(Socket client) throws IOException {
-            InputStream in = client.getInputStream();
-            String line = readLine(in);
+            InputStream in = new BufferedInputStream(client.getInputStream());
+            long deadline = SystemClock.elapsedRealtime() + REQUEST_MS;
+            String line = readLine(in, MAX_LINE, deadline);
             OAuthCallback cb = OAuthCallback.parse(line, state);
-            if (line != null) skipHeaders(in);
+            if (line != null) skipHeaders(in, deadline);
             Log.i(TAG, "request: " + cb.kind);
             switch (cb.kind) {
                 case ERROR:
-                    show(getString(R.string.login_denied));
+                    ui(new Runnable() {
+                        @Override public void run() {
+                            if (!loggedIn && !expired) message.setText(R.string.login_denied);
+                        }
+                    });
                     respond(client, "200 OK", getString(R.string.login_html_denied));
                     break;
                 case CODE:
@@ -306,10 +327,8 @@ public class LoginActivity extends Activity {
 
                 @Override public void failed(IOException e) {
                     done.countDown();
-                    Log.w(TAG, "login failed: " + e.getMessage());
-                    if (!destroyed && !loggedIn && !expired) {
-                        message.setText(getString(R.string.login_failed, String.valueOf(e.getMessage())));
-                    }
+                    Log.w(TAG, "login failed: " + e.getClass().getSimpleName());
+                    if (!destroyed && !loggedIn && !expired) message.setText(R.string.login_failed);
                 }
             });
             try {
@@ -324,15 +343,17 @@ public class LoginActivity extends Activity {
 
     /**
      * One line without its line ending (ISO-8859-1: request lines are ASCII),
-     * or null at the end of the stream or past MAX_LINE bytes.
+     * or null at the end of the stream or past max bytes. Throws once the
+     * request's deadline (elapsedRealtime) has passed.
      */
-    private static String readLine(InputStream in) throws IOException {
+    private static String readLine(InputStream in, int max, long deadline) throws IOException {
         StringBuilder sb = new StringBuilder();
         for (;;) {
+            if (SystemClock.elapsedRealtime() > deadline) throw new SocketTimeoutException("request too slow");
             int b = in.read();
             if (b < 0) return null;
             if (b == '\n') break;
-            if (sb.length() >= MAX_LINE) return null;
+            if (sb.length() >= max) return null;
             sb.append((char) b);
         }
         int n = sb.length();
@@ -340,12 +361,18 @@ public class LoginActivity extends Activity {
         return sb.toString();
     }
 
-    /** Reads up to the blank line ending the headers, so closing does not reset the reply. */
-    private static void skipHeaders(InputStream in) throws IOException {
-        for (int i = 0; i < MAX_HEADER_LINES; i++) {
-            String h = readLine(in);
+    /**
+     * Reads up to the blank line ending the headers, so closing does not
+     * reset the reply; at most MAX_HEADER_BYTES, within the deadline.
+     */
+    private static void skipHeaders(InputStream in, long deadline) throws IOException {
+        int left = MAX_HEADER_BYTES;
+        while (left > 0) {
+            String h = readLine(in, left, deadline);
             if (h == null || h.isEmpty()) return;
+            left -= h.length() + 2;
         }
+        throw new IOException("headers too long");
     }
 
     private static void respond(Socket client, String status, String text) throws IOException {
