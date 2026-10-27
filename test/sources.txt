@@ -34,3 +34,4 @@ app/src/com/potkc/overhear/spotify/SpotifyApi.java
 app/src/com/potkc/overhear/spotify/Item.java
 app/src/com/potkc/overhear/spotify/Page.java
 app/src/com/potkc/overhear/spotify/SpotifyJson.java
+app/src/com/potkc/overhear/spotify/LibraryPath.java
