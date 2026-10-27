@@ -157,9 +157,22 @@ public final class SpotifyApi {
      * (null: from the top), or offsetUri alone when contextUri is null.
      */
     public void play(String deviceName, String contextUri, String offsetUri) throws IOException {
+        play(deviceName, contextUri, offsetUri, 0);
+    }
+
+    /** As play(deviceName, contextUri, offsetUri), positionMs (if above 0) into the track. */
+    public void play(String deviceName, String contextUri, String offsetUri, long positionMs) throws IOException {
         JSONObject offset = null;
         if (contextUri != null && offsetUri != null) offset = put(new JSONObject(), "uri", offsetUri);
-        putOnDevice(deviceName, "/me/player/play?", playBody(contextUri, offsetUri, offset));
+        String body = playBody(contextUri, offsetUri, offset);
+        if (positionMs > 0) {
+            try {
+                body = put(new JSONObject(body), "position_ms", positionMs).toString();
+            } catch (JSONException e) {
+                throw new AssertionError(e);
+            }
+        }
+        putOnDevice(deviceName, "/me/player/play?", body);
     }
 
     /**
@@ -218,6 +231,16 @@ public final class SpotifyApi {
     public static boolean isDeviceNotListed(IOException e) {
         return e instanceof SpotifyException && ((SpotifyException) e).reason == SpotifyException.Reason.HTTP
                 && ((SpotifyException) e).status == 404 && DEVICE_NOT_LISTED.equals(e.getMessage());
+    }
+
+    /**
+     * A play's failure that certainly sent nothing to Spotify: no login, or
+     * this device is not in the user's list (so it did not go through).
+     */
+    public static boolean sentNothing(IOException e) {
+        return (e instanceof SpotifyException
+                && ((SpotifyException) e).reason == SpotifyException.Reason.LOGIN_REQUIRED)
+                || isDeviceNotListed(e);
     }
 
     /** contextUri with offset (or null), else trackUri alone. */

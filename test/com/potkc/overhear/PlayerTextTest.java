@@ -141,18 +141,27 @@ public class PlayerTextTest {
         assertTrue(PlayerText.controlsEnabled(true, state(true, true)));
         assertFalse(PlayerText.controlsEnabled(false, state(true, true)));
         assertFalse(PlayerText.controlsEnabled(true, state(true, false)));
+        assertFalse(PlayerText.controlsEnabled(true, state(false, true))); // as the service's soloistActive
     }
 
     @Test public void queueRowsTakeTapsLikeTheControlsButNotDuringAJump() throws Exception {
-        assertTrue(PlayerText.queueTappable(true, state(true, true), false));
-        assertFalse(PlayerText.queueTappable(true, state(true, true), true));
-        assertFalse(PlayerText.queueTappable(false, state(true, true), false));
-        assertFalse(PlayerText.queueTappable(true, state(true, false), false));
+        assertTrue(PlayerText.queueTappable(true, state(true, true), false, false, false));
+        assertFalse(PlayerText.queueTappable(true, state(true, true), true, false, false));
+        assertFalse(PlayerText.queueTappable(false, state(true, true), false, false, false));
+        assertFalse(PlayerText.queueTappable(true, state(true, false), false, false, false));
         PlayerState stale = state(true, true);
         stale.apply(new JSONObject("{\"type\":\"track_changed\",\"item\":{\"uri\":\"spotify:track:a\"}}"));
-        assertFalse(PlayerText.queueTappable(true, stale, false));
+        assertFalse(PlayerText.queueTappable(true, stale, false, false, false));
         stale.apply(new JSONObject("{\"type\":\"queue_changed\",\"upcoming\":[]}"));
-        assertTrue(PlayerText.queueTappable(true, stale, false));
+        assertTrue(PlayerText.queueTappable(true, stale, false, false, false));
+    }
+
+    @Test public void whileSoloistWaitsQueueRowsPlayHereThroughTheWebApi() throws Exception {
+        assertTrue(PlayerText.queueTappable(true, state(true, false), false, true, false));
+        assertFalse(PlayerText.queueTappable(true, state(true, false), false, true, true)); // one in flight
+        assertFalse(PlayerText.queueTappable(true, state(true, false), true, true, false));
+        assertFalse(PlayerText.queueTappable(false, state(true, false), false, true, false));
+        assertFalse(PlayerText.queueTappable(true, state(true, false), false, false, false)); // no login: no skipping
     }
 
     @Test public void subtitleJoinsArtistsAndAlbum() {
@@ -213,7 +222,7 @@ public class PlayerTextTest {
             d.put("parent", new JSONObject().put("entity", new JSONObject().put("uri", albumUri)
                     .put("decorations", new JSONObject().put("identity", new JSONObject().put("name", "Album")))));
         }
-        PlayerState s = new PlayerState();
+        PlayerState s = state(true, false); // Soloist logged in, waiting
         s.apply(new JSONObject().put("type", "playback_state").put("status", "playing")
                 .put("item", new JSONObject().put("uri", "spotify:track:T").put("decorations", d)));
         return s;
@@ -236,5 +245,25 @@ public class PlayerTextTest {
     @Test public void trackLinksWithOnlySomeUris() throws Exception {
         assertEquals(Collections.singletonList(LibraryPath.Node.artist("spotify:artist:R", "R")),
                 PlayerText.trackLinks(true, track(null, "spotify:artist:R=R")));
+    }
+
+    // --- ▶ while Soloist waits ---
+
+    @Test public void playWorksWhileActiveOrWhenThereIsSomethingToResume() throws Exception {
+        PlayerState waiting = track("spotify:album:A", "spotify:artist:R=R"); // not active
+        assertTrue(PlayerText.playEnabled(true, waiting, false, true, false));
+        assertTrue(PlayerText.playEnabled(true, waiting, false, false, false)); // Soloist's play from the top
+        assertFalse(PlayerText.playEnabled(true, waiting, false, true, true)); // one in flight
+        assertFalse(PlayerText.playEnabled(false, waiting, false, true, false)); // no player
+        assertFalse(PlayerText.playEnabled(true, new PlayerState(), false, true, false)); // nothing to resume
+        PlayerState active = playing("playing");
+        assertTrue(PlayerText.playEnabled(true, active, false, false, false));
+        assertFalse(PlayerText.playEnabled(true, active, true, false, false)); // a queue jump skips
+    }
+
+    @Test public void playStaysOffWhileSoloistIsLoggedOut() throws Exception {
+        PlayerState s = track("spotify:album:A", "spotify:artist:R=R");
+        s.apply(new JSONObject("{\"type\":\"auth_state\",\"logged_in\":false,\"is_active\":false}"));
+        assertFalse(PlayerText.playEnabled(true, s, false, true, false));
     }
 }
