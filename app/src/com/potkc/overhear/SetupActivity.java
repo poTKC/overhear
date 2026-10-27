@@ -41,8 +41,9 @@ public class SetupActivity extends Activity {
     static final String EXTRA_EDIT = "edit";
 
     private final Handler main = new Handler(Looper.getMainLooper());
-    /** After the service button, when to show the service's state again. */
+    /** After the service button, when to show the service's state again (a slow start or stop: the second). */
     private static final long SERVICE_RECHECK_MS = 500;
+    private static final long SERVICE_RECHECK_LATE_MS = 1500;
     private Prefs prefs;
     private EditText key;
     private EditText name;
@@ -162,17 +163,28 @@ public class SetupActivity extends Activity {
             PlayerService.start(this);
         }
         // Starting and stopping take a moment (onCreate / onDestroy set PlayerService.current).
-        main.postDelayed(new Runnable() {
-            @Override public void run() {
-                if (!destroyed) showService();
-            }
-        }, SERVICE_RECHECK_MS);
+        main.postDelayed(showServiceLater, SERVICE_RECHECK_MS);
+        main.postDelayed(showServiceLater, SERVICE_RECHECK_LATE_MS);
         showService();
+    }
+
+    private final Runnable showServiceLater = new Runnable() {
+        @Override public void run() {
+            if (!destroyed) showService();
+        }
+    };
+
+    /** Back from the notification shade (which does not pause on 4.3), where ✕ may have stopped the service. */
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) showService();
     }
 
     @Override
     protected void onDestroy() {
         destroyed = true;
+        main.removeCallbacks(showServiceLater);
         super.onDestroy();
     }
 

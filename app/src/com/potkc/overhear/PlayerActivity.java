@@ -107,6 +107,8 @@ public class PlayerActivity extends Activity {
     private ImageButton more;
     /** What ⋮ offers, as of the last render (empty: ⋮ hidden). */
     private List<LibraryPath.Node> trackLinks = Collections.emptyList();
+    /** The ⋮ menu on screen, or null. */
+    private PopupMenu trackMenu;
     private TextView elapsed;
     private TextView duration;
     private SeekBar seek;
@@ -385,6 +387,7 @@ public class PlayerActivity extends Activity {
     @Override
     protected void onPause() {
         started = false;
+        dismissTrackMenu();
         topStrip.pause();
         main.removeCallbacks(tick);
         detach();
@@ -395,6 +398,7 @@ public class PlayerActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        dismissTrackMenu();
         if (artwork != null) artwork.cancelAll(Artwork.viewsOf(this));
         if (backdropFade != null) backdropFade.cancel();
         super.onDestroy();
@@ -658,6 +662,7 @@ public class PlayerActivity extends Activity {
     private void openQueue() {
         if (queueOpen) return;
         queueOpen = true;
+        setMarquee(false); // hidden under the panel: no need to keep scrolling
         SoloistClient c = client();
         if (c != null) c.refreshQueue();
         queuePanel.setVisibility(View.VISIBLE);
@@ -673,6 +678,7 @@ public class PlayerActivity extends Activity {
     private void closeQueue() {
         if (!queueOpen) return;
         queueOpen = false;
+        setMarquee(true);
         queuePanel.animate().translationY(queuePanel.getHeight()).setDuration(180).withEndAction(new Runnable() {
             @Override public void run() {
                 if (!queueOpen) queuePanel.setVisibility(View.GONE);
@@ -847,7 +853,8 @@ public class PlayerActivity extends Activity {
     private void showTrackMenu() {
         final List<LibraryPath.Node> links = trackLinks;
         if (links.isEmpty()) return;
-        PopupMenu menu = new PopupMenu(this, more);
+        dismissTrackMenu();
+        final PopupMenu menu = new PopupMenu(this, more);
         for (int i = 0; i < links.size(); i++) {
             LibraryPath.Node n = links.get(i);
             String label;
@@ -866,10 +873,29 @@ public class PlayerActivity extends Activity {
                         .putExtra(LibraryActivity.EXTRA_CONTEXT_URI, n.uri)
                         .putExtra(LibraryActivity.EXTRA_CONTEXT_NAME, n.title)
                         .putExtra(LibraryActivity.EXTRA_CONTEXT_COVER, n.coverUrl));
+                overridePendingTransition(0, 0); // as every switch between the player and the library
                 return true;
             }
         });
+        menu.setOnDismissListener(new PopupMenu.OnDismissListener() {
+            @Override public void onDismiss(PopupMenu m) {
+                if (trackMenu == menu) trackMenu = null;
+            }
+        });
+        trackMenu = menu;
         menu.show();
+    }
+
+    private void dismissTrackMenu() {
+        PopupMenu m = trackMenu;
+        trackMenu = null;
+        if (m != null) m.dismiss();
+    }
+
+    /** The track text scrolls (marquee) while selected. */
+    private void setMarquee(boolean on) {
+        title.setSelected(on);
+        subtitle.setSelected(on);
     }
 
     private void openSettings() {
