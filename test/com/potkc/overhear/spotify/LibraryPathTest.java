@@ -277,4 +277,47 @@ public class LibraryPathTest {
         assertSame(s, LibraryPath.atContext(s, "spotify:artist:R", null, null, null));
         assertSame(s, LibraryPath.atContext(s, "spotify:artist:R", "Other", null, null));
     }
+
+    // --- linksOf ---
+
+    private static Item track(Item.Ref album, Item.Ref... artists) {
+        return new Item(Item.Kind.TRACK, "spotify:track:T", "t", "", null, null, null, Arrays.asList(artists), album);
+    }
+
+    private static final Item.Ref ALBUM_A = new Item.Ref("spotify:album:A", "Discovery", "https://c");
+    private static final Item.Ref ARTIST_R = new Item.Ref("spotify:artist:R", "Daft Punk", null);
+    private static final Item.Ref ARTIST_S = new Item.Ref("spotify:artist:S", "Romanthony", null);
+
+    @Test public void trackLinksToItsAlbumThenArtists() {
+        assertEquals(Arrays.asList(LibraryPath.Node.album("spotify:album:A", "Discovery", "https://c"),
+                        LibraryPath.Node.artist("spotify:artist:R", "Daft Punk"),
+                        LibraryPath.Node.artist("spotify:artist:S", "Romanthony")),
+                LibraryPath.linksOf(track(ALBUM_A, ARTIST_R, ARTIST_S), LibraryPath.Node.of(LibraryPath.Node.Type.LIKED)));
+    }
+
+    @Test public void thePageShownIsLeftOut() {
+        assertEquals(Arrays.asList(LibraryPath.Node.artist("spotify:artist:R", "Daft Punk")),
+                LibraryPath.linksOf(track(ALBUM_A, ARTIST_R), LibraryPath.Node.album("spotify:album:A", null, null)));
+        assertEquals(Arrays.asList(LibraryPath.Node.artist("spotify:artist:S", "Romanthony")),
+                LibraryPath.linksOf(new Item(Item.Kind.ALBUM, "spotify:album:A", "a", "", null, null, null,
+                        Arrays.asList(ARTIST_R, ARTIST_S), null), LibraryPath.Node.artist("spotify:artist:R", "x")));
+    }
+
+    @Test public void albumLinksToItsArtists() {
+        Item a = new Item(Item.Kind.ALBUM, "spotify:album:A", "a", "", null, null, null,
+                Arrays.asList(ARTIST_R, ARTIST_R), null);
+        assertEquals(Arrays.asList(LibraryPath.Node.artist("spotify:artist:R", "Daft Punk")), // no repeats
+                LibraryPath.linksOf(a, ALBUMS));
+    }
+
+    @Test public void nothingToOfferGivesNoLinks() {
+        assertTrue(LibraryPath.linksOf(track(null), ALBUMS).isEmpty());
+        assertTrue(LibraryPath.linksOf(new Item(Item.Kind.ARTIST, "spotify:artist:R", "r", "", null, null, null),
+                ARTISTS).isEmpty());
+        assertTrue(LibraryPath.linksOf(new Item(Item.Kind.PLAYLIST, "spotify:playlist:P", "p", "", null, null, null,
+                Arrays.asList(ARTIST_R), null), PLAYLISTS).isEmpty());
+        // Only album and artist URIs make pages.
+        assertTrue(LibraryPath.linksOf(track(new Item.Ref("spotify:show:X", "s", null),
+                new Item.Ref("spotify:user:u", "u", null)), ALBUMS).isEmpty());
+    }
 }

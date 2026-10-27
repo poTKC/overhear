@@ -31,21 +31,29 @@ public final class QueueTracks {
             return null;
         }
         List<Item> items = new ArrayList<Item>();
-        items.add(track(current, s.getTitle(), s.getArtists(), s.getSmallCoverUrl(), playlistUri));
+        items.add(track(current, s.getTitle(), s.getArtists(), s.getArtistUris(), s.getAlbumUri(), s.getAlbum(),
+                s.getSmallCoverUrl(), playlistUri));
         for (PlayerState.QueueItem q : s.getQueue()) {
             if (!"context".equals(q.source) || q.uri == null) continue;
             if (q.uri.equals(current)) break; // the context wrapped around
-            items.add(track(q.uri, q.title, q.artists, q.smallCoverUrl, playlistUri));
+            items.add(track(q.uri, q.title, q.artists, q.artistUris, q.albumUri, q.album, q.smallCoverUrl,
+                    playlistUri));
         }
         return items;
     }
 
-    private static Item track(String uri, String title, List<String> artists, String coverUrl, String playlistUri) {
+    /** With the album and the artists that have a URI, for the long-press. */
+    private static Item track(String uri, String title, List<String> artists, List<String> artistUris,
+            String albumUri, String albumName, String coverUrl, String playlistUri) {
         StringBuilder sb = new StringBuilder();
-        for (String a : artists) {
+        List<Item.Ref> refs = new ArrayList<Item.Ref>();
+        for (int i = 0; i < artists.size(); i++) {
             if (sb.length() > 0) sb.append(", ");
-            sb.append(a);
+            sb.append(artists.get(i));
+            String u = artistUris.get(i);
+            if (u != null && !u.isEmpty()) refs.add(new Item.Ref(u, artists.get(i), null));
         }
-        return new Item(Item.Kind.TRACK, uri, title, sb.toString(), coverUrl, null, playlistUri);
+        Item.Ref album = albumUri == null || albumUri.isEmpty() ? null : new Item.Ref(albumUri, albumName, coverUrl);
+        return new Item(Item.Kind.TRACK, uri, title, sb.toString(), coverUrl, null, playlistUri, refs, album);
     }
 }

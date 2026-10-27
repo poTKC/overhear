@@ -69,12 +69,16 @@ public final class SpotifyJson {
         return new Page(out, nextOffset(j, offset, a));
     }
 
-    /** /albums/{id}/tracks: the rows carry no images, so the album's cover is used. */
+    /**
+     * /albums/{id}/tracks: the rows carry neither images nor their album, so
+     * the page's album (its uri and cover) is used.
+     */
     public static Page albumTracks(JSONObject j, String albumUri, String albumCover, int offset) {
         JSONArray a = j.optJSONArray("items");
         List<Item> out = new ArrayList<Item>();
         for (int i = 0; a != null && i < a.length(); i++) {
-            add(out, track(a.optJSONObject(i), albumUri, albumCover));
+            add(out, track(a.optJSONObject(i), albumUri, albumCover,
+                    albumUri == null || albumUri.isEmpty() ? null : new Item.Ref(albumUri, null, albumCover)));
         }
         return new Page(out, nextOffset(j, offset, a));
     }
@@ -120,7 +124,7 @@ public final class SpotifyJson {
             if (o == null) continue;
             String date = string(o, "release_date");
             add(out, item(Item.Kind.ALBUM, o, date.length() >= 4 ? date.substring(0, 4) : date,
-                    smallCover(o.optJSONArray("images")), null, null));
+                    smallCover(o.optJSONArray("images")), null, null, artistRefs(o), null));
         }
         return new Page(out, nextOffset(j, offset, a));
     }
@@ -217,25 +221,56 @@ public final class SpotifyJson {
 
     private static Item album(JSONObject o) {
         if (o == null) return null;
-        return item(Item.Kind.ALBUM, o, artistNames(o), smallCover(o.optJSONArray("images")), null, null);
+        return item(Item.Kind.ALBUM, o, artistNames(o), smallCover(o.optJSONArray("images")), null, null,
+                artistRefs(o), null);
     }
 
     /** A track; cover null means the track's album's. */
     private static Item track(JSONObject t, String contextUri, String cover) {
+        return track(t, contextUri, cover, null);
+    }
+
+    /** As track(t, contextUri, cover), album null meaning the track's own (t.album), if any. */
+    private static Item track(JSONObject t, String contextUri, String cover, Item.Ref album) {
         if (t == null) return null;
-        if (cover == null) {
-            JSONObject album = t.optJSONObject("album");
-            if (album != null) cover = smallCover(album.optJSONArray("images"));
+        JSONObject a = t.optJSONObject("album");
+        String albumCover = a == null ? null : smallCover(a.optJSONArray("images"));
+        if (cover == null) cover = albumCover;
+        if (album == null && a != null) {
+            String uri = string(a, "uri");
+            if (!uri.isEmpty()) album = new Item.Ref(uri, nameOrNull(a), albumCover);
         }
-        return item(Item.Kind.TRACK, t, artistNames(t), cover, null, contextUri);
+        return item(Item.Kind.TRACK, t, artistNames(t), cover, null, contextUri, artistRefs(t), album);
     }
 
     /** null when the object has no uri. */
     private static Item item(Item.Kind kind, JSONObject o, String subtitle, String cover, String ownerId,
             String contextUri) {
+        return item(kind, o, subtitle, cover, ownerId, contextUri, null, null);
+    }
+
+    private static Item item(Item.Kind kind, JSONObject o, String subtitle, String cover, String ownerId,
+            String contextUri, List<Item.Ref> artists, Item.Ref album) {
         String uri = string(o, "uri");
         if (uri.isEmpty()) return null;
-        return new Item(kind, uri, string(o, "name"), subtitle, cover, ownerId, contextUri);
+        return new Item(kind, uri, string(o, "name"), subtitle, cover, ownerId, contextUri, artists, album);
+    }
+
+    /** o's artists that have a uri (name null when missing). */
+    private static List<Item.Ref> artistRefs(JSONObject o) {
+        JSONArray a = o.optJSONArray("artists");
+        List<Item.Ref> out = new ArrayList<Item.Ref>();
+        for (int i = 0; a != null && i < a.length(); i++) {
+            JSONObject artist = a.optJSONObject(i);
+            String uri = artist == null ? "" : string(artist, "uri");
+            if (!uri.isEmpty()) out.add(new Item.Ref(uri, nameOrNull(artist), null));
+        }
+        return out;
+    }
+
+    private static String nameOrNull(JSONObject o) {
+        String name = string(o, "name");
+        return name.isEmpty() ? null : name;
     }
 
     private static void add(List<Item> out, Item item) {

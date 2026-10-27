@@ -195,6 +195,32 @@ public final class LibraryPath {
         return type == Node.Type.PLAYLIST || type == Node.Type.OTHERS_PLAYLIST;
     }
 
+    /**
+     * The pages a long-press on item offers, in order: a track's album, then
+     * the artists of a track or an album (each once); none for other rows.
+     * Pages that are not an album or artist URI, and the page shown (here),
+     * are left out.
+     */
+    public static List<Node> linksOf(Item item, Node here) {
+        List<Node> out = new ArrayList<Node>();
+        if (item.kind != Item.Kind.TRACK && item.kind != Item.Kind.ALBUM) return out;
+        if (item.kind == Item.Kind.TRACK && item.album != null && item.album.uri.startsWith("spotify:album:")) {
+            link(out, Node.album(item.album.uri, item.album.name, item.album.coverUrl), here);
+        }
+        for (Item.Ref a : item.artists) {
+            if (a.uri.startsWith("spotify:artist:")) link(out, Node.artist(a.uri, a.name), here);
+        }
+        return out;
+    }
+
+    private static void link(List<Node> out, Node n, Node here) {
+        if (n.samePage(here)) return;
+        for (Node o : out) {
+            if (o.samePage(n)) return;
+        }
+        out.add(n);
+    }
+
     /** Replaces every node in stack that is from's page (Node.samePage) with to; whether there was one. */
     public static boolean replace(List<Node> stack, Node from, Node to) {
         boolean found = false;

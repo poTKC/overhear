@@ -64,6 +64,8 @@ public final class PlayerState {
         public final String uri;
         public final String title;
         public final List<String> artists;
+        /** The artists' URIs, as artists (null where one has none). */
+        public final List<String> artistUris;
         public final String album;
         /** decorations.parent.entity.uri (e.g. spotify:album:...), or null. */
         public final String albumUri;
@@ -80,15 +82,19 @@ public final class PlayerState {
             uri = str(item, "uri");
             title = name(d);
             List<String> a = new ArrayList<String>();
+            List<String> u = new ArrayList<String>();
             JSONArray creators = d == null ? null : d.optJSONArray("creators");
             if (creators != null) {
                 for (int i = 0; i < creators.length(); i++) {
                     JSONObject c = creators.optJSONObject(i);
                     String n = name(entityDecorations(c));
-                    if (n != null) a.add(n);
+                    if (n == null) continue;
+                    a.add(n);
+                    u.add(str(entity(c), "uri"));
                 }
             }
             artists = Collections.unmodifiableList(a);
+            artistUris = Collections.unmodifiableList(u);
             JSONObject parent = d == null ? null : d.optJSONObject("parent");
             album = name(entityDecorations(parent));
             albumUri = str(entity(parent), "uri");
@@ -294,6 +300,9 @@ public final class PlayerState {
     public String getTitle() { return track.title; }
 
     public List<String> getArtists() { return track.artists; }
+
+    /** getArtists()' URIs, in the same order (null where one has none). */
+    public List<String> getArtistUris() { return track.artistUris; }
 
     public String getAlbum() { return track.album; }
 

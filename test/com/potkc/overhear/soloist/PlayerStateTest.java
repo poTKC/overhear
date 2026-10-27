@@ -327,4 +327,11 @@ public class PlayerStateTest {
         assertEquals("spotify:album:1UP8wDVpZ3VCDjzbLsZ5AP", s.copy().getAlbumUri());
         assertNull(new PlayerState().getAlbumUri());
     }
+
+    @Test public void trackKnowsItsArtistUris() {
+        s.apply(fixture("playback_state"));
+        assertEquals(java.util.Arrays.asList("spotify:artist:1ZLU77nRzQIaP23mVSYpCQ"), s.getArtistUris());
+        assertEquals(s.getArtists().size(), s.getArtistUris().size());
+        assertTrue(new PlayerState().getArtistUris().isEmpty());
+    }
 }
