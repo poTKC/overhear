@@ -4,6 +4,7 @@
 スマホの Spotify で再生先にこの端末（既定の名前は端末の機種名）を選ぶと、
 端末から音が出て、画面に曲名・アートワーク・シークバー・キューが表示され、
 端末からも操作できます。
+Spotify にログインすれば、端末の画面で自分のライブラリをたどったり検索したりして、選んだ曲から再生することもできます。
 
 Xperia mini ST15i（Android 4.3 / CyanogenMod 10.2、320×480）で開発・確認しています。
 
@@ -30,18 +31,31 @@ Spotify 公式のヘッドレスクライアント **Soloist** を、APK に同�
   PlayerService                        PlayerActivity / 通知 / メディアキー
     ├ AudioSink → AudioTrack（スピーカー）
     └ Supervisor（起動・再起動・Wi-Fi・ロック）
+
+  LibraryActivity（ライブラリ・検索）  LoginActivity（QR でログイン）
+     │                                  │
+     ▼                                  ▼
+  SpotifyApi / SpotifyAuth ── overhear-fetch api / token ──▶ api.spotify.com / accounts.spotify.com
+                                                              │ 再生の指示（Spotify Connect）
+                                                              ▼
+                                                            Soloist
 ```
 
 - **Soloist** は APK に入れず、初回セットアップ時に端末上で Spotify の CDN
   （`soloist-builds.spotifycdn.com`）から取得します。取得には同梱の Go 製ヘルパー
   `overhear-fetch` を使います（Android 4.3 の TLS では最新サイトに接続できないため）。
+  同じヘルパーの `token`（accounts.spotify.com でのトークンの取得・更新）と `api`（api.spotify.com の呼び出し）
+  サブコマンドで Spotify Web API も呼びます。トークンは環境変数か stdin で渡し、コマンドラインには載せません。
+- **ライブラリ**は Spotify Web API で一覧を取り、再生も Web API でこの端末（Soloist）に指示します。
+  Web API が使えないとき（未ログイン・通信の失敗）は、Soloist の WebSocket で先頭から再生します。
 - **fakepulse** は Soloist が使う PulseAudio クライアント API を実装した代替 `libpulse.so.0`です。
   PCM を抽象 Unix ソケットでアプリへ送り、アプリは AudioTrack で再生します。
   音量は PCM に掛けず（常にフルスケール）、端末のメディア音量だけで調整します。
 - **API キー**は環境変数 `OVERHEAR_SOLOIST_KEY` で渡し、`libargkey.so` が起動時に `-k` 引数へ移します。
   `/proc/<pid>/cmdline` にキーは出ません。
 - 詳しくは [設計書](docs/plans/2026-10-26-st15i-player-design.md) と
-  [実装計画](docs/plans/2026-10-26-st15i-player.md) を見てください。
+  [実装計画](docs/plans/2026-10-26-st15i-player.md)、ライブラリについては
+  [設計書](docs/plans/2026-10-27-library-design.md) と [実装計画](docs/plans/2026-10-27-library.md) を見てください。
 
 ```
 app/        Android アプリ（Java、Gradle なし、API 18）
@@ -103,15 +117,52 @@ adb install -r build/overhear.apk
    「起動時・アプリを開いたときに自動で開始」を選んで「保存して開始」を押します。
    ランタイムの展開と Soloist のダウンロード（約 12 MB）が終わると再生画面に移ります。
 3. スマホの Spotify で再生先にそのデバイス名を選びます。
+4. 端末でライブラリを使うなら、設定画面の「Spotify」の「ログイン」から Spotify にログインします
+   （次の「Spotify へのログイン（ライブラリ）」を参照）。
+
+## Spotify へのログイン（ライブラリ）
+
+### Spotify のアプリの準備
+
+ライブラリは Spotify Web API を使うので、Spotify Developer のアプリ（Client ID）が必要です。
+コードに埋め込んだ Client ID（`app/src/com/potkc/overhear/spotify/SpotifyConfig.java` の `CLIENT_ID`）は
+作者のアプリのもので、開発モードのため作者が許可した人しか使えません。ほかの人が使う場合は自分のアプリを作り、
+`SpotifyConfig.CLIENT_ID` を書き換えてビルドしてください。
+
+1. <https://developer.spotify.com/dashboard> でアプリを作り、Web API を有効にします。
+2. Redirect URI に `https://potkc.github.io/overhear-auth/callback/` を登録します（**末尾のスラッシュまで含めます**）。
+   これはログインの結果を LAN 内の端末へ転送するだけの中継ページです（ソースは
+   [poTKC/overhear-auth](https://github.com/poTKC/overhear-auth)。転送先はプライベート IPv4 のアドレスに限ります）。
+3. 開発モードの制約: アプリの所有者が Spotify Premium であること、使えるのは User Management の許可リストに
+   登録した最大 5 人までです。自分以外が使うときは、その人の Spotify のメールアドレスを登録してください。
+
+### ログイン
+
+1. 設定画面の「Spotify」の「ログイン」を押すと、QR コードが表示されます。
+2. 端末と**同じ Wi-Fi** につないだスマホで QR コードを読み取り、Spotify にログインして許可します。
+3. スマホに「ログインしました」と出て、端末の画面も完了表示に変わります。
+
+端末はこの画面を開いている間だけ（最大 5 分）、Wi-Fi のアドレスのポート 8889 で中継ページからの転送を待ち受けます。
+ログイン中のユーザー ID は設定画面に表示され、「ログアウト」で消せます。
+
+**6 か月ごとにログインし直してください。** 開発モードでは、リフレッシュトークンが最初の認可から 6 か月で失効します
+（使っても延びません）。失効すると、ライブラリに「Spotify のログインが切れました — タップしてログイン」が出ます。
 
 ## 使い方
 
 - **再生画面:** 左下のステータス行（短い英語）をタップすると、状態に応じて開始・再試行・設定を開きます
   （例: `Stopped — tap to start`、`Failed — tap to retry`、`Check API key — tap`）。
-  右下のボタンでキュー（次に再生）と設定を開きます。キューはアートワークを上にフリックしても開きます。
-  キューの曲をタップすると、その曲まで無音で飛び、再生します（`skip_next` を 1 曲ずつ。一時停止中から飛んでも再生で終わります）。
+  右下のボタンでライブラリ（▤）、キュー（≡、次に再生）、設定（⚙）を開きます。キューはアートワークを上にフリックしても開きます。
+  キューの曲をタップすると、その曲から再生します。ログイン済みで、アルバム・プレイリスト・お気に入りの曲の中の曲なら
+  Web API で直接飛びます。シャッフル中や、手動で追加した曲が手前にあるときなどは、その曲まで無音で飛びます
+  （`skip_next` を 1 曲ずつ。一時停止中から飛んでも再生で終わります）。
   全画面表示のときは、上端に時刻と電池残量（色付きの点と数字、充電中は水色）を小さく表示します。
   12 時間制の設定でも午前/午後は付けません。
+- **ライブラリ:** 再生画面の ▤ で開きます。検索、お気に入りの曲、プレイリスト、アルバム、アーティスト、最近再生を
+  階層でたどり、曲をタップするとそのアルバムやプレイリストの中のその曲から再生します（再生画面に戻ります）。
+  一覧は最後までスクロールすると続きを読み込み、↻ で取り直します。検索は確定キーを押したときだけ行います。
+  ほかの人のプレイリスト（行の右端が ▶›）は Web API で曲一覧が取れないため、開くと先頭から再生を始め、
+  Soloist のキューから曲一覧を作ります。次に開いたときは前回の階層から始まります。
 - **音量:** 端末の音量キーでメディア音量を変えます。スマホの Spotify でこの端末の音量を変えると、
   端末のメディア音量も変わります（両方向に連動。サービスが動いている間だけ）。画面に音量バーはありません。
   起動時は端末のメディア音量を Spotify 側へ反映します。
