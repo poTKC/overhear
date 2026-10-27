@@ -24,3 +24,4 @@ app/src/com/potkc/overhear/StatusStrip.java
 app/src/com/potkc/overhear/QueueJump.java
 app/src/com/potkc/overhear/ArtColor.java
 app/src/com/potkc/overhear/spotify/HelperReply.java
+app/src/com/potkc/overhear/spotify/Pkce.java
