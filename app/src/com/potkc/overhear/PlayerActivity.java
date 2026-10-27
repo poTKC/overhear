@@ -549,7 +549,8 @@ public class PlayerActivity extends Activity {
 
         QueueJump jump = service == null ? null : service.getJump();
         boolean jumping = jump != null;
-        // A Web API jump only blocks the queue: it is one call, and a control pressed meanwhile simply wins.
+        // A Web API jump only blocks the queue: a control pressed meanwhile ends the wait (PlayerService.userInput),
+        // though a play request already sent may still land afterwards (Spotify gives no way to cancel it).
         boolean webJumping = service != null && service.isWebJumping();
         // While a jump skips, the controls rest (and the queue takes no other tap).
         boolean enabled = PlayerText.controlsEnabled(connected, state) && !jumping;
@@ -572,8 +573,10 @@ public class PlayerActivity extends Activity {
         List<PlayerState.QueueItem> shown = q.size() > QUEUE_SHOWN ? q.subList(0, QUEUE_SHOWN) : q;
         boolean tappable = PlayerText.queueTappable(connected, state, jumping || webJumping);
         if (webJumping) {
-            queueAdapter.setItems(shown, tappable, service.getWebJumpUid(), service.getWebJumpUri(),
-                    service.getWebJumpIndex());
+            // With a uid the row is found by it alone, so it does not drift when the list shifts.
+            String uid = service.getWebJumpUid();
+            queueAdapter.setItems(shown, tappable, uid, service.getWebJumpUri(),
+                    uid != null ? -1 : service.getWebJumpIndex());
         } else if (jump != null) {
             queueAdapter.setItems(shown, tappable, jump.getUid(), jump.getUri(), jump.getIndex() - jump.getSteps());
         } else {
