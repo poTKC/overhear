@@ -430,7 +430,7 @@ func TestExtractPrintsExtracting(t *testing.T) {
 }
 
 func TestUsageErrors(t *testing.T) {
-	for _, args := range [][]string{nil, {"get", "u"}, {"bogus", "a", "b"}, {"--ca"}, {"token", "extra"}} {
+	for _, args := range [][]string{nil, {"get", "u"}, {"bogus", "a", "b"}, {"--ca"}, {"token", "extra"}, {"api", "GET"}} {
 		if code := run(args, io.Discard, io.Discard); code == 0 {
 			t.Errorf("run(%q) = 0, want failure", args)
 		}
@@ -564,5 +564,70 @@ func TestTokenReportsErrorStatusWithExitZero(t *testing.T) {
 	}
 	if !strings.HasPrefix(stdout.String(), "status 400\n\n") {
 		t.Errorf("stdout = %q", stdout.String())
+	}
+}
+
+func TestAPISendsBearerAndBody(t *testing.T) {
+	srv, last, lastBody := replyServer(t, 204, "", "")
+	old := apiBase
+	apiBase = srv.URL + "/v1"
+	t.Cleanup(func() { apiBase = old })
+	t.Setenv("OVERHEAR_TOKEN", "tok")
+
+	var stdout, stderr bytes.Buffer
+	code := runWithStdin([]string{"--ca", caFor(t, srv), "api", "PUT", "/me/player/play?device_id=d"},
+		strings.NewReader(`{"context_uri":"spotify:album:x"}`), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("exit %d, stderr: %s", code, stderr.String())
+	}
+	if last.Method != "PUT" || last.URL.Path != "/v1/me/player/play" || last.URL.Query().Get("device_id") != "d" {
+		t.Errorf("request = %s %s", last.Method, last.URL)
+	}
+	if got := last.Header.Get("Authorization"); got != "Bearer tok" {
+		t.Errorf("authorization = %q", got)
+	}
+	if got := last.Header.Get("Content-Type"); got != "application/json" {
+		t.Errorf("content type = %q", got)
+	}
+	if string(*lastBody) != `{"context_uri":"spotify:album:x"}` {
+		t.Errorf("body = %q", *lastBody)
+	}
+	if stdout.String() != "status 204\n\n" {
+		t.Errorf("stdout = %q", stdout.String())
+	}
+}
+
+func TestAPIReportsRetryAfter(t *testing.T) {
+	srv, _, _ := replyServer(t, 429, "7", `{"error":{"status":429}}`)
+	old := apiBase
+	apiBase = srv.URL + "/v1"
+	t.Cleanup(func() { apiBase = old })
+	t.Setenv("OVERHEAR_TOKEN", "tok")
+
+	var stdout bytes.Buffer
+	if code := runWithStdin([]string{"--ca", caFor(t, srv), "api", "GET", "/me"}, strings.NewReader(""), &stdout, io.Discard); code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	if !strings.HasPrefix(stdout.String(), "status 429\nretry-after 7\n\n") {
+		t.Errorf("stdout = %q", stdout.String())
+	}
+}
+
+func TestAPIRejectsBadInput(t *testing.T) {
+	t.Setenv("OVERHEAR_TOKEN", "tok")
+	for _, args := range [][]string{
+		{"api", "GET", "me"},               // not absolute
+		{"api", "GET", "//evil.example/x"}, // scheme-relative
+		{"api", "GET", "/a/../b"},          // dot segments
+		{"api", "GET", "/me#x"},            // fragment
+		{"api", "PATCH", "/me"},            // method not allowed
+	} {
+		if code := runWithStdin(args, strings.NewReader(""), io.Discard, io.Discard); code == 0 {
+			t.Errorf("%v: want failure", args)
+		}
+	}
+	t.Setenv("OVERHEAR_TOKEN", "")
+	if code := runWithStdin([]string{"api", "GET", "/me"}, strings.NewReader(""), io.Discard, io.Discard); code == 0 {
+		t.Error("missing token: want failure")
 	}
 }

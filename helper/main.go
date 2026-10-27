@@ -2,11 +2,12 @@
 //
 // Android 4.3's Java TLS stack cannot reach many modern hosts and the system
 // has no tar, so the app delegates downloads (the Soloist tarball, artwork)
-// and token requests to this static helper.
+// and Spotify Web API calls to this static helper.
 //
 //	overhear-fetch [--ca FILE] [--dns a,b] get URL OUT
 //	overhear-fetch [--ca FILE] [--dns a,b] extract URL DIR
 //	overhear-fetch [--ca FILE] [--dns a,b] token
+//	OVERHEAR_TOKEN=… overhear-fetch [--ca FILE] [--dns a,b] api METHOD PATH
 //
 // Only https URLs are accepted, on the command line and in redirects.
 //
@@ -14,10 +15,12 @@
 // size is known), "extracting" once an archive is downloaded, and a final
 // "done".
 //
-// token POSTs the form read from stdin to accounts.spotify.com/api/token, so
-// secrets never appear on the command line. Its stdout is "status N", an
-// optional "retry-after V", a blank line and the reply body; any HTTP reply,
-// whatever its status, exits 0.
+// token POSTs the form read from stdin to accounts.spotify.com/api/token. api
+// sends METHOD (GET, PUT, POST or DELETE) to api.spotify.com/v1 + PATH with
+// the bearer token from $OVERHEAR_TOKEN and a JSON body read from stdin.
+// Secrets never appear on the command line, which other apps can read.
+// Both print "status N", an optional "retry-after V", a blank line and the
+// reply body; any HTTP reply, whatever its status, exits 0.
 //
 // Errors go to stderr with exit status 1. SIGINT/SIGTERM abort cleanly (exit 1).
 package main
@@ -79,7 +82,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 }
 
 // argCounts is the number of arguments each command takes, itself included.
-var argCounts = map[string]int{"get": 3, "extract": 3, "token": 1}
+var argCounts = map[string]int{"get": 3, "extract": 3, "token": 1, "api": 3}
 
 func runWithStdin(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("overhear-fetch", flag.ContinueOnError)
@@ -87,7 +90,7 @@ func runWithStdin(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 	caFile := fs.String("ca", "", "PEM bundle of trusted roots (default: system roots)")
 	dns := fs.String("dns", "", "comma-separated DNS server IPs, optionally ip:port (default: $OVERHEAR_DNS)")
 	fs.Usage = func() {
-		fmt.Fprintln(stderr, "usage: overhear-fetch [--ca FILE] [--dns a,b] get URL OUT | extract URL DIR | token")
+		fmt.Fprintln(stderr, "usage: overhear-fetch [--ca FILE] [--dns a,b] get URL OUT | extract URL DIR | token | api METHOD PATH")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -107,6 +110,19 @@ func runWithStdin(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 			return fail(err)
 		}
 	}
+	if rest[0] == "api" {
+		switch rest[1] {
+		case "GET", "PUT", "POST", "DELETE":
+		default:
+			return fail(fmt.Errorf("method %q not allowed", rest[1]))
+		}
+		if err := checkAPIPath(rest[2]); err != nil {
+			return fail(err)
+		}
+		if os.Getenv("OVERHEAR_TOKEN") == "" {
+			return fail(errors.New("OVERHEAR_TOKEN is not set"))
+		}
+	}
 
 	_, statErr := os.Stat("/etc/resolv.conf")
 	servers, err := dnsServers(*dns, os.Getenv("OVERHEAR_DNS"), statErr == nil)
@@ -120,10 +136,15 @@ func runWithStdin(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if rest[0] == "token" {
+	if rest[0] == "token" || rest[0] == "api" {
 		ctx, cancel := context.WithTimeout(ctx, apiTimeout)
 		defer cancel()
-		if err := postToken(ctx, client, stdin, stdout); err != nil {
+		if rest[0] == "token" {
+			err = postToken(ctx, client, stdin, stdout)
+		} else {
+			err = callAPI(ctx, client, rest[1], rest[2], stdin, stdout)
+		}
+		if err != nil {
 			return fail(err)
 		}
 		return 0
@@ -156,6 +177,42 @@ func postToken(ctx context.Context, client *http.Client, stdin io.Reader, stdout
 		return err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	return doReply(client, req, stdout)
+}
+
+// checkAPIPath accepts an absolute path (with an optional query) below
+// apiBase: no scheme or host, no dot segments, no fragment.
+func checkAPIPath(p string) error {
+	if !strings.HasPrefix(p, "/") || strings.HasPrefix(p, "//") || strings.ContainsAny(p, "#\\") {
+		return fmt.Errorf("bad API path %q", p)
+	}
+	path := p
+	if i := strings.IndexByte(path, '?'); i >= 0 {
+		path = path[:i]
+	}
+	for _, seg := range strings.Split(path, "/") {
+		if seg == "." || seg == ".." {
+			return fmt.Errorf("bad API path %q", p)
+		}
+	}
+	return nil
+}
+
+// callAPI sends METHOD apiBase+path with the bearer token from
+// $OVERHEAR_TOKEN and the body read from stdin (JSON when not empty).
+func callAPI(ctx context.Context, client *http.Client, method, path string, stdin io.Reader, stdout io.Writer) error {
+	body, err := io.ReadAll(io.LimitReader(stdin, 64<<10))
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, method, apiBase+path, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+os.Getenv("OVERHEAR_TOKEN"))
+	if len(body) > 0 {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	return doReply(client, req, stdout)
 }
 
