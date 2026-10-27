@@ -481,10 +481,12 @@ public final class PlayerService extends Service {
     /**
      * Asks for the whole queue when the tracker wants it, only while its
      * playlist is the context: a finished tracker is kept, and the long
-     * queue must not replace the player's while something else plays.
+     * queue must not replace the player's while something else plays, nor
+     * once the context has left it (a later play, not the tracker's).
      */
     private void askOthersQueue() {
-        if (others != null && others.playlistUri().equals(client.getState().getContextUri())
+        if (others != null && !others.hasLeft()
+                && others.playlistUri().equals(client.getState().getContextUri())
                 && others.takeQueueRequest(client.isConnected())) {
             Log.i(TAG, "others: asking for the whole queue");
             client.requestQueue(SoloistClient.FULL_QUEUE_LIMIT);

@@ -9,7 +9,7 @@ public class PlayPlanTest {
     private static final String CTX = "spotify:album:A";
 
     @Test public void shuffledAlwaysCallsEvenIfSoloistSaysOn() {
-        // Soloist's flag may be stale: on while Spotify's is off.
+        // Soloist's flag may be stale, so ⇄ never trusts it.
         PlayPlan p = PlayPlan.of(CTX, null, Boolean.TRUE, Boolean.TRUE);
         assertTrue(p.callShuffle);
         assertFalse(p.fromFirst);
