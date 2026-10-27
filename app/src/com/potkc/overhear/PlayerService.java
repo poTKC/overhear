@@ -160,6 +160,8 @@ public final class PlayerService extends Service {
     private boolean lastJumpOk;
     /** The Web API jump (jumpTo) in progress, until it ends; or null. */
     private WebJump webJump;
+    /** When a control was last pressed or a queue jump started (elapsedRealtime); 0 before. */
+    private long lastControlMs;
     /** The last play of another user's playlist the library asked for; or null. */
     private OthersTracker others;
     private final IBinder binder = new LocalBinder();
@@ -428,6 +430,7 @@ public final class PlayerService extends Service {
 
     /** A control was pressed (here, in the notification or by a media key): a queue jump ends. */
     void userInput() {
+        lastControlMs = SystemClock.elapsedRealtime();
         if (jump != null) jump.onUserInput();
         if (webJump != null) {
             // The user's command wins: a PUT still queued is cancelled; one already out may still land.
@@ -494,6 +497,7 @@ public final class PlayerService extends Service {
      */
     boolean jumpTo(int index, PlayerState.QueueItem item) {
         if (jump != null || webJump != null || !connected || item.uri == null) return false;
+        lastControlMs = SystemClock.elapsedRealtime();
         Spotify spotify = Spotify.get(this);
         if (QueueRoute.useWebApi(state.getQueue(), index, state.getTrackUri(), state.getContextUri(),
                 state.isShuffle(), spotify.isLoggedIn())) {
@@ -622,6 +626,16 @@ public final class PlayerService extends Service {
         scheduleJumpTimer();
         notifyUi();
         return true;
+    }
+
+    /** When a control was last pressed or a queue jump started (elapsedRealtime); 0 if never. */
+    long lastControlMs() {
+        return lastControlMs;
+    }
+
+    /** A queue jump (QueueJump or the Web API's) is under way. */
+    boolean isJumping() {
+        return jump != null || webJump != null;
     }
 
     /** The running queue jump, or null. */

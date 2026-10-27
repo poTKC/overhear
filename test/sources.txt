@@ -43,3 +43,4 @@ app/src/io/nayuki/qrcodegen/BitBuffer.java
 app/src/io/nayuki/qrcodegen/DataTooLongException.java
 app/src/io/nayuki/qrcodegen/QrCode.java
 app/src/io/nayuki/qrcodegen/QrSegment.java
+app/src/com/potkc/overhear/PlayPlan.java
