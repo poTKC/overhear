@@ -7,9 +7,11 @@ import com.potkc.overhear.soloist.PlayerState;
 
 /**
  * Another user's playlist, whose tracks the Web API refuses (403), rebuilt
- * from Soloist's queue once it plays from the start: the current track, then
+ * from Soloist's queue while its first track plays: the current track, then
  * the upcoming rows from the context (queued and autoplay rows are left
- * out). The queue may go on with a second round from the first track (a
+ * out). Only then is the order right: once playback moves on, the same rows
+ * come rotated (k..n, then 1..k-1), so the caller passes the first track it
+ * saw after starting the playlist and gets null for any other. The queue may go on with a second round from the first track (a
  * 66-track playlist started at track 5 listed 65 upcoming), so the list stops
  * where the current track's URI comes round again. A playlist that really
  * holds the current track twice is cut at the second one too: the two cases
@@ -18,10 +20,14 @@ import com.potkc.overhear.soloist.PlayerState;
 public final class QueueTracks {
     private QueueTracks() {}
 
-    /** The playlist's tracks from Soloist's state, or null until the playlist is the context and a queue arrived. */
-    public static List<Item> fromState(PlayerState s, String playlistUri) {
+    /**
+     * The playlist's tracks from Soloist's state, or null unless the playlist
+     * is the context, firstTrackUri is playing and its queue has arrived.
+     */
+    public static List<Item> fromState(PlayerState s, String playlistUri, String firstTrackUri) {
         String current = s.getTrackUri();
-        if (playlistUri == null || !playlistUri.equals(s.getContextUri()) || s.isQueueStale() || current == null) {
+        if (playlistUri == null || firstTrackUri == null || !playlistUri.equals(s.getContextUri())
+                || !firstTrackUri.equals(current) || s.isQueueStale()) {
             return null;
         }
         List<Item> items = new ArrayList<Item>();

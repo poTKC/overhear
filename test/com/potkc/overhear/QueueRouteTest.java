@@ -92,4 +92,16 @@ public class QueueRouteTest {
         assertTrue(QueueRoute.useWebApi(queue("context=spotify:track:a", "queue=spotify:track:q"), 0, CUR,
                 ALBUM, false, true));
     }
+
+    @Test public void aTargetWithoutAUriUsesSkips() throws Exception {
+        JSONArray a = new JSONArray().put(new JSONObject().put("source", "context").put("item", new JSONObject()));
+        PlayerState s = new PlayerState();
+        s.apply(new JSONObject().put("type", "queue_changed").put("upcoming", a));
+        assertFalse(QueueRoute.useWebApi(s.getQueue(), 0, CUR, ALBUM, false, true));
+    }
+
+    @Test public void theBareCollectionContextUsesSkips() throws Exception {
+        assertFalse(QueueRoute.useWebApi(queue("context=spotify:track:a"), 0, CUR, "spotify:collection", false,
+                true));
+    }
 }

@@ -16,6 +16,7 @@ import org.junit.Test;
 
 public class QueueTracksTest {
     private static final String PLAYLIST = "spotify:playlist:P";
+    private static final String FIRST = "spotify:track:a";
 
     private PlayerState state;
 
@@ -62,24 +63,24 @@ public class QueueTracksTest {
     @Test public void currentThenContextRows() throws Exception {
         queue("context=b", "queue=x", "context=c", "autoplay=y");
         assertEquals(Arrays.asList("spotify:track:a", "spotify:track:b", "spotify:track:c"),
-                uris(QueueTracks.fromState(state, PLAYLIST)));
+                uris(QueueTracks.fromState(state, PLAYLIST, FIRST)));
     }
 
     @Test public void stopsWhereTheContextWrapsAround() throws Exception {
         queue("context=b", "context=c", "context=a", "context=b");
         assertEquals(Arrays.asList("spotify:track:a", "spotify:track:b", "spotify:track:c"),
-                uris(QueueTracks.fromState(state, PLAYLIST)));
+                uris(QueueTracks.fromState(state, PLAYLIST, FIRST)));
     }
 
     @Test public void aQueuedCopyOfTheCurrentTrackDoesNotCutTheList() throws Exception {
         queue("queue=a", "context=b");
         assertEquals(Arrays.asList("spotify:track:a", "spotify:track:b"),
-                uris(QueueTracks.fromState(state, PLAYLIST)));
+                uris(QueueTracks.fromState(state, PLAYLIST, FIRST)));
     }
 
     @Test public void eachTrackPlaysInThePlaylist() throws Exception {
         queue("context=b");
-        List<Item> items = QueueTracks.fromState(state, PLAYLIST);
+        List<Item> items = QueueTracks.fromState(state, PLAYLIST, FIRST);
         assertEquals(2, items.size());
         for (Item i : items) {
             assertEquals(Item.Kind.TRACK, i.kind);
@@ -100,7 +101,7 @@ public class QueueTracksTest {
         JSONArray a = new JSONArray().put(new JSONObject().put("source", "context")
                 .put("item", new JSONObject().put("uri", "spotify:track:bare")));
         state.apply(new JSONObject().put("type", "queue_changed").put("upcoming", a));
-        Item bare = QueueTracks.fromState(state, PLAYLIST).get(1);
+        Item bare = QueueTracks.fromState(state, PLAYLIST, FIRST).get(1);
         assertEquals("", bare.subtitle);
         assertNull(bare.title);
         assertNull(bare.coverUrl);
@@ -108,15 +109,40 @@ public class QueueTracksTest {
 
     @Test public void notReadyUntilTheContextMatches() throws Exception {
         queue("context=b");
-        assertNull(QueueTracks.fromState(state, "spotify:playlist:other"));
+        assertNull(QueueTracks.fromState(state, "spotify:playlist:other", FIRST));
     }
 
     @Test public void notReadyWhileTheQueueIsStale() throws Exception {
         queue("context=b");
-        state.apply(new JSONObject().put("type", "track_changed").put("item", item("b")));
-        assertNull(QueueTracks.fromState(state, PLAYLIST));
+        state.apply(new JSONObject().put("type", "track_changed").put("item", item("a")));
+        assertNull(QueueTracks.fromState(state, PLAYLIST, FIRST));
         queue("context=c");
-        assertEquals(Arrays.asList("spotify:track:b", "spotify:track:c"),
-                uris(QueueTracks.fromState(state, PLAYLIST)));
+        assertEquals(Arrays.asList("spotify:track:a", "spotify:track:c"),
+                uris(QueueTracks.fromState(state, PLAYLIST, FIRST)));
+    }
+
+    @Test public void notReadyOnceAnotherTrackPlays() throws Exception {
+        // Past the first track the rows come rotated (b, c, a): the order would be wrong.
+        state.apply(new JSONObject().put("type", "track_changed").put("item", item("b")));
+        queue("context=c", "context=a");
+        assertNull(QueueTracks.fromState(state, PLAYLIST, FIRST));
+    }
+
+    @Test public void nullArgumentsAreNotReady() throws Exception {
+        queue("context=b");
+        assertNull(QueueTracks.fromState(state, null, FIRST));
+        assertNull(QueueTracks.fromState(state, PLAYLIST, null));
+    }
+
+    @Test public void noCurrentTrackIsNotReady() throws Exception {
+        state.apply(new JSONObject().put("type", "playback_state").put("status", "idle")
+                .put("context", new JSONObject().put("uri", PLAYLIST)));
+        queue("context=b");
+        assertNull(QueueTracks.fromState(state, PLAYLIST, FIRST));
+    }
+
+    @Test public void anEmptyQueueGivesJustTheCurrentTrack() throws Exception {
+        queue();
+        assertEquals(Arrays.asList("spotify:track:a"), uris(QueueTracks.fromState(state, PLAYLIST, FIRST)));
     }
 }

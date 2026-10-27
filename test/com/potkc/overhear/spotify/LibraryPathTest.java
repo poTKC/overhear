@@ -4,6 +4,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -84,5 +85,41 @@ public class LibraryPathTest {
                 LibraryPath.Node.artist("spotify:artist:A", "After"));
         assertEquals(Arrays.asList(TOP, LibraryPath.Node.of(LibraryPath.Node.Type.SEARCH)),
                 LibraryPath.decode(LibraryPath.encode(stack)));
+    }
+
+    @Test public void aTitleOfJustTheNullMarkerSurvives() {
+        List<LibraryPath.Node> stack = Arrays.asList(TOP, LibraryPath.Node.artist("spotify:artist:A", "~"));
+        List<LibraryPath.Node> back = LibraryPath.decode(LibraryPath.encode(stack));
+        assertEquals(stack, back);
+        assertEquals("~", back.get(1).title);
+    }
+
+    @Test public void aTrailingNewlineIsFine() {
+        List<LibraryPath.Node> stack = Arrays.asList(TOP, LibraryPath.Node.of(LibraryPath.Node.Type.LIKED));
+        assertEquals(stack, LibraryPath.decode(LibraryPath.encode(stack) + "\n"));
+    }
+
+    @Test public void aDeepStackIsCapped() {
+        List<LibraryPath.Node> stack = new ArrayList<LibraryPath.Node>();
+        stack.add(TOP);
+        for (int i = 0; i < 40; i++) stack.add(LibraryPath.Node.artist("spotify:artist:" + i, "A" + i));
+        List<LibraryPath.Node> back = LibraryPath.decode(LibraryPath.encode(stack));
+        assertEquals(LibraryPath.MAX_DEPTH, back.size());
+        assertEquals(stack.subList(0, LibraryPath.MAX_DEPTH), back);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void albumNeedsAUri() {
+        LibraryPath.Node.album(null, "t", null);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void playlistNeedsAUri() {
+        LibraryPath.Node.playlist("", "t", false);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void artistNeedsAUri() {
+        LibraryPath.Node.artist("", "t");
     }
 }

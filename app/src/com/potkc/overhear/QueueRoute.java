@@ -10,8 +10,11 @@ import com.potkc.overhear.soloist.PlayerState;
  * for tracks of the playing context (not queued or autoplay ones) in a
  * context Spotify takes an offset for (albums, playlists, liked songs), and
  * picks the first occurrence of a URI, so a duplicate ahead of the target
- * (the current track included) rules it out; duplicates already played are
- * out of sight. Shuffle rules it out too (the jump reshuffles the rest), and
+ * (the current track included) rules it out. A duplicate already played,
+ * before the visible queue, cannot be seen: offset.uri then resolves to that
+ * earlier occurrence, so the right song plays but the context goes on from
+ * the earlier position, replaying the tracks in between. That is accepted,
+ * as Soloist gives no absolute position in the context to jump by. Shuffle rules it out too (the jump reshuffles the rest), and
  * so does any queued or autoplay row ahead of the target, which a context
  * play would leave in place (QueueJump consumes them on the way). Pure Java.
  */

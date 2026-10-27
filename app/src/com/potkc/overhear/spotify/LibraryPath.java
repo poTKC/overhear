@@ -3,35 +3,46 @@ package com.potkc.overhear.spotify;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 /**
  * The stack of library pages (TOP first) as one string, to reopen the
  * library where it was left. Each node is a line "type|uri|title|cover",
  * every value URL-encoded and a missing one written as "~" (which the
- * encoder never emits). decode() never throws: it keeps what it can read up
- * to the first unreadable line, always starts with TOP, and stops before an
+ * encoder never emits). The Node.Type names are part of this persisted
+ * format: renaming one makes saved stacks stop at that page. decode() never
+ * throws: it keeps what it can read up to the first unreadable line, always
+ * starts with TOP, keeps at most MAX_DEPTH nodes, and stops before an
  * OTHERS_PLAYLIST, since reopening one starts playing it. Pure Java.
  */
 public final class LibraryPath {
+    /** The deepest stack decode() restores, TOP included. */
+    public static final int MAX_DEPTH = 32;
+
     private static final String NONE = "~";
 
     /** One library page: its type and, for a single album, playlist or artist, which one. Immutable. */
     public static final class Node {
         public enum Type {
-            TOP, SEARCH, LIKED, PLAYLISTS, ALBUMS, ARTISTS, RECENT,
+            TOP(false), SEARCH(false), LIKED(false), PLAYLISTS(false), ALBUMS(false), ARTISTS(false),
+            RECENT(false),
             /** uri, title, coverUrl */
-            ALBUM,
+            ALBUM(true),
             /** uri, title: one of the user's own playlists. */
-            PLAYLIST,
+            PLAYLIST(true),
             /** uri, title: someone else's playlist, listed from Soloist's queue. */
-            OTHERS_PLAYLIST,
+            OTHERS_PLAYLIST(true),
             /** uri, title */
-            ARTIST;
+            ARTIST(true);
+
+            private final boolean arguments;
+
+            Type(boolean arguments) {
+                this.arguments = arguments;
+            }
 
             boolean hasArguments() {
-                return ordinal() >= ALBUM.ordinal();
+                return arguments;
             }
         }
 
@@ -60,16 +71,21 @@ public final class LibraryPath {
         }
 
         public static Node album(String uri, String title, String coverUrl) {
-            return new Node(Type.ALBUM, uri, title, coverUrl);
+            return new Node(Type.ALBUM, checkUri(uri), title, coverUrl);
         }
 
         /** others: owned by someone else (OTHERS_PLAYLIST), else the user's own (PLAYLIST). */
         public static Node playlist(String uri, String title, boolean others) {
-            return new Node(others ? Type.OTHERS_PLAYLIST : Type.PLAYLIST, uri, title, null);
+            return new Node(others ? Type.OTHERS_PLAYLIST : Type.PLAYLIST, checkUri(uri), title, null);
         }
 
         public static Node artist(String uri, String title) {
-            return new Node(Type.ARTIST, uri, title, null);
+            return new Node(Type.ARTIST, checkUri(uri), title, null);
+        }
+
+        private static String checkUri(String uri) {
+            if (uri == null || uri.isEmpty()) throw new IllegalArgumentException("no uri");
+            return uri;
         }
 
         @Override public boolean equals(Object o) {
@@ -114,7 +130,7 @@ public final class LibraryPath {
         stack.add(Node.top());
         if (s == null) return stack;
         String[] lines = s.split("\n");
-        for (int i = 0; i < lines.length; i++) {
+        for (int i = 0; i < lines.length && stack.size() < MAX_DEPTH; i++) {
             Node n = parse(lines[i]);
             if (n == null || n.type == Node.Type.OTHERS_PLAYLIST) break;
             if (n.type == Node.Type.TOP) {
@@ -147,7 +163,7 @@ public final class LibraryPath {
         } catch (IllegalArgumentException e) {
             return null; // a broken %-escape
         }
-        if (uri == null) return null;
+        if (uri == null || uri.isEmpty()) return null;
         return new Node(type, uri, title, type == Node.Type.ALBUM ? cover : null);
     }
 
