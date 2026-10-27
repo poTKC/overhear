@@ -40,9 +40,10 @@ public final class SpotifyApi {
     }
 
     private HelperReply call(String method, String path, String body) throws IOException {
-        HelperReply r = transport.api(method, path, auth.accessToken(), body);
+        String sent = auth.accessToken();
+        HelperReply r = transport.api(method, path, sent, body);
         if (r.status == 401) {
-            auth.invalidate();
+            auth.invalidate(sent);
             r = transport.api(method, path, auth.accessToken(), body);
         }
         return r;
