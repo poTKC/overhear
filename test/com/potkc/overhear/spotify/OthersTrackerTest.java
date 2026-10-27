@@ -196,6 +196,22 @@ public class OthersTrackerTest {
         assertEquals(OthersTracker.Status.READY, tracker.status());
     }
 
+    @Test public void failsLaterIfTheAdoptedTracksListNeverComes() {
+        trackChanged("a");
+        playbackState("a", PLAYLIST);
+        tracker = new OthersTracker(PLAYLIST);
+        tracker.onOpen(state.copy());
+        tracker.onPlayReturned(T0);
+        position(1000, T0 + OthersTracker.GIVE_UP_AFTER_MS - 1000);
+        tracker.onTick(state.copy(), T0 + OthersTracker.GIVE_UP_AFTER_MS);
+        assertEquals(OthersTracker.Status.STARTING, tracker.status());
+        assertTrue(tracker.takeQueueRequest(true));
+        int v = tracker.version();
+        tracker.onTick(state.copy(), T0 + OthersTracker.LAST_CHECK_AFTER_MS);
+        assertEquals(OthersTracker.Status.FAILED, tracker.status());
+        assertTrue(tracker.version() != v);
+    }
+
     @Test public void failsWhenTheContextLeavesThePlaylistFirst() {
         tracker.onPlayReturned(T0);
         contextChanged(PLAYLIST);

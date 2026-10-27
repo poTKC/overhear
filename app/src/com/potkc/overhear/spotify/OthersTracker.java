@@ -18,8 +18,9 @@ import com.potkc.overhear.soloist.PlayerState;
  * regular 10-entry queue that follows must not shorten it, and once
  * another track plays QueueTracks gives none, so the list stays in order.
  * Without a list GIVE_UP_AFTER_MS after the request (unless that tick
- * just adopted the first track), or if the context leaves the playlist
- * first, the status is FAILED (the caller offers to
+ * just adopted the first track: then the next tick, at the latest the one
+ * LAST_CHECK_AFTER_MS after, gives up), or if the context leaves the
+ * playlist first, the status is FAILED (the caller offers to
  * play again, with a new tracker).
  *
  * Pure Java, one thread (the caller's); times come from the caller.
@@ -29,6 +30,8 @@ public final class OthersTracker {
 
     public static final long ADOPT_AFTER_MS = 2500;
     public static final long GIVE_UP_AFTER_MS = 10000;
+    /** A last check, for a first track adopted in the GIVE_UP_AFTER_MS tick whose list never came. */
+    public static final long LAST_CHECK_AFTER_MS = 20000;
     /** How far into the track the timed adoption still takes it for a fresh start. */
     public static final long ADOPT_MAX_POSITION_MS = 5000;
 
@@ -103,7 +106,10 @@ public final class OthersTracker {
         }
     }
 
-    /** onState plus the timed checks; call it ADOPT_AFTER_MS and GIVE_UP_AFTER_MS after the request returned. */
+    /**
+     * onState plus the timed checks; call it ADOPT_AFTER_MS, GIVE_UP_AFTER_MS
+     * and LAST_CHECK_AFTER_MS after the request returned.
+     */
     public void onTick(PlayerState s, long nowMs) {
         onState(s);
         if (playReturnedMs < 0) return;

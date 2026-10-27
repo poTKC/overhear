@@ -652,6 +652,7 @@ public class LibraryActivity extends Activity {
         t.onPlayReturned(System.currentTimeMillis());
         list.postDelayed(othersTick, OthersTracker.ADOPT_AFTER_MS + 100);
         list.postDelayed(othersTick, OthersTracker.GIVE_UP_AFTER_MS + 100);
+        list.postDelayed(othersTick, OthersTracker.LAST_CHECK_AFTER_MS + 100);
     }
 
     private final Runnable othersTick = new Runnable() {
