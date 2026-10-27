@@ -12,8 +12,7 @@ import java.util.List;
  * encoder never emits). The Node.Type names are part of this persisted
  * format: renaming one makes saved stacks stop at that page. decode() never
  * throws: it keeps what it can read up to the first unreadable line, always
- * starts with TOP, keeps at most MAX_DEPTH nodes, and stops before an
- * OTHERS_PLAYLIST, since reopening one starts playing it. Pure Java.
+ * starts with TOP and keeps at most MAX_DEPTH nodes. Pure Java.
  */
 public final class LibraryPath {
     /** The deepest stack decode() restores, TOP included. */
@@ -132,7 +131,7 @@ public final class LibraryPath {
         String[] lines = s.split("\n");
         for (int i = 0; i < lines.length && stack.size() < MAX_DEPTH; i++) {
             Node n = parse(lines[i]);
-            if (n == null || n.type == Node.Type.OTHERS_PLAYLIST) break;
+            if (n == null) break;
             if (n.type == Node.Type.TOP) {
                 if (i == 0) continue; // already there
                 break;

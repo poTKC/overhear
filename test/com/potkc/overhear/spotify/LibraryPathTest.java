@@ -77,14 +77,12 @@ public class LibraryPathTest {
                 LibraryPath.decode(LibraryPath.encode(albums)));
     }
 
-    @Test public void othersPlaylistIsNotRestored() {
-        // Reopening it would start playback; restore up to its parent instead.
+    @Test public void othersPlaylistIsRestored() {
+        // Opening it no longer plays it.
         List<LibraryPath.Node> stack = Arrays.asList(TOP,
                 LibraryPath.Node.of(LibraryPath.Node.Type.SEARCH),
-                LibraryPath.Node.playlist("spotify:playlist:P", "Theirs", true),
-                LibraryPath.Node.artist("spotify:artist:A", "After"));
-        assertEquals(Arrays.asList(TOP, LibraryPath.Node.of(LibraryPath.Node.Type.SEARCH)),
-                LibraryPath.decode(LibraryPath.encode(stack)));
+                LibraryPath.Node.playlist("spotify:playlist:P", "Theirs", true));
+        assertEquals(stack, LibraryPath.decode(LibraryPath.encode(stack)));
     }
 
     @Test public void aTitleOfJustTheNullMarkerSurvives() {
