@@ -63,8 +63,9 @@ import com.potkc.overhear.spotify.SpotifyJson;
  * page when the last row comes into view. The CACHE_MAX most recently used
  * lists stay cached for the process lifetime (dropped when the login
  * changes); ↻ reloads the page shown, or retries the page that failed.
- * Tapping something playable asks the Web API to play it on this device and
- * returns to the player. A failed call may still have been applied, so
+ * Tapping the track marked as playing now only returns to the player.
+ * Tapping anything else playable asks the Web API to play it on this
+ * device and returns to the player. A failed call may still have been applied, so
  * unless it certainly sent nothing (no login, device not listed) Soloist's
  * track (or context, when playing from the top) is checked, again after
  * PLAY_RECHECK_MS; only if it is not what was asked does Soloist play the
@@ -809,7 +810,7 @@ public class LibraryActivity extends Activity {
             case TRACK:
                 return Row.item(item, false, new Runnable() {
                     @Override public void run() {
-                        play(item.contextUri, item.uri);
+                        playTrack(item.contextUri, item.uri);
                     }
                 });
             case ALBUM:
@@ -992,6 +993,18 @@ public class LibraryActivity extends Activity {
     }
 
     /** A failure that certainly sent no play: no login, or this device is not in the user's list. */
+    /**
+     * A track row's tap: the track marked as playing now only returns to the
+     * player (it keeps playing, not restarted); any other plays from it.
+     */
+    private void playTrack(String contextUri, String trackUri) {
+        if (trackUri != null && trackUri.equals(adapter.nowTrack)) {
+            toPlayer();
+            return;
+        }
+        play(contextUri, trackUri);
+    }
+
     private static boolean sentNothing(IOException e) {
         return (e instanceof SpotifyException
                 && ((SpotifyException) e).reason == SpotifyException.Reason.LOGIN_REQUIRED)
@@ -1096,7 +1109,7 @@ public class LibraryActivity extends Activity {
         for (final Item item : o.items()) {
             rows.add(Row.item(item, false, new Runnable() {
                 @Override public void run() {
-                    play(o.playlistUri(), item.uri);
+                    playTrack(o.playlistUri(), item.uri);
                 }
             }));
         }
