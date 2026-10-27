@@ -26,15 +26,23 @@ public class QueueTracksTest {
                 .put("item", item("a")).put("context", new JSONObject().put("uri", PLAYLIST)));
     }
 
-    /** A track "spotify:track:<id>" titled "T<id>" by "X<id>" and "Y<id>", with three cover sizes. */
+    /**
+     * A track "spotify:track:<id>" titled "T<id>" by "X<id>" and "Y<id>"
+     * (spotify:artist:X<id>, ...; Y's without a URI), on the album
+     * spotify:album:A<id> "A<id>", with three cover sizes.
+     */
     private static JSONObject item(String id) throws Exception {
         JSONArray covers = new JSONArray()
                 .put(new JSONObject().put("url", "https://i/" + id + "-large").put("size", "large"))
                 .put(new JSONObject().put("url", "https://i/" + id + "-small").put("size", "small"))
                 .put(new JSONObject().put("url", "https://i/" + id + "-default").put("size", "default"));
         JSONArray creators = new JSONArray().put(creator("X" + id)).put(creator("Y" + id));
+        creators.getJSONObject(0).getJSONObject("entity").put("uri", "spotify:artist:X" + id);
+        JSONObject parent = new JSONObject().put("entity", new JSONObject().put("uri", "spotify:album:A" + id)
+                .put("decorations", new JSONObject().put("identity", new JSONObject().put("name", "A" + id))));
         return new JSONObject().put("uri", "spotify:track:" + id).put("decorations", new JSONObject()
                 .put("identity", new JSONObject().put("name", "T" + id))
+                .put("parent", parent)
                 .put("creators", creators)
                 .put("visual_identity", new JSONObject().put("cover", covers)));
     }
@@ -144,5 +152,21 @@ public class QueueTracksTest {
     @Test public void anEmptyQueueGivesJustTheCurrentTrack() throws Exception {
         queue();
         assertEquals(Arrays.asList("spotify:track:a"), uris(QueueTracks.fromState(state, PLAYLIST, FIRST)));
+    }
+
+    @Test public void tracksKeepTheirAlbumAndArtistsWithAUri() throws Exception {
+        queue("context=b");
+        List<Item> items = QueueTracks.fromState(state, PLAYLIST, FIRST);
+        for (int i = 0; i < 2; i++) {
+            String id = i == 0 ? "a" : "b";
+            Item t = items.get(i);
+            assertEquals("spotify:album:A" + id, t.album.uri);
+            assertEquals("A" + id, t.album.name);
+            assertEquals("https://i/" + id + "-small", t.album.coverUrl);
+            assertEquals(1, t.artists.size()); // Y has no URI
+            assertEquals("spotify:artist:X" + id, t.artists.get(0).uri);
+            assertEquals("X" + id, t.artists.get(0).name);
+            assertEquals("X" + id + ", Y" + id, t.subtitle);
+        }
     }
 }

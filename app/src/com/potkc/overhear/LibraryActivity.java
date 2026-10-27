@@ -1,8 +1,10 @@
 package com.potkc.overhear;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.ComponentName;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.os.Bundle;
@@ -30,6 +32,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -48,12 +51,21 @@ import com.potkc.overhear.spotify.SpotifyJson;
 /**
  * Browses the user's Spotify library and searches it, one page on a stack
  * (LibraryPath, saved to Prefs on every change and reopened from there).
+ * The player opens it with Soloist's context in the EXTRA_CONTEXT_* extras:
+ * then it starts at the page of what plays now (LibraryPath.atContext), and
+ * Back leads to its category and TOP; a page opened before Soloist named
+ * its context takes the name once it does (nameUntitled). A playlist is someone else's when the
+ * cached PLAYLISTS list says so or the service follows it (OthersTracker);
+ * otherwise it opens as the user's own, and if its tracks are refused (HTTP
+ * 403 or 404: someone else's, one of Spotify's own, or a deleted one) the
+ * page turns into the OTHERS_PLAYLIST one, in the saved stack too.
  * Lists load through Spotify.run: the first page when shown, each further
  * page when the last row comes into view. The CACHE_MAX most recently used
  * lists stay cached for the process lifetime (dropped when the login
  * changes); ↻ reloads the page shown, or retries the page that failed.
- * Tapping something playable asks the Web API to play it on this device and
- * returns to the player. A failed call may still have been applied, so
+ * Tapping the track marked as playing now only returns to the player.
+ * Tapping anything else playable asks the Web API to play it on this
+ * device and returns to the player. A failed call may still have been applied, so
  * unless it certainly sent nothing (no login, device not listed) Soloist's
  * track (or context, when playing from the top) is checked, again after
  * PLAY_RECHECK_MS; only if it is not what was asked does Soloist play the
@@ -63,6 +75,10 @@ import com.potkc.overhear.spotify.SpotifyJson;
  * PlayPlan.CHECK_MS after the play); the artist's ▶ and a tapped track leave
  * shuffle as it is.
  *
+ * A long-press on a track or album row (in any list) offers the track's
+ * album and the artists (LibraryPath.linksOf) in a dialog; the choice is
+ * pushed like a tapped row. On rows with nothing to offer it does nothing.
+ *
  * Another user's playlist (OTHERS_PLAYLIST), whose tracks the Web API
  * refuses, opens with its ▶ and ⇄ rows and a note only. ▶ or ⇄ has
  * PlayerService start an OthersTracker, which rebuilds the list from
@@ -70,6 +86,14 @@ import com.potkc.overhear.spotify.SpotifyJson;
  * lists the tracker's tracks (never cached here) while its playlist is
  * Soloist's context, and redraws on the service's UI updates; a tapped track
  * plays as on any other list.
+ *
+ * What plays now is marked in every list, paused or not: the track whose
+ * URI is Soloist's track with its title in green after a bar chart icon, the
+ * album, playlist or artist (or the liked songs' menu row) that is Soloist's
+ * context with its title in green. The rows redraw when either changes.
+ *
+ * Full screen follows the player (Prefs.isFullscreen, TopStrip): the status
+ * bar hidden and the same top strip (time, battery) above the bar.
  *
  * Main thread only. Spotify callbacks can arrive after the Activity that
  * started them is gone: they still fill the cache and redraw the resumed
@@ -105,7 +129,14 @@ public class LibraryActivity extends Activity {
         }
     }
 
+    /** Soloist's context as the player saw it: its uri, name and (for an album) a small cover; all optional. */
+    static final String EXTRA_CONTEXT_URI = "context_uri";
+    static final String EXTRA_CONTEXT_NAME = "context_name";
+    static final String EXTRA_CONTEXT_COVER = "context_cover";
+
     private static final String TAG = "OverhearLibrary";
+    /** Spotify's green: the title of what plays now. */
+    private static final int NOW_GREEN = 0xff1ed760;
     private static final int CACHE_MAX = 30;
     /** After a failed play call, how long to wait for a play that may have gone through anyway. */
     private static final long PLAY_RECHECK_MS = 1500;
@@ -126,6 +157,7 @@ public class LibraryActivity extends Activity {
 
     private Spotify spotify;
     private Prefs prefs;
+    private TopStrip topStrip;
     private ArtworkLoader<Artwork.Cover> artwork;
     private int thumbPx;
     private float thumbRadius;
@@ -147,15 +179,19 @@ public class LibraryActivity extends Activity {
     private boolean playingNoted;
     private PlayerService service;
     private boolean bound;
+    /** The long-press choices on screen, or null. */
+    private AlertDialog links;
     /** What the OTHERS_PLAYLIST rows were last built from (othersKey), to skip renders that change nothing. */
     private String othersShown;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_library);
-        spotify = Spotify.get(this);
         prefs = new Prefs(this);
+        TopStrip.apply(this, null, prefs); // before the first layout: no jump
+        setContentView(R.layout.activity_library);
+        topStrip = new TopStrip(this);
+        spotify = Spotify.get(this);
         artwork = Artwork.loader(this);
         float density = getResources().getDisplayMetrics().density;
         thumbPx = Math.round(40 * density);
@@ -179,6 +215,13 @@ public class LibraryActivity extends Activity {
                     playingNoted = true;
                     Toast.makeText(LibraryActivity.this, R.string.library_playing, Toast.LENGTH_SHORT).show();
                 }
+            }
+        });
+        list.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
+            @Override public boolean onItemLongClick(AdapterView<?> parent, View view, int position, long id) {
+                Row row = adapter.getItem(position);
+                if (row.item != null && !playing) showLinks(row.item);
+                return true; // consumed: never a tap, with a dialog or without
             }
         });
         list.setOnScrollListener(new AbsListView.OnScrollListener() {
@@ -216,6 +259,8 @@ public class LibraryActivity extends Activity {
         // Logged out, only TOP has something to show (its login row).
         stack = spotify.isLoggedIn() ? LibraryPath.decode(prefs.getLibraryPath()) : LibraryPath.decode(null);
         stackGeneration = spotify.generation();
+        // Not when recreated: the user may have moved on from that page.
+        if (spotify.isLoggedIn() && savedInstanceState == null) openAtContext(getIntent());
         Loaded l = cache.get(Node.of(Node.Type.SEARCH));
         if (l != null && l.query != null) query.setText(l.query);
         // Flags 0: connects when the service runs, never creates or keeps it.
@@ -225,6 +270,8 @@ public class LibraryActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        TopStrip.apply(this, topStrip, prefs); // setup may have changed it
+        topStrip.resume();
         active = this;
         if (spotify.generation() != stackGeneration) {
             // Logged out or in again (LoginActivity) meanwhile: the pages may be another account's.
@@ -243,6 +290,7 @@ public class LibraryActivity extends Activity {
     protected void onPause() {
         if (active == this) active = null;
         if (service != null) service.removeUiListener(uiListener);
+        topStrip.pause();
         super.onPause();
     }
 
@@ -252,6 +300,8 @@ public class LibraryActivity extends Activity {
         if (active == this) active = null;
         if (service != null) service.removeUiListener(uiListener);
         if (artwork != null) artwork.cancelAll(Artwork.viewsOf(this));
+        if (links != null) links.dismiss();
+        links = null;
         if (bound) unbindService(connection);
         bound = false;
         service = null;
@@ -264,26 +314,148 @@ public class LibraryActivity extends Activity {
             if (active != LibraryActivity.this) return;
             service.addUiListener(uiListener);
             if (current().type == Node.Type.OTHERS_PLAYLIST) render();
+            else showNow();
         }
 
         @Override public void onServiceDisconnected(ComponentName name) {
             service = null; // a restarted service has no tracker
-            if (active == LibraryActivity.this && current().type == Node.Type.OTHERS_PLAYLIST) render();
+            if (active != LibraryActivity.this) return;
+            if (current().type == Node.Type.OTHERS_PLAYLIST) render();
+            else showNow();
         }
     };
 
-    /** Redraws an open OTHERS_PLAYLIST page when what it shows changes. */
+    /**
+     * Redraws an open OTHERS_PLAYLIST page when what it shows changes, an
+     * untitled page Soloist names, and the rows when what plays now changes.
+     */
     private final Runnable uiListener = new Runnable() {
         @Override public void run() {
-            if (active != LibraryActivity.this || current().type != Node.Type.OTHERS_PLAYLIST) return;
-            if (!othersKey(current()).equals(othersShown)) render();
+            if (active != LibraryActivity.this) return;
+            Node node = current();
+            if (untitled(node)) {
+                render(); // nameUntitled
+            } else if (node.type == Node.Type.OTHERS_PLAYLIST && !othersKey(node).equals(othersShown)) {
+                render();
+            } else {
+                showNow();
+            }
         }
     };
+
+    /**
+     * Marks what plays now (Soloist's track and context) in the rows shown, if
+     * that changed; nothing without a track, as the player shows (an idle
+     * Soloist may still report the last context).
+     */
+    private void showNow() {
+        SoloistClient client = client();
+        PlayerState s = client != null && client.isConnected() ? client.getState() : null;
+        if (s != null && s.getTitle() == null) s = null;
+        adapter.setNow(s == null ? null : s.getTrackUri(), s == null ? null : s.getContextUri());
+    }
 
     // --- the stack ---
 
     private Node current() {
         return stack.get(stack.size() - 1);
+    }
+
+    /** Starts at the page of the context in intent's extras, if it names one (saved as the stack). */
+    private void openAtContext(Intent intent) {
+        String uri = intent.getStringExtra(EXTRA_CONTEXT_URI);
+        if (uri == null) return;
+        String likedOwner = LibraryPath.likedOwner(uri);
+        String me = cachedMe();
+        if (likedOwner != null && me != null && !likedOwner.equals(me)) return; // someone else's liked songs
+        List<Node> s = LibraryPath.atContext(stack, uri, intent.getStringExtra(EXTRA_CONTEXT_NAME),
+                intent.getStringExtra(EXTRA_CONTEXT_COVER), othersPlaylist(uri));
+        if (s == stack) return;
+        Node old = current();
+        if (s.size() == stack.size() && s.get(s.size() - 1).samePage(old)) {
+            // Saved there without a title; its cache entry (tracks without a cover, maybe) is dropped.
+            if (cacheGeneration == spotify.generation()) cache.remove(old);
+        } else {
+            Log.i(TAG, "opening at " + s.get(s.size() - 1));
+        }
+        stack = s;
+        saveStack();
+    }
+
+    /** The user's ID as a cached page of this login knows it, or null. */
+    private String cachedMe() {
+        if (cacheGeneration != spotify.generation()) return null;
+        for (Loaded l : cache.values()) {
+            if (l.me != null && !l.me.isEmpty()) return l.me;
+        }
+        return null;
+    }
+
+    private static boolean untitled(Node node) {
+        return node.uri != null && (node.title == null || node.title.isEmpty());
+    }
+
+    /**
+     * Names the page shown when it has no title (opened from the player
+     * before Soloist named its context) and Soloist names it now: the
+     * context name, and for an album the playing track's cover if it is from
+     * that album. Its cache entry moves along; saved as the stack.
+     */
+    private void nameUntitled() {
+        Node node = current();
+        if (!untitled(node)) return;
+        SoloistClient client = client();
+        if (client == null) return;
+        PlayerState s = client.getState();
+        String name = s.getContextName();
+        if (!node.uri.equals(s.getContextUri()) || name == null || name.isEmpty()) return;
+        String cover = node.coverUrl;
+        if (cover == null && node.uri.equals(s.getAlbumUri())) cover = s.getSmallCoverUrl();
+        Node named = node.named(name, cover);
+        Loaded l = cacheGeneration == spotify.generation() ? cache.remove(node) : null;
+        // An album's tracks carry its cover: with a new one they load again.
+        if (l != null && (cover == null || cover.equals(node.coverUrl))) cache.put(named, l);
+        LibraryPath.replace(stack, node, named);
+        saveStack();
+    }
+
+    /**
+     * Whether playlist uri is someone else's: TRUE when the service follows it
+     * (only an OTHERS_PLAYLIST page starts that), else from the cached
+     * PLAYLISTS list as itemRow tells; null when neither knows.
+     */
+    private Boolean othersPlaylist(String uri) {
+        PlayerService p = PlayerService.current();
+        OthersTracker o = p == null ? null : p.getOthers();
+        if (o != null && uri.equals(o.playlistUri())) return Boolean.TRUE;
+        if (cacheGeneration != spotify.generation()) return null; // another login's
+        Loaded l = cache.get(Node.of(Node.Type.PLAYLISTS));
+        if (l == null) return null;
+        for (Item item : l.items) {
+            if (uri.equals(item.uri)) {
+                return l.me == null || l.me.isEmpty() || !l.me.equals(item.ownerId);
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Puts to where from's page was, in the saved stack, this one and the
+     * resumed instance's (another instance may have saved since this one
+     * started from's load). This stack is saved only while it is still the
+     * live one: a finishing instance would save a stale stack over a newer.
+     */
+    private void replaceNode(Node from, Node to) {
+        List<Node> saved = LibraryPath.decode(prefs.getLibraryPath());
+        if (LibraryPath.replace(saved, from, to)) prefs.setLibraryPath(LibraryPath.encode(saved));
+        if (!destroyed && LibraryPath.replace(stack, from, to) && !isFinishing()) {
+            saveStack();
+            if (active == this) render();
+        }
+        if (active != null && active != this && LibraryPath.replace(active.stack, from, to)) {
+            active.saveStack();
+            active.render();
+        }
     }
 
     private void push(Node node) {
@@ -308,6 +480,13 @@ public class LibraryActivity extends Activity {
         render();
         Integer at = scroll.remove(stack.size());
         list.setSelection(at == null ? 0 : at);
+    }
+
+    /** Back to the player without an animation, as PlayerActivity.openLibrary opens this. */
+    @Override
+    public void finish() {
+        super.finish();
+        overridePendingTransition(0, 0);
     }
 
     /** ♫: back to the player screen, keeping the saved path for the next visit. */
@@ -394,7 +573,15 @@ public class LibraryActivity extends Activity {
             @Override public Fetched run(SpotifyApi api) throws IOException {
                 String me = api.me();
                 if (node.type == Node.Type.SEARCH) return new Fetched(me, null, api.search(q));
-                return new Fetched(me, fetch(api, node, next), null);
+                try {
+                    return new Fetched(me, fetch(api, node, next), null);
+                } catch (SpotifyException e) {
+                    if (node.type == Node.Type.PLAYLIST && next == null && e.reason == SpotifyException.Reason.HTTP
+                            && (e.status == 403 || e.status == 404)) {
+                        throw new Refused(e);
+                    }
+                    throw e;
+                }
             }
         }, new Spotify.Callback<Fetched>() {
             @Override public void done(Fetched f) {
@@ -413,11 +600,48 @@ public class LibraryActivity extends Activity {
 
             @Override public void failed(IOException e) {
                 l.loading = false;
+                if (e instanceof Refused && dropCached(l)) {
+                    // Someone else's after all: its page lists Soloist's queue instead.
+                    Log.i(TAG, node + " refused (" + e.getMessage() + "): another user's playlist");
+                    replaceNode(node, Node.playlist(node.uri, titleOf(node), true));
+                    return;
+                }
                 l.error = e;
                 renderActive();
             }
         });
         return true;
+    }
+
+    /**
+     * The first page of a PLAYLIST's tracks failed with HTTP 403 or 404: the
+     * Web API refuses the tracks of others' playlists (Spotify's own 37i9…
+     * ones included), which a playlist opened from the player's context may
+     * be. A deleted playlist of the user's own (404) turns up so too.
+     */
+    private static final class Refused extends IOException {
+        Refused(SpotifyException e) {
+            super(e.getMessage());
+        }
+    }
+
+    /** Drops l from the cache; whether it was there (not reloaded or dropped with a login meanwhile). */
+    private static boolean dropCached(Loaded l) {
+        for (Iterator<Loaded> i = cache.values().iterator(); i.hasNext(); ) {
+            if (i.next() == l) {
+                i.remove();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** node's title as the stack shown has it now (nameUntitled may have named it since). */
+    private String titleOf(Node node) {
+        for (Node n : stack) {
+            if (n.samePage(node) && n.title != null) return n.title;
+        }
+        return node.title;
     }
 
     private void retry(Node node, Loaded l) {
@@ -449,6 +673,7 @@ public class LibraryActivity extends Activity {
     // --- rendering ---
 
     private void render() {
+        nameUntitled();
         Node node = current();
         boolean search = node.type == Node.Type.SEARCH;
         pageTitle.setText(title(node));
@@ -459,6 +684,7 @@ public class LibraryActivity extends Activity {
             if (node.type == Node.Type.TOP) topRows(rows);
             else othersRows(rows, node);
             empty.setText("");
+            showNow();
             adapter.setRows(rows);
             return;
         }
@@ -469,6 +695,7 @@ public class LibraryActivity extends Activity {
         statusRow(rows, node, l);
         empty.setText(search && l.query == null ? ""
                 : getString(search ? R.string.library_no_results : R.string.library_empty));
+        showNow();
         adapter.setRows(rows);
     }
 
@@ -503,7 +730,8 @@ public class LibraryActivity extends Activity {
     }
 
     private Row menuRow(int symbol, int title, Node.Type type) {
-        return Row.menu(symbol, getString(title), true, pushing(Node.of(type)));
+        Row row = Row.menu(symbol, getString(title), true, pushing(Node.of(type)));
+        return type == Node.Type.LIKED ? row.likedSongs() : row;
     }
 
     /** Rows for the pages that list one kind of item, with their fixed first row. */
@@ -598,7 +826,7 @@ public class LibraryActivity extends Activity {
             case TRACK:
                 return Row.item(item, false, new Runnable() {
                     @Override public void run() {
-                        play(item.contextUri, item.uri);
+                        playTrack(item.contextUri, item.uri);
                     }
                 });
             case ALBUM:
@@ -611,6 +839,34 @@ public class LibraryActivity extends Activity {
                 boolean others = me == null || me.isEmpty() || !me.equals(item.ownerId);
                 return Row.item(item, true, pushing(Node.playlist(item.uri, item.title, others)));
         }
+    }
+
+    /** The pages item links to, as a dialog of choices; nothing when there are none. */
+    private void showLinks(Item item) {
+        final List<Node> nodes = LibraryPath.linksOf(item, current());
+        if (nodes.isEmpty()) return;
+        String[] labels = new String[nodes.size()];
+        for (int i = 0; i < labels.length; i++) {
+            Node n = nodes.get(i);
+            if (n.type == Node.Type.ALBUM) {
+                labels[i] = getString(R.string.library_open_album);
+            } else {
+                // The name, even for a sole artist: it says whose page opens.
+                labels[i] = n.title == null || n.title.isEmpty() ? getString(R.string.library_open_artist)
+                        : getString(R.string.library_open_named, n.title);
+            }
+        }
+        if (links != null) links.dismiss();
+        links = new AlertDialog.Builder(this)
+                .setTitle(item.title)
+                .setItems(labels, new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface d, int which) {
+                        links = null;
+                        if (!destroyed) push(nodes.get(which));
+                    }
+                })
+                .show();
+        Dialogs.neutral(links);
     }
 
     private Runnable pushing(final Node node) {
@@ -753,6 +1009,18 @@ public class LibraryActivity extends Activity {
     }
 
     /** A failure that certainly sent no play: no login, or this device is not in the user's list. */
+    /**
+     * A track row's tap: the track marked as playing now only returns to the
+     * player (it keeps playing, not restarted); any other plays from it.
+     */
+    private void playTrack(String contextUri, String trackUri) {
+        if (trackUri != null && trackUri.equals(adapter.nowTrack)) {
+            toPlayer();
+            return;
+        }
+        play(contextUri, trackUri);
+    }
+
     private static boolean sentNothing(IOException e) {
         return (e instanceof SpotifyException
                 && ((SpotifyException) e).reason == SpotifyException.Reason.LOGIN_REQUIRED)
@@ -857,7 +1125,7 @@ public class LibraryActivity extends Activity {
         for (final Item item : o.items()) {
             rows.add(Row.item(item, false, new Runnable() {
                 @Override public void run() {
-                    play(o.playlistUri(), item.uri);
+                    playTrack(o.playlistUri(), item.uri);
                 }
             }));
         }
@@ -893,9 +1161,11 @@ public class LibraryActivity extends Activity {
         final boolean note;
         /** Null: not tappable. */
         final Runnable action;
+        /** The liked songs' menu row, marked while they are the context. */
+        final boolean liked;
 
         private Row(boolean header, int symbol, Item item, String title, boolean more, boolean note,
-                Runnable action) {
+                Runnable action, boolean liked) {
             this.header = header;
             this.symbol = symbol;
             this.item = item;
@@ -903,32 +1173,58 @@ public class LibraryActivity extends Activity {
             this.more = more;
             this.note = note;
             this.action = action;
+            this.liked = liked;
+        }
+
+        Row likedSongs() {
+            return new Row(header, symbol, item, title, more, note, action, true);
+        }
+
+        /** Whether the row is what plays now (Soloist's trackUri, contextUri; either may be null). */
+        boolean playsNow(String trackUri, String contextUri) {
+            if (item != null) return item.playsNow(trackUri, contextUri);
+            return liked && LibraryPath.likedOwner(contextUri) != null;
         }
 
         /** more: true for a menu row, false for a play row. */
         static Row menu(int symbol, String title, boolean more, Runnable action) {
-            return new Row(false, symbol, null, title, more, false, action);
+            return new Row(false, symbol, null, title, more, false, action, false);
         }
 
         static Row item(Item item, boolean more, Runnable action) {
-            return new Row(false, 0, item, item.title, more, false, action);
+            return new Row(false, 0, item, item.title, more, false, action, false);
         }
 
         static Row header(String title) {
-            return new Row(true, 0, null, title, false, false, null);
+            return new Row(true, 0, null, title, false, false, null, false);
         }
 
         static Row note(String title, Runnable action) {
-            return new Row(false, 0, null, title, false, true, action);
+            return new Row(false, 0, null, title, false, true, action, false);
         }
     }
 
     private final class RowAdapter extends BaseAdapter {
         private List<Row> rows = Collections.emptyList();
+        /** Soloist's track and context as the rows show them; null if none. */
+        private String nowTrack;
+        private String nowContext;
 
         void setRows(List<Row> list) {
             rows = list;
             notifyDataSetChanged();
+        }
+
+        /** Redraws the rows (scrolled as they are) only if the track or the context changed. */
+        void setNow(String trackUri, String contextUri) {
+            if (same(trackUri, nowTrack) && same(contextUri, nowContext)) return;
+            nowTrack = trackUri;
+            nowContext = contextUri;
+            notifyDataSetChanged();
+        }
+
+        private boolean same(String a, String b) {
+            return a == null ? b == null : a.equals(b);
         }
 
         @Override public int getCount() {
@@ -970,7 +1266,11 @@ public class LibraryActivity extends Activity {
             View marker = v.findViewById(R.id.marker);
             ImageView thumb = (ImageView) v.findViewById(R.id.thumb);
             title.setText(row.title == null ? "" : row.title);
-            title.setTextColor(row.note ? 0xffaaaaaa : 0xffffffff);
+            boolean now = !row.note && row.playsNow(nowTrack, nowContext);
+            title.setTextColor(row.note ? 0xffaaaaaa : now ? NOW_GREEN : 0xffffffff);
+            // A playing track's bar chart sits before its title; a playing context only turns green.
+            boolean nowTrackRow = now && row.item != null && row.item.kind == Item.Kind.TRACK;
+            title.setCompoundDrawablesWithIntrinsicBounds(nowTrackRow ? R.drawable.ic_lib_now : 0, 0, 0, 0);
             title.setSingleLine(!row.note);
             String sub = row.item == null ? "" : row.item.subtitle;
             subtitle.setText(sub);

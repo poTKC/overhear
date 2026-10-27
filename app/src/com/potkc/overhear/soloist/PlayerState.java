@@ -64,7 +64,11 @@ public final class PlayerState {
         public final String uri;
         public final String title;
         public final List<String> artists;
+        /** The artists' URIs, as artists (null where one has none). */
+        public final List<String> artistUris;
         public final String album;
+        /** decorations.parent.entity.uri (e.g. spotify:album:...), or null. */
+        public final String albumUri;
         /** The largest useful cover (640 px): large, else default, else any. */
         public final String coverUrl;
         /** About 300 px: default, else large, else any. */
@@ -78,17 +82,22 @@ public final class PlayerState {
             uri = str(item, "uri");
             title = name(d);
             List<String> a = new ArrayList<String>();
+            List<String> u = new ArrayList<String>();
             JSONArray creators = d == null ? null : d.optJSONArray("creators");
             if (creators != null) {
                 for (int i = 0; i < creators.length(); i++) {
                     JSONObject c = creators.optJSONObject(i);
                     String n = name(entityDecorations(c));
-                    if (n != null) a.add(n);
+                    if (n == null) continue;
+                    a.add(n);
+                    u.add(str(entity(c), "uri"));
                 }
             }
             artists = Collections.unmodifiableList(a);
+            artistUris = Collections.unmodifiableList(u);
             JSONObject parent = d == null ? null : d.optJSONObject("parent");
             album = name(entityDecorations(parent));
+            albumUri = str(entity(parent), "uri");
             coverUrl = cover(d);
             mediumCoverUrl = cover(d, "default", "large");
             smallCoverUrl = cover(d, "small", "default", "large");
@@ -292,7 +301,13 @@ public final class PlayerState {
 
     public List<String> getArtists() { return track.artists; }
 
+    /** getArtists()' URIs, in the same order (null where one has none). */
+    public List<String> getArtistUris() { return track.artistUris; }
+
     public String getAlbum() { return track.album; }
+
+    /** The album the track is in (spotify:album:...), or null. */
+    public String getAlbumUri() { return track.albumUri; }
 
     public String getCoverUrl() { return track.coverUrl; }
 

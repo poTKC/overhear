@@ -3,7 +3,7 @@
 app themes (values/styles.xml). API 18 has no colorAccent, so the drawables
 themselves are recoloured, in two variants:
 
-  green   holo_g_*  #1DB954: the list selector (player popup menu, queue)
+  green   holo_g_*  #1ED760: the list selector (player popup menu, queue)
   neutral holo_w_*  setup screen: text fields, check boxes, buttons, the
                     horizontal progress bar, list selectors, selectable
                     backgrounds and text selection handles. Blue marks become
@@ -48,10 +48,10 @@ VARIANTS = {
     ], ["text_select_handle_left", "text_select_handle_right", "text_select_handle_middle"]),
 }
 
-GREEN_H = 141 / 360.0  # #1DB954
-# Holo blue #33B5E5 (S .78, V .90) -> #1DB954 (S .84, V .73)
-S_SCALE = 0.84 / 0.78
-V_SCALE = 0.73 / 0.90
+GREEN_H = 141.4 / 360.0  # #1ED760
+# Holo blue #33B5E5 (S .78, V .90) -> #1ED760 (S .86, V .84)
+S_SCALE = 0.86 / 0.78
+V_SCALE = 0.84 / 0.90
 REF = re.compile(r"@(android:)?drawable/([a-z0-9_]+)")
 
 

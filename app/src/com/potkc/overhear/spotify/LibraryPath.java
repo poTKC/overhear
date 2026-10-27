@@ -12,7 +12,11 @@ import java.util.List;
  * encoder never emits). The Node.Type names are part of this persisted
  * format: renaming one makes saved stacks stop at that page. decode() never
  * throws: it keeps what it can read up to the first unreadable line, always
- * starts with TOP and keeps at most MAX_DEPTH nodes. Pure Java.
+ * starts with TOP and keeps at most MAX_DEPTH nodes.
+ *
+ * atContext() picks the stack the player's library button (and Back) opens:
+ * the page of Soloist's context, under its category, unless the saved stack
+ * already ends there. Pure Java.
  */
 public final class LibraryPath {
     /** The deepest stack decode() restores, TOP included. */
@@ -82,6 +86,16 @@ public final class LibraryPath {
             return new Node(Type.ARTIST, checkUri(uri), title, null);
         }
 
+        /** This page with another title and (ALBUM only) cover. */
+        public Node named(String title, String coverUrl) {
+            return new Node(type, uri, title, type == Type.ALBUM ? coverUrl : null);
+        }
+
+        /** Whether this is the page n is, by type and uri (titles and covers aside). */
+        public boolean samePage(Node n) {
+            return type == n.type && same(uri, n.uri);
+        }
+
         private static String checkUri(String uri) {
             if (uri == null || uri.isEmpty()) throw new IllegalArgumentException("no uri");
             return uri;
@@ -112,6 +126,112 @@ public final class LibraryPath {
     }
 
     private LibraryPath() {}
+
+    /**
+     * The stack that opens the library at the page of what plays now, from
+     * Soloist's context: an album as TOP › ALBUMS › album (title name, cover
+     * coverUrl), a playlist as TOP › PLAYLISTS › playlist, the liked songs
+     * (spotify:user:<id>:collection) as TOP › LIKED, an artist as TOP ›
+     * ARTISTS › artist. An empty name counts as none. othersPlaylist says whether a playlist is someone
+     * else's (OTHERS_PLAYLIST); null when unknown, which opens it as the
+     * user's own. Returns saved itself when the context names none of these
+     * pages (null, radio, anything else), or when saved already ends at that
+     * page (same type and uri, so the user keeps their place there; with
+     * othersPlaylist unknown, either kind of playlist page counts), except
+     * that a last page without a title then takes name (and an album's
+     * cover) in a copy. A known title is never replaced by none.
+     */
+    public static List<Node> atContext(List<Node> saved, String contextUri, String name, String coverUrl,
+            Boolean othersPlaylist) {
+        Node page = contextPage(contextUri, name, coverUrl, othersPlaylist);
+        if (page == null) return saved;
+        Node last = saved.get(saved.size() - 1);
+        if (last.samePage(page) || (othersPlaylist == null && isPlaylist(last.type) && isPlaylist(page.type)
+                && page.uri.equals(last.uri))) {
+            boolean untitled = last.uri != null && (last.title == null || last.title.isEmpty());
+            if (!untitled || page.title == null) return saved;
+            List<Node> named = new ArrayList<Node>(saved);
+            named.set(named.size() - 1, last.named(page.title, last.coverUrl != null ? last.coverUrl : page.coverUrl));
+            return named;
+        }
+        List<Node> stack = new ArrayList<Node>();
+        stack.add(Node.top());
+        switch (page.type) {
+            case ALBUM: stack.add(Node.of(Node.Type.ALBUMS)); break;
+            case PLAYLIST:
+            case OTHERS_PLAYLIST: stack.add(Node.of(Node.Type.PLAYLISTS)); break;
+            case ARTIST: stack.add(Node.of(Node.Type.ARTISTS)); break;
+            default: break; // LIKED sits right under TOP
+        }
+        stack.add(page);
+        return stack;
+    }
+
+    /** The page contextUri opens (see atContext), or null if none. */
+    static Node contextPage(String contextUri, String name, String coverUrl, Boolean othersPlaylist) {
+        if (contextUri == null) return null;
+        if (likedOwner(contextUri) != null) return Node.of(Node.Type.LIKED);
+        String[] f = contextUri.split(":", -1);
+        if (f.length != 3 || !"spotify".equals(f[0]) || f[2].isEmpty()) return null;
+        if (name != null && name.isEmpty()) name = null;
+        if ("album".equals(f[1])) return Node.album(contextUri, name, coverUrl);
+        if ("playlist".equals(f[1])) return Node.playlist(contextUri, name, Boolean.TRUE.equals(othersPlaylist));
+        if ("artist".equals(f[1])) return Node.artist(contextUri, name);
+        return null;
+    }
+
+    /** The user ID in a liked songs URI (spotify:user:<id>:collection), or null for any other. */
+    public static String likedOwner(String uri) {
+        if (uri == null) return null;
+        String[] f = uri.split(":", -1);
+        if (f.length != 4 || !"spotify".equals(f[0]) || !"user".equals(f[1]) || f[2].isEmpty()
+                || !"collection".equals(f[3])) {
+            return null;
+        }
+        return f[2];
+    }
+
+    private static boolean isPlaylist(Node.Type type) {
+        return type == Node.Type.PLAYLIST || type == Node.Type.OTHERS_PLAYLIST;
+    }
+
+    /**
+     * The pages a long-press on item offers, in order: a track's album, then
+     * the artists of a track or an album (each once); none for other rows.
+     * Pages that are not an album or artist URI, and the page shown (here),
+     * are left out.
+     */
+    public static List<Node> linksOf(Item item, Node here) {
+        List<Node> out = new ArrayList<Node>();
+        if (item.kind != Item.Kind.TRACK && item.kind != Item.Kind.ALBUM) return out;
+        if (item.kind == Item.Kind.TRACK && item.album != null && item.album.uri.startsWith("spotify:album:")) {
+            link(out, Node.album(item.album.uri, item.album.name, item.album.coverUrl), here);
+        }
+        for (Item.Ref a : item.artists) {
+            if (a.uri.startsWith("spotify:artist:")) link(out, Node.artist(a.uri, a.name), here);
+        }
+        return out;
+    }
+
+    private static void link(List<Node> out, Node n, Node here) {
+        if (n.samePage(here)) return;
+        for (Node o : out) {
+            if (o.samePage(n)) return;
+        }
+        out.add(n);
+    }
+
+    /** Replaces every node in stack that is from's page (Node.samePage) with to; whether there was one. */
+    public static boolean replace(List<Node> stack, Node from, Node to) {
+        boolean found = false;
+        for (int i = 0; i < stack.size(); i++) {
+            if (stack.get(i).samePage(from)) {
+                stack.set(i, to);
+                found = true;
+            }
+        }
+        return found;
+    }
 
     public static String encode(List<Node> stack) {
         StringBuilder sb = new StringBuilder();

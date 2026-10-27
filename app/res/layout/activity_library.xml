@@ -7,6 +7,14 @@
     android:background="#ff1c1c1c"
     android:orientation="vertical">
 
+    <!-- Full screen only: as in the player, the clock and the battery number 8dp from the edges. -->
+    <include
+        layout="@layout/top_strip"
+        android:layout_width="match_parent"
+        android:layout_height="20dp"
+        android:layout_marginLeft="8dp"
+        android:layout_marginRight="8dp" />
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="48dp"

@@ -41,6 +41,7 @@
             android:id="@+id/item_title"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:drawablePadding="4dp"
             android:ellipsize="end"
             android:singleLine="true"
             android:textColor="#ffffffff"

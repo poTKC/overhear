@@ -98,6 +98,9 @@
     <string name="library_login">Spotify にログイン</string>
     <string name="library_play">再生</string>
     <string name="library_play_artist">このアーティストを再生</string>
+    <string name="library_open_album">アルバムを開く</string>
+    <string name="library_open_named">%s を開く</string>
+    <string name="library_open_artist">アーティストを開く</string>
     <string name="library_loading">読み込み中…</string>
     <string name="library_empty">何もありません</string>
     <string name="library_no_results">見つかりませんでした</string>

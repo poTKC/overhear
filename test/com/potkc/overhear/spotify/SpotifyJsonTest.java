@@ -203,4 +203,69 @@ public class SpotifyJsonTest {
         assertNull(SpotifyJson.smallCover(new JSONArray("[]")));
         assertNull(SpotifyJson.smallCover(null));
     }
+
+    // --- links (artists and album) for the long-press ---
+
+    private static void assertRef(String uri, String name, String cover, Item.Ref r) {
+        assertEquals(uri, r.uri);
+        assertEquals(name, r.name);
+        assertEquals(cover, r.coverUrl);
+    }
+
+    @Test public void savedTracksKeepArtistsAndAlbum() {
+        Item t = SpotifyJson.savedTracks(f("saved_tracks"), "potkc", 0).items.get(0);
+        assertEquals(2, t.artists.size());
+        assertRef("spotify:artist:R1", "Artist One", null, t.artists.get(0));
+        assertRef("spotify:artist:R2", "Artist Two", null, t.artists.get(1));
+        assertRef("spotify:album:A3", "Album Three", "https://i.example/a3-64", t.album);
+    }
+
+    @Test public void albumTracksUseThePagesAlbum() {
+        Item t = SpotifyJson.albumTracks(f("album_tracks"), "spotify:album:A", "http://cover", 0).items.get(1);
+        assertRef("spotify:album:A", null, "http://cover", t.album);
+        assertEquals(2, t.artists.size());
+        assertRef("spotify:artist:R1", "Artist One", null, t.artists.get(0));
+    }
+
+    @Test public void playlistTracksKeepArtistsAndAlbum() {
+        Item t = SpotifyJson.playlistTracks(f("playlist_items"), "spotify:playlist:P", 0).items.get(0);
+        assertRef("spotify:artist:R5", "Artist Five", null, t.artists.get(0));
+        assertRef("spotify:album:A5", "Album Five", "https://i.example/a5-64", t.album);
+    }
+
+    @Test public void recentAndSearchTracksKeepTheirAlbum() {
+        Item r = SpotifyJson.recent(f("recent")).items.get(0);
+        assertNotNull(r.album);
+        assertTrue(r.album.uri.startsWith("spotify:album:"));
+        assertFalse(r.artists.isEmpty());
+        SpotifyJson.SearchResult s = SpotifyJson.search(f("search"));
+        assertEquals("spotify:album:S1", s.tracks.get(0).album.uri);
+        assertNull(s.tracks.get(1).album); // no album
+    }
+
+    @Test public void albumsKeepTheirArtists() {
+        Item a = SpotifyJson.savedAlbums(f("saved_albums"), 0).items.get(0);
+        assertEquals(2, a.artists.size());
+        assertEquals("Artist One", a.artists.get(0).name);
+        assertNull(a.album);
+        Item s = SpotifyJson.search(f("search")).albums.get(0);
+        assertRef("spotify:artist:R9", "Artist Nine", null, s.artists.get(0));
+        assertFalse(SpotifyJson.artistAlbums(f("artist_albums"), 0).items.get(0).artists.isEmpty());
+    }
+
+    @Test public void artistsWithoutAUriAreSkipped() throws Exception {
+        JSONObject j = new JSONObject("{\"items\":[{\"track\":{\"uri\":\"spotify:track:X\",\"name\":\"X\","
+                + "\"artists\":[{\"name\":\"No Uri\"},null,{\"uri\":\"spotify:artist:Y\",\"name\":null}],"
+                + "\"album\":{\"name\":\"No Uri\"}}}]}");
+        Item t = SpotifyJson.savedTracks(j, "u", 0).items.get(0);
+        assertEquals(1, t.artists.size());
+        assertRef("spotify:artist:Y", null, null, t.artists.get(0));
+        assertEquals("No Uri", t.subtitle);
+        assertNull(t.album);
+    }
+
+    @Test public void playlistsAndArtistsHaveNoLinks() {
+        assertTrue(SpotifyJson.playlists(f("playlists"), 0).items.get(0).artists.isEmpty());
+        assertNull(SpotifyJson.playlists(f("playlists"), 0).items.get(0).album);
+    }
 }
