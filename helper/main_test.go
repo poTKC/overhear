@@ -430,7 +430,7 @@ func TestExtractPrintsExtracting(t *testing.T) {
 }
 
 func TestUsageErrors(t *testing.T) {
-	for _, args := range [][]string{nil, {"get", "u"}, {"bogus", "a", "b"}, {"--ca"}} {
+	for _, args := range [][]string{nil, {"get", "u"}, {"bogus", "a", "b"}, {"--ca"}, {"token", "extra"}} {
 		if code := run(args, io.Discard, io.Discard); code == 0 {
 			t.Errorf("run(%q) = 0, want failure", args)
 		}
@@ -495,5 +495,74 @@ func TestRedirectsMustStayHTTPS(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(out); string(b) != "secure" {
 		t.Errorf("got %q", b)
+	}
+}
+
+// replyServer answers every request with status, an optional Retry-After and
+// body, and records the last request for the test to inspect.
+func replyServer(t *testing.T, status int, retryAfter, body string) (*httptest.Server, *http.Request, *[]byte) {
+	t.Helper()
+	var last http.Request
+	var lastBody []byte
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		last = *r
+		lastBody, _ = io.ReadAll(r.Body)
+		if retryAfter != "" {
+			w.Header().Set("Retry-After", retryAfter)
+		}
+		w.WriteHeader(status)
+		io.WriteString(w, body)
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &last, &lastBody
+}
+
+func caFor(t *testing.T, srv *httptest.Server) string {
+	t.Helper()
+	ca := filepath.Join(t.TempDir(), "ca.pem")
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw})
+	if err := os.WriteFile(ca, pemBytes, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return ca
+}
+
+func TestTokenPostsStdinForm(t *testing.T) {
+	srv, last, lastBody := replyServer(t, 200, "", `{"access_token":"a"}`)
+	old := accountsBase
+	accountsBase = srv.URL
+	t.Cleanup(func() { accountsBase = old })
+
+	var stdout, stderr bytes.Buffer
+	code := runWithStdin([]string{"--ca", caFor(t, srv), "token"}, strings.NewReader("grant_type=refresh_token&refresh_token=r"), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("exit %d, stderr: %s", code, stderr.String())
+	}
+	if last.Method != "POST" || last.URL.Path != "/api/token" {
+		t.Errorf("request = %s %s", last.Method, last.URL.Path)
+	}
+	if got := last.Header.Get("Content-Type"); got != "application/x-www-form-urlencoded" {
+		t.Errorf("content type = %q", got)
+	}
+	if string(*lastBody) != "grant_type=refresh_token&refresh_token=r" {
+		t.Errorf("body = %q", *lastBody)
+	}
+	if want := "status 200\n\n{\"access_token\":\"a\"}"; stdout.String() != want {
+		t.Errorf("stdout = %q, want %q", stdout.String(), want)
+	}
+}
+
+func TestTokenReportsErrorStatusWithExitZero(t *testing.T) {
+	srv, _, _ := replyServer(t, 400, "", `{"error":"invalid_grant"}`)
+	old := accountsBase
+	accountsBase = srv.URL
+	t.Cleanup(func() { accountsBase = old })
+
+	var stdout bytes.Buffer
+	if code := runWithStdin([]string{"--ca", caFor(t, srv), "token"}, strings.NewReader("x=1"), &stdout, io.Discard); code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	if !strings.HasPrefix(stdout.String(), "status 400\n\n") {
+		t.Errorf("stdout = %q", stdout.String())
 	}
 }
