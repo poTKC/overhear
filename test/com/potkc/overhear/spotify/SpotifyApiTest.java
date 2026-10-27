@@ -456,10 +456,10 @@ public class SpotifyApiTest {
         assertEquals("GET /playlists/P/items?limit=50&offset=100&market=from_token A", t.log.get(4));
         assertEquals("GET /me/following?type=artist&limit=50&after=c1 A", t.log.get(5));
         assertEquals("GET /me/following?type=artist&limit=50 A", t.log.get(6));
-        assertEquals("GET /artists/R/albums?include_groups=album%2Csingle&limit=50&offset=50&market=from_token A",
+        assertEquals("GET /artists/R/albums?include_groups=album%2Csingle&limit=10&offset=50&market=from_token A",
                 t.log.get(7));
         assertEquals("GET /me/player/recently-played?limit=50 A", t.log.get(8));
-        assertEquals("GET /search?q=daft+punk&type=track%2Calbum%2Cartist%2Cplaylist&limit=10&market=from_token A",
+        assertEquals("GET /search?q=daft+punk&type=track%2Calbum%2Cartist%2Cplaylist&limit=10 A",
                 t.log.get(9));
         assertEquals(10, t.log.size());
     }

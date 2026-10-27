@@ -17,6 +17,8 @@ import org.json.JSONObject;
 public final class SpotifyApi {
     public static final int PAGE = 50;
     public static final int SEARCH_PAGE = 10;
+    /** /artists/{id}/albums answers 400 "Invalid limit" above 10 (development mode, 2026-10). */
+    public static final int ARTIST_ALBUMS_PAGE = 10;
     /** Lists of tracks and albums follow the user's country for what is playable. */
     private static final String MARKET = "&market=from_token";
 
@@ -98,10 +100,10 @@ public final class SpotifyApi {
         return SpotifyJson.followedArtists(getJson(path));
     }
 
-    /** Albums and singles only. */
+    /** Albums and singles only, ARTIST_ALBUMS_PAGE at a time. */
     public Page artistAlbums(String artistUri, int offset) throws IOException {
         return SpotifyJson.artistAlbums(getJson("/artists/" + id(artistUri) + "/albums?include_groups="
-                + Pkce.enc("album,single") + "&limit=" + PAGE + "&offset=" + offset + MARKET), offset);
+                + Pkce.enc("album,single") + "&limit=" + ARTIST_ALBUMS_PAGE + "&offset=" + offset + MARKET), offset);
     }
 
     /** One page of recently played tracks. */
@@ -109,9 +111,13 @@ public final class SpotifyApi {
         return SpotifyJson.recent(getJson("/me/player/recently-played?limit=" + PAGE));
     }
 
+    /**
+     * Without MARKET: market=from_token on /search answers 403 "Insufficient
+     * client scope" (it would need user-read-private, which we do not ask for).
+     */
     public SpotifyJson.SearchResult search(String query) throws IOException {
         return SpotifyJson.search(getJson("/search?q=" + Pkce.enc(query) + "&type="
-                + Pkce.enc("track,album,artist,playlist") + "&limit=" + SEARCH_PAGE + MARKET));
+                + Pkce.enc("track,album,artist,playlist") + "&limit=" + SEARCH_PAGE));
     }
 
     /**
