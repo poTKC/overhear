@@ -76,7 +76,7 @@ import com.potkc.overhear.spotify.SpotifyJson;
  *
  * A long-press on a track or album row (in any list) offers the track's
  * album and the artists (LibraryPath.linksOf) in a dialog; the choice is
- * pushed like a tapped row. Rows with nothing to offer take it as a tap.
+ * pushed like a tapped row. On rows with nothing to offer it does nothing.
  *
  * Another user's playlist (OTHERS_PLAYLIST), whose tracks the Web API
  * refuses, opens with its ▶ and ⇄ rows and a note only. ▶ or ⇄ has
@@ -213,8 +213,8 @@ public class LibraryActivity extends Activity {
         list.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
             @Override public boolean onItemLongClick(AdapterView<?> parent, View view, int position, long id) {
                 Row row = adapter.getItem(position);
-                // true: the dialog shows (or a play is in flight), so no tap follows.
-                return row.item != null && (playing || showLinks(row.item));
+                if (row.item != null && !playing) showLinks(row.item);
+                return true; // consumed: never a tap, with a dialog or without
             }
         });
         list.setOnScrollListener(new AbsListView.OnScrollListener() {
@@ -824,10 +824,10 @@ public class LibraryActivity extends Activity {
         }
     }
 
-    /** The pages item links to, as a dialog of choices; false (no dialog) when there are none. */
-    private boolean showLinks(Item item) {
+    /** The pages item links to, as a dialog of choices; nothing when there are none. */
+    private void showLinks(Item item) {
         final List<Node> nodes = LibraryPath.linksOf(item, current());
-        if (nodes.isEmpty()) return false;
+        if (nodes.isEmpty()) return;
         String[] labels = new String[nodes.size()];
         for (int i = 0; i < labels.length; i++) {
             Node n = nodes.get(i);
@@ -850,7 +850,6 @@ public class LibraryActivity extends Activity {
                 })
                 .show();
         Dialogs.neutral(links);
-        return true;
     }
 
     private Runnable pushing(final Node node) {
