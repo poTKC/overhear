@@ -1,4 +1,6 @@
-# Overhear
+# <img src="docs/icon.svg" width="44" height="44" alt="" align="top"> Overhear
+
+**紹介とインストール手順: <https://potkc.github.io/overhear/>**
 
 古い Android 端末を Spotify Connect のスピーカー兼再生画面にするアプリです。
 スマホの Spotify で再生先にこの端末（既定の名前は端末の機種名）を選ぶと、
