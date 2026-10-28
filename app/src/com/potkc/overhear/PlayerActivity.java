@@ -387,6 +387,7 @@ public class PlayerActivity extends Activity {
         applyFullscreen(); // setup may have changed it
         started = true;
         topStrip.resume();
+        PlayerService.restartIfIdleStopped(this); // it stopped itself for not playing
         // Flags 0: connects when the service runs, never creates or keeps it.
         bound = bindService(new Intent(this, PlayerService.class), connection, 0);
         attach();

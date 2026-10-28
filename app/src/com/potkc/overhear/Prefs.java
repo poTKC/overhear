@@ -15,6 +15,7 @@ public final class Prefs {
     private static final String DEVICE_NAME = "device_name";
     private static final String AUTO_START = "auto_start";
     private static final String FULLSCREEN = "fullscreen";
+    private static final String IDLE_STOP_MINUTES = "idle_stop_minutes";
     private static final String SPOTIFY_REFRESH = "spotify_refresh";
     private static final String LIBRARY_PATH = "library_path";
 
@@ -77,6 +78,11 @@ public final class Prefs {
     /** The player screen hides the status bar. */
     public boolean isFullscreen() {
         return prefs.getBoolean(FULLSCREEN, SetupValues.DEFAULT_FULLSCREEN);
+    }
+
+    /** Stop the service after this many minutes of not playing; 0 never. */
+    public int getIdleStopMinutes() {
+        return prefs.getInt(IDLE_STOP_MINUTES, SetupValues.DEFAULT_IDLE_STOP_MINUTES);
     }
 
     public void setAutoStart(boolean autoStart) {

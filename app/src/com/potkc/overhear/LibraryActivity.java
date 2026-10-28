@@ -282,6 +282,7 @@ public class LibraryActivity extends Activity {
         TopStrip.apply(this, topStrip, prefs); // setup may have changed it
         topStrip.resume();
         active = this;
+        PlayerService.restartIfIdleStopped(this); // it stopped itself for not playing; connection follows
         if (spotify.generation() != stackGeneration) {
             // Logged out or in again (LoginActivity) meanwhile: the pages may be another account's.
             stackGeneration = spotify.generation();

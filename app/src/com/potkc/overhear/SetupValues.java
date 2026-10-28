@@ -11,6 +11,8 @@ final class SetupValues {
     static final boolean DEFAULT_AUTO_START = true;
     /** The player hides the status bar. */
     static final boolean DEFAULT_FULLSCREEN = true;
+    /** The service stops itself after this many minutes of not playing (PlayerService); 0 never. */
+    static final int DEFAULT_IDLE_STOP_MINUTES = 15;
 
     private final String key;
     private final String deviceName;
