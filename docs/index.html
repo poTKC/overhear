@@ -361,6 +361,32 @@
         color: var(--text-2);
       }
 
+      .screens {
+        display: flex;
+        justify-content: center;
+        gap: 20px;
+        margin: 28px 0;
+      }
+      .screens figure {
+        margin: 0;
+        text-align: center;
+        flex: 0 1 226px;
+        min-width: 0;
+      }
+      .screens img {
+        display: block;
+        width: 100%;
+        height: auto;
+        box-sizing: border-box;
+        border-radius: 18px;
+        border: 8px solid #262626;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+      }
+      .screens figcaption {
+        margin-top: 10px;
+        font-size: 0.85rem;
+        color: var(--text-2);
+      }
       .account {
         display: inline-flex;
         align-items: center;
@@ -492,6 +518,23 @@
           はそれを端末の上で動かします。非公式クライアントは使わず、DRM
           の回避もしません。
         </p>
+        <div class="screens">
+          <figure>
+            <img src="screen-player.png" width="320" height="480"
+              alt="再生画面。アートワーク、曲名とアーティスト、シークバー、再生ボタンが並ぶ" />
+            <figcaption>再生画面</figcaption>
+          </figure>
+          <figure>
+            <img src="screen-library-top.png" width="320" height="480"
+              alt="ライブラリのトップ。検索、お気に入りの曲、プレイリスト、アルバム、アーティスト、最近再生" />
+            <figcaption>ライブラリ（トップ）</figcaption>
+          </figure>
+          <figure>
+            <img src="screen-library.png" width="320" height="480"
+              alt="ライブラリのアルバムのページ。再生・シャッフルと曲の一覧、再生中の曲は緑で表示" />
+            <figcaption>ライブラリ（アルバム）</figcaption>
+          </figure>
+        </div>
         <div class="grid-2">
           <div class="card">
             <h3>スピーカーとして</h3>
