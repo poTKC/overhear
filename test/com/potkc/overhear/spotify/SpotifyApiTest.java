@@ -228,6 +228,76 @@ public class SpotifyApiTest {
         assertNull(s.refresh);
     }
 
+    @Test public void withoutAClientIdNothingIsLoggedInOrSent() {
+        FakeTransport t = new FakeTransport();
+        MemoryStore s = new MemoryStore();
+        for (String none : new String[] {null, ""}) {
+            SpotifyAuth auth = new SpotifyAuth(t, s, clock, none);
+            assertFalse(auth.hasClientId());
+            assertEquals("", auth.clientId());
+            assertFalse(auth.isLoggedIn());
+            try {
+                auth.accessToken();
+                fail();
+            } catch (SpotifyException e) {
+                assertEquals(SpotifyException.Reason.LOGIN_REQUIRED, e.reason);
+            } catch (IOException e) {
+                fail(e.toString());
+            }
+            try {
+                auth.exchangeCode("C", "V", "https://x/cb/", "");
+                fail();
+            } catch (SpotifyException e) {
+                assertEquals(SpotifyException.Reason.HTTP, e.reason);
+            } catch (IOException e) {
+                fail(e.toString());
+            }
+            try {
+                new SpotifyApi(t, auth).getJson("/me");
+                fail();
+            } catch (SpotifyException e) {
+                assertEquals(SpotifyException.Reason.LOGIN_REQUIRED, e.reason);
+            } catch (IOException e) {
+                fail(e.toString());
+            }
+        }
+        assertTrue(t.log.isEmpty());
+        assertNull(s.refresh);
+    }
+
+    @Test public void aRefreshTokenWithoutAClientIdIsDropped() {
+        MemoryStore s = new MemoryStore();
+        s.refresh = "R"; // from a client used before
+        SpotifyAuth auth = new SpotifyAuth(new FakeTransport(), s, clock, "");
+        assertNull(s.refresh);
+        assertFalse(auth.isLoggedIn());
+        s.refresh = "R";
+        assertFalse(auth.isLoggedIn()); // still none to use it with
+    }
+
+    @Test public void clearingTheClientIdLogsOut() throws IOException {
+        FakeTransport t = new FakeTransport().reply(200, "{\"access_token\":\"A1\",\"expires_in\":3600}");
+        MemoryStore s = new MemoryStore();
+        s.refresh = "R";
+        SpotifyAuth auth = new SpotifyAuth(t, s, clock, "cid");
+        assertTrue(auth.isLoggedIn());
+        assertEquals("A1", auth.accessToken());
+        int g = auth.generation();
+        assertTrue(auth.setClientId(""));
+        assertFalse(auth.hasClientId());
+        assertFalse(auth.isLoggedIn());
+        assertNull(s.refresh);
+        assertTrue(auth.generation() != g);
+        assertFalse(auth.setClientId(null)); // none again: nothing happens
+        try {
+            auth.accessToken(); // the old access token is gone too
+            fail();
+        } catch (SpotifyException e) {
+            assertEquals(SpotifyException.Reason.LOGIN_REQUIRED, e.reason);
+        }
+        assertEquals(1, t.log.size());
+    }
+
     @Test public void nullRefreshTokenKeepsTheStoredOne() throws IOException {
         FakeTransport t = new FakeTransport()
                 .reply(200, "{\"access_token\":\"A\",\"expires_in\":3600,\"refresh_token\":null}")
