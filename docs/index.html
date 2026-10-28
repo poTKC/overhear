@@ -346,6 +346,23 @@
         color: var(--text-2);
       }
 
+      .account {
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        color: var(--text);
+        text-decoration: none;
+        font-weight: 700;
+      }
+      .account img {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        flex: none;
+      }
+      .account:hover span {
+        text-decoration: underline;
+      }
       footer {
         margin-top: 48px;
         padding: 28px 0 48px;
@@ -445,6 +462,7 @@
           <li><a href="#setup">初回セットアップ</a></li>
           <li><a href="#usage">使い方のメモ</a></li>
           <li><a href="#privacy">キーとログインの扱い</a></li>
+          <li><a href="#feedback">要望・バグ報告</a></li>
         </ol>
       </div>
     </nav>
@@ -731,6 +749,14 @@
             から直接ダウンロードします。
           </li>
         </ul>
+      </section>
+
+      <section id="feedback">
+        <h2>要望・バグ報告</h2>
+        <a class="account" href="https://x.com/todayporton">
+          <img src="todayporton.jpg" width="48" height="48" alt="" />
+          <span>X: @todayporton</span>
+        </a>
       </section>
     </main>
 
