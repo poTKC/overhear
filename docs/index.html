@@ -1,345 +1,770 @@
 <!doctype html>
 <html lang="ja">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Overhear — 古い Android を Spotify Connect スピーカーに</title>
-<meta name="description" content="Overhear は古い Android 端末を Spotify Connect のスピーカー兼再生画面にするアプリです。Spotify 公式のヘッドレスクライアント Soloist で再生し、端末の画面からライブラリもたどれます。インストールと初回セットアップの手順。">
-<meta name="theme-color" content="#121212">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23121212'/%3E%3Cpath fill='%231ED760' d='M17 4v10.3a3.2 3.2 0 1 1-2-3V7.3l-5 1.2v7.8a3.2 3.2 0 1 1-2-3V6.9z'/%3E%3C/svg%3E">
-<style>
-:root {
-  --bg: #121212;
-  --surface: #1c1c1c;
-  --surface-2: #242424;
-  --line: #2e2e2e;
-  --text: #ffffff;
-  --text-2: #b3b3b3;
-  --text-3: #8a8a8a;
-  --accent: #1ED760;
-  --accent-ink: #0b2e17;
-  --warn: #f0b429;
-}
-* { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
-body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--text);
-  font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", "Meiryo", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  font-size: 16px;
-  line-height: 1.8;
-  letter-spacing: 0.01em;
-  overflow-wrap: anywhere;
-}
-a { color: var(--accent); text-underline-offset: 3px; }
-a:hover { text-decoration-thickness: 2px; }
-code, kbd {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.9em;
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 0.05em 0.35em;
-}
-pre {
-  margin: 0.75em 0;
-  padding: 12px 14px;
-  background: #0c0c0c;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  overflow-x: auto;
-  line-height: 1.6;
-}
-code { white-space: nowrap; }
-pre code { white-space: pre; background: none; border: 0; padding: 0; font-size: 0.88em; }
-.wrap { max-width: 760px; margin: 0 auto; padding: 0 16px; }
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Overhear — 古い Android を Spotify Connect スピーカーに</title>
+    <meta
+      name="description"
+      content="Overhear は古い Android 端末を Spotify Connect のスピーカー兼再生画面にするアプリです。Spotify 公式のヘッドレスクライアント Soloist で再生し、端末の画面からライブラリもたどれます。インストールと初回セットアップの手順。"
+    />
+    <meta name="theme-color" content="#121212" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23121212'/%3E%3Cpath fill='%231ED760' d='M17 4v10.3a3.2 3.2 0 1 1-2-3V7.3l-5 1.2v7.8a3.2 3.2 0 1 1-2-3V6.9z'/%3E%3C/svg%3E"
+    />
+    <style>
+      :root {
+        --bg: #121212;
+        --surface: #1c1c1c;
+        --surface-2: #242424;
+        --line: #2e2e2e;
+        --text: #ffffff;
+        --text-2: #b3b3b3;
+        --text-3: #8a8a8a;
+        --accent: #1ed760;
+        --accent-ink: #0b2e17;
+        --warn: #f0b429;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        -webkit-text-size-adjust: 100%;
+        text-size-adjust: 100%;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family:
+          "Hiragino Sans",
+          "Hiragino Kaku Gothic ProN",
+          "Noto Sans JP",
+          "Yu Gothic UI",
+          "Meiryo",
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          Roboto,
+          sans-serif;
+        font-size: 16px;
+        line-height: 1.8;
+        letter-spacing: 0.01em;
+        overflow-wrap: anywhere;
+      }
+      a {
+        color: var(--accent);
+        text-underline-offset: 3px;
+      }
+      a:hover {
+        text-decoration-thickness: 2px;
+      }
+      code,
+      kbd {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.9em;
+        background: var(--surface-2);
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        padding: 0.05em 0.35em;
+      }
+      pre {
+        margin: 0.75em 0;
+        padding: 12px 14px;
+        background: #0c0c0c;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow-x: auto;
+        line-height: 1.6;
+      }
+      code {
+        white-space: nowrap;
+      }
+      pre code {
+        white-space: pre;
+        background: none;
+        border: 0;
+        padding: 0;
+        font-size: 0.88em;
+      }
+      .wrap {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 0 16px;
+      }
 
-header.hero { padding: 56px 0 40px; border-bottom: 1px solid var(--line); }
-.brand { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
-.brand svg { width: 40px; height: 40px; flex: none; }
-.brand span { font-size: 1.05rem; font-weight: 700; letter-spacing: 0.04em; }
-h1 { font-size: clamp(1.6rem, 6vw, 2.4rem); line-height: 1.35; margin: 0 0 16px; font-weight: 700; letter-spacing: 0; }
-h1 em { font-style: normal; color: var(--accent); }
-.lead { color: var(--text-2); margin: 0 0 28px; font-size: 1.05rem; }
-.actions { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; }
-.btn {
-  display: inline-flex; align-items: center; gap: 10px;
-  background: var(--accent); color: #000; font-weight: 700;
-  text-decoration: none; padding: 12px 24px; border-radius: 999px;
-  font-size: 1rem; line-height: 1.4;
-}
-.btn:hover { background: #3be477; }
-.btn svg { width: 20px; height: 20px; flex: none; }
-.sub-link { color: var(--text-2); font-size: 0.95rem; }
-.meta { margin: 16px 0 0; color: var(--text-3); font-size: 0.85rem; }
+      header.hero {
+        padding: 56px 0 40px;
+        border-bottom: 1px solid var(--line);
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 20px;
+      }
+      .brand svg {
+        width: 40px;
+        height: 40px;
+        flex: none;
+      }
+      .brand span {
+        font-size: 1.05rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+      }
+      h1 {
+        font-size: clamp(1.6rem, 6vw, 2.4rem);
+        line-height: 1.35;
+        margin: 0 0 16px;
+        font-weight: 700;
+        letter-spacing: 0;
+      }
+      h1 em {
+        font-style: normal;
+        color: var(--accent);
+      }
+      .lead {
+        color: var(--text-2);
+        margin: 0 0 28px;
+        font-size: 1.05rem;
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px 20px;
+        align-items: center;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        background: var(--accent);
+        color: #000;
+        font-weight: 700;
+        text-decoration: none;
+        padding: 12px 24px;
+        border-radius: 999px;
+        font-size: 1rem;
+        line-height: 1.4;
+      }
+      .btn:hover {
+        background: #3be477;
+      }
+      .btn svg {
+        width: 20px;
+        height: 20px;
+        flex: none;
+      }
+      .sub-link {
+        color: var(--text-2);
+        font-size: 0.95rem;
+      }
+      .meta {
+        margin: 16px 0 0;
+        color: var(--text-3);
+        font-size: 0.85rem;
+      }
 
-nav.toc { padding: 20px 0; border-bottom: 1px solid var(--line); font-size: 0.92rem; }
-nav.toc ol { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 18px; }
-nav.toc a { color: var(--text-2); text-decoration: none; }
-nav.toc a:hover { color: var(--text); }
+      nav.toc {
+        padding: 20px 0;
+        border-bottom: 1px solid var(--line);
+        font-size: 0.92rem;
+      }
+      nav.toc ol {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 18px;
+      }
+      nav.toc a {
+        color: var(--text-2);
+        text-decoration: none;
+      }
+      nav.toc a:hover {
+        color: var(--text);
+      }
 
-section { padding: 40px 0 8px; }
-h2 { font-size: 1.35rem; line-height: 1.4; margin: 0 0 16px; font-weight: 700; }
-h3 { font-size: 1.05rem; margin: 24px 0 8px; font-weight: 700; }
-p { margin: 0 0 14px; }
-.muted { color: var(--text-2); }
-ul.plain { margin: 0 0 14px; padding-left: 1.2em; }
-ul.plain li { margin: 4px 0; }
-ul.plain li::marker { color: var(--text-3); }
+      section {
+        padding: 40px 0 8px;
+      }
+      h2 {
+        font-size: 1.35rem;
+        line-height: 1.4;
+        margin: 0 0 16px;
+        font-weight: 700;
+      }
+      h3 {
+        font-size: 1.05rem;
+        margin: 24px 0 8px;
+        font-weight: 700;
+      }
+      p {
+        margin: 0 0 14px;
+      }
+      .muted {
+        color: var(--text-2);
+      }
+      ul.plain {
+        margin: 0 0 14px;
+        padding-left: 1.2em;
+      }
+      ul.plain li {
+        margin: 4px 0;
+      }
+      ul.plain li::marker {
+        color: var(--text-3);
+      }
 
-.card {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 18px 20px;
-  margin: 0 0 16px;
-}
-.card > :last-child { margin-bottom: 0; }
-.card h3 { margin-top: 0; }
-.note {
-  border-left: 3px solid var(--warn);
-  background: var(--surface);
-  border-radius: 0 8px 8px 0;
-  padding: 12px 16px;
-  margin: 0 0 16px;
-  color: var(--text-2);
-  font-size: 0.95rem;
-}
-.note strong { color: var(--text); }
-.note > :last-child { margin-bottom: 0; }
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 18px 20px;
+        margin: 0 0 16px;
+      }
+      .card > :last-child {
+        margin-bottom: 0;
+      }
+      .card h3 {
+        margin-top: 0;
+      }
+      .note {
+        border-left: 3px solid var(--warn);
+        background: var(--surface);
+        border-radius: 0 8px 8px 0;
+        padding: 12px 16px;
+        margin: 0 0 16px;
+        color: var(--text-2);
+        font-size: 0.95rem;
+      }
+      .note strong {
+        color: var(--text);
+      }
+      .note > :last-child {
+        margin-bottom: 0;
+      }
 
-ol.steps { list-style: none; margin: 0; padding: 0; counter-reset: step; }
-ol.steps > li {
-  position: relative;
-  counter-increment: step;
-  padding: 0 0 28px 52px;
-}
-ol.steps > li::before {
-  content: counter(step);
-  position: absolute; left: 0; top: 0;
-  width: 34px; height: 34px; border-radius: 50%;
-  background: var(--accent); color: #000;
-  font-weight: 700; font-size: 0.95rem;
-  display: flex; align-items: center; justify-content: center;
-  line-height: 1;
-}
-ol.steps > li::after {
-  content: "";
-  position: absolute; left: 16px; top: 42px; bottom: 8px;
-  width: 2px; background: var(--line);
-}
-ol.steps > li:last-child::after { display: none; }
-ol.steps > li:last-child { padding-bottom: 4px; }
-ol.steps h3 { margin: 2px 0 10px; font-size: 1.1rem; }
-.tag {
-  display: inline-block; vertical-align: 0.1em;
-  margin-left: 6px; padding: 0 8px;
-  font-size: 0.75rem; font-weight: 700; line-height: 1.7;
-  color: var(--text-2); border: 1px solid var(--line); border-radius: 999px;
-}
-ol.sub { margin: 0 0 12px; padding-left: 1.3em; }
-ol.sub li { margin: 6px 0; }
-ol.sub li::marker { color: var(--text-3); }
-.ui { color: var(--text); font-weight: 700; }
-.uri { display: block; margin: 6px 0; white-space: normal; word-break: break-all; }
+      ol.steps {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        counter-reset: step;
+      }
+      ol.steps > li {
+        position: relative;
+        counter-increment: step;
+        padding: 0 0 28px 52px;
+      }
+      ol.steps > li::before {
+        content: counter(step);
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        background: var(--accent);
+        color: #000;
+        font-weight: 700;
+        font-size: 0.95rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+      }
+      ol.steps > li::after {
+        content: "";
+        position: absolute;
+        left: 16px;
+        top: 42px;
+        bottom: 8px;
+        width: 2px;
+        background: var(--line);
+      }
+      ol.steps > li:last-child::after {
+        display: none;
+      }
+      ol.steps > li:last-child {
+        padding-bottom: 4px;
+      }
+      ol.steps h3 {
+        margin: 2px 0 10px;
+        font-size: 1.1rem;
+      }
+      .tag {
+        display: inline-block;
+        vertical-align: 0.1em;
+        margin-left: 6px;
+        padding: 0 8px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        line-height: 1.7;
+        color: var(--text-2);
+        border: 1px solid var(--line);
+        border-radius: 999px;
+      }
+      ol.sub {
+        margin: 0 0 12px;
+        padding-left: 1.3em;
+      }
+      ol.sub li {
+        margin: 6px 0;
+      }
+      ol.sub li::marker {
+        color: var(--text-3);
+      }
+      .ui {
+        color: var(--text);
+        font-weight: 700;
+      }
+      .uri {
+        display: block;
+        margin: 6px 0;
+        white-space: normal;
+        word-break: break-all;
+      }
 
-dl.faq { margin: 0; }
-dl.faq dt { font-weight: 700; margin-top: 18px; }
-dl.faq dt:first-child { margin-top: 0; }
-dl.faq dd { margin: 6px 0 0; color: var(--text-2); }
+      dl.faq {
+        margin: 0;
+      }
+      dl.faq dt {
+        font-weight: 700;
+        margin-top: 18px;
+      }
+      dl.faq dt:first-child {
+        margin-top: 0;
+      }
+      dl.faq dd {
+        margin: 6px 0 0;
+        color: var(--text-2);
+      }
 
-footer { margin-top: 48px; padding: 28px 0 48px; border-top: 1px solid var(--line); color: var(--text-3); font-size: 0.85rem; line-height: 1.7; }
-footer ul { list-style: none; padding: 0; margin: 0 0 14px; display: flex; flex-wrap: wrap; gap: 6px 18px; }
-footer a { color: var(--text-2); }
-footer p { margin: 0 0 8px; }
+      footer {
+        margin-top: 48px;
+        padding: 28px 0 48px;
+        border-top: 1px solid var(--line);
+        color: var(--text-3);
+        font-size: 0.85rem;
+        line-height: 1.7;
+      }
+      footer ul {
+        list-style: none;
+        padding: 0;
+        margin: 0 0 14px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 18px;
+      }
+      footer a {
+        color: var(--text-2);
+      }
+      footer p {
+        margin: 0 0 8px;
+      }
 
-@media (max-width: 400px) {
-  ol.steps > li { padding-left: 44px; }
-}
-@media (min-width: 720px) {
-  body { font-size: 17px; }
-  header.hero { padding: 88px 0 56px; }
-  section { padding: 56px 0 8px; }
-  h2 { font-size: 1.5rem; }
-  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  .grid-2 .card { margin: 0; }
-}
-</style>
-</head>
-<body>
-
-<header class="hero">
-  <div class="wrap">
-    <div class="brand">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="6" fill="#1c1c1c"/><path fill="#1ED760" d="M17 4v10.3a3.2 3.2 0 1 1-2-3V7.3l-5 1.2v7.8a3.2 3.2 0 1 1-2-3V6.9z"/></svg>
-      <span>Overhear</span>
-    </div>
-    <h1>古い Android 端末を、<br><em>Spotify Connect</em> のスピーカーに。</h1>
-    <p class="lead">スマホの Spotify で再生先にこの端末を選ぶと、端末から音が出て、画面に曲名・アートワーク・シークバー・キューが表示されます。端末の画面から自分のライブラリをたどって選曲することもできます。</p>
-    <div class="actions">
-      <a class="btn" href="https://github.com/poTKC/overhear/releases/latest/download/overhear.apk">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M13 10h5l-6 6-6-6h5V3h2v7zM4 19h16v-7h2v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-8h2v7z"/></svg>
-        APK をダウンロード
-      </a>
-      <a class="sub-link" href="https://github.com/poTKC/overhear/releases">すべてのリリース</a>
-    </div>
-    <p class="meta">Android 4.1 以降・ARMv7 ・ Spotify Premium が必要です。ダウンロードは PC かスマホで（<a href="#install">インストール</a>を参照）。</p>
-  </div>
-</header>
-
-<nav class="toc" aria-label="目次">
-  <div class="wrap">
-    <ol>
-      <li><a href="#about">Overhear とは</a></li>
-      <li><a href="#requirements">必要なもの</a></li>
-      <li><a href="#install">インストール</a></li>
-      <li><a href="#setup">初回セットアップ</a></li>
-      <li><a href="#usage">使い方のメモ</a></li>
-      <li><a href="#privacy">キーとログインの扱い</a></li>
-    </ol>
-  </div>
-</nav>
-
-<main class="wrap">
-
-<section id="about">
-  <h2>Overhear とは</h2>
-  <p>Overhear は、引き出しに眠っている古い Android 端末を Spotify Connect のスピーカー兼再生画面にするアプリです。音を鳴らすのは Spotify 公式のヘッドレスクライアント <strong>Soloist</strong> で、Overhear はそれを端末の上で動かします。非公式クライアントは使わず、DRM の回避もしません。</p>
-  <div class="grid-2">
-    <div class="card">
-      <h3>スピーカーとして</h3>
-      <p class="muted">スマホや PC の Spotify から再生先に選ぶだけ。曲名・アートワーク・キューが表示され、端末からも再生・一時停止・曲送りができます。音量は端末の音量キーとスマホの Spotify の両方で変えられ、連動します。必要なのは Soloist の API キーだけです。</p>
-    </div>
-    <div class="card">
-      <h3>ライブラリ（任意）</h3>
-      <p class="muted">Spotify にログインすると、端末の画面で検索・お気に入りの曲・プレイリスト・アルバム・アーティスト・最近再生をたどれます。順番どおり・シャッフルの再生、選んだ曲からの再生、お気に入りへの追加・削除もできます。自分の Spotify Developer アプリの Client ID が要ります。</p>
-    </div>
-  </div>
-</section>
-
-<section id="requirements">
-  <h2>必要なもの</h2>
-  <ul class="plain">
-    <li><strong>Android 4.1 以降</strong>（minSdk 16）の <strong>ARMv7</strong> 端末。Wi-Fi につながること。</li>
-    <li><strong>Spotify Premium</strong> のアカウント（Soloist の API キーの発行に必要）。</li>
-    <li>端末と同じ Wi-Fi につながるスマホ（初回の設定とログインに使います）。</li>
-    <li>APK を端末へ移すための PC か、もう一台のスマホ。</li>
-  </ul>
-  <div class="note">
-    <p><strong>動作確認は Xperia mini（ST15i、Android 4.3）だけです。</strong> ほかの端末でも動く見込みはありますが、確かめていません。</p>
-  </div>
-</section>
-
-<section id="install">
-  <h2>インストール</h2>
-  <p>古い Android のブラウザは、いまの GitHub の TLS に対応していないため、端末から直接ダウンロードできません。PC かスマホで APK をダウンロードしてから、端末へ移してください。</p>
-  <ol class="sub">
-    <li><a href="https://github.com/poTKC/overhear/releases/latest/download/overhear.apk">overhear.apk</a> を PC かスマホでダウンロードします。</li>
-    <li>次のどちらかで端末に入れます。
-      <ul class="plain">
-        <li><strong>USB でコピー:</strong> 端末の設定の「セキュリティ」で「提供元不明のアプリ」を許可し、APK を端末にコピーしてファイルマネージャーで開きます。</li>
-        <li><strong>adb:</strong> USB デバッグを有効にして、PC から次を実行します。</li>
-      </ul>
-    </li>
-  </ol>
-<pre><code>adb install -r overhear.apk</code></pre>
-  <div class="note">
-    <p><strong>更新は上書きインストールで。</strong> 同じ署名の APK を上から入れれば（<code>-r</code>）、API キーとログイン状態は残ります。アンインストールすると、保存した API キーと Spotify のログインも消えます。署名の違う APK は上書きできません。</p>
-  </div>
-</section>
-
-<section id="setup">
-  <h2>初回セットアップ</h2>
-  <p>API キーや Client ID は端末では入力しません。端末に QR コードを出し、同じ Wi-Fi のスマホで入力します。</p>
-
-  <ol class="steps">
-    <li id="step-key">
-      <h3>Soloist の API キーを発行する</h3>
-      <p><a href="https://developer.spotify.com/dashboard/soloist">developer.spotify.com/dashboard/soloist</a> で、<strong>自分の Spotify Premium アカウント</strong>の Soloist API キーを発行します。</p>
-    </li>
-
-    <li id="step-app">
-      <h3>Spotify のアプリを作る <span class="tag">ライブラリを使うときだけ</span></h3>
-      <p>ライブラリは Spotify Web API を使うので、自分の Spotify Developer のアプリが必要です（Overhear には Client ID が組み込まれていません）。スピーカーとしてだけ使うなら、この手順は飛ばしてかまいません。</p>
-      <ol class="sub">
-        <li><a href="https://developer.spotify.com/dashboard">developer.spotify.com/dashboard</a> でアプリを作り、<strong>Web API</strong> を有効にします。</li>
-        <li><strong>Redirect URI</strong> に次を登録します（<strong>末尾のスラッシュまで含めます</strong>）。
-          <code class="uri">https://potkc.github.io/overhear-auth/callback/</code></li>
-        <li>アプリの Settings に出る <strong>Client ID</strong>（32 文字の16進数）を控えます。</li>
-      </ol>
-      <div class="note">
-        <p><strong>開発モードの制約:</strong> アプリの所有者が Spotify Premium であること、使えるのは User Management の許可リストに登録した最大 5 人までです。自分以外の人が同じアプリでログインするときは、その人の Spotify のメールアドレスを User Management に登録してください。</p>
+      @media (max-width: 400px) {
+        ol.steps > li {
+          padding-left: 44px;
+        }
+      }
+      @media (min-width: 720px) {
+        body {
+          font-size: 17px;
+        }
+        header.hero {
+          padding: 88px 0 56px;
+        }
+        section {
+          padding: 56px 0 8px;
+        }
+        h2 {
+          font-size: 1.5rem;
+        }
+        .grid-2 {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 16px;
+        }
+        .grid-2 .card {
+          margin: 0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="hero">
+      <div class="wrap">
+        <div class="brand">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <rect width="24" height="24" rx="6" fill="#1c1c1c" />
+            <path
+              fill="#1ED760"
+              d="M17 4v10.3a3.2 3.2 0 1 1-2-3V7.3l-5 1.2v7.8a3.2 3.2 0 1 1-2-3V6.9z"
+            />
+          </svg>
+          <span>Overhear</span>
+        </div>
+        <h1>
+          古い Android 端末を、<br /><em>Spotify Connect</em> のスピーカーに。
+        </h1>
+        <p class="lead">
+          スマホの Spotify
+          で再生先にこの端末を選ぶと、端末から音が出て、画面に曲名・アートワーク・シークバー・キューが表示されます。端末の画面から自分のライブラリをたどって選曲することもできます。
+        </p>
+        <div class="actions">
+          <a
+            class="btn"
+            href="https://github.com/poTKC/overhear/releases/latest/download/overhear.apk"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                fill="currentColor"
+                d="M13 10h5l-6 6-6-6h5V3h2v7zM4 19h16v-7h2v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-8h2v7z"
+              />
+            </svg>
+            APK をダウンロード
+          </a>
+          <a class="sub-link" href="https://github.com/poTKC/overhear/releases"
+            >すべてのリリース</a
+          >
+        </div>
+        <p class="meta">
+          Android 4.1 以降・ARMv7 ・ Spotify Premium が必要です。ダウンロードは
+          PC かスマホで（<a href="#install">インストール</a>を参照）。
+        </p>
       </div>
-    </li>
+    </header>
 
-    <li id="step-phone">
-      <h3>端末で「スマホで認証」する</h3>
-      <ol class="sub">
-        <li>端末で Overhear を開きます。API キーがまだないので設定画面が開きます。</li>
-        <li>「アカウント」の <span class="ui">「スマホで認証」</span> を押すと、QR コードが表示されます。</li>
-        <li>端末と<strong>同じ Wi-Fi</strong> につないだスマホで QR コードを読み取ります。</li>
-        <li>開いたページに Soloist API キーと Client ID を貼り付け、<span class="ui">「保存してログイン」</span> を押します。続けて Spotify のログインと許可の画面が開くので、許可します。</li>
-        <li>端末の画面が「完了」に変わります。</li>
-      </ol>
-      <p class="muted">ライブラリを使わないなら、Client ID は空欄のまま「Spotify にログインする」の印を外して <span class="ui">「保存」</span> を押します。QR コードの画面は最大 5 分で閉じ、QR コードは一回限りです。</p>
-    </li>
+    <nav class="toc" aria-label="目次">
+      <div class="wrap">
+        <ol>
+          <li><a href="#about">Overhear とは</a></li>
+          <li><a href="#requirements">必要なもの</a></li>
+          <li><a href="#install">インストール</a></li>
+          <li><a href="#setup">初回セットアップ</a></li>
+          <li><a href="#usage">使い方のメモ</a></li>
+          <li><a href="#privacy">キーとログインの扱い</a></li>
+        </ol>
+      </div>
+    </nav>
 
-    <li id="step-start">
-      <h3>「保存して開始」</h3>
-      <p>設定画面に戻り、「再生」でデバイス名（既定は端末の機種名）を決め、必要なら「起動時・アプリを開いたときに自動で開始」を選んで <span class="ui">「保存して開始」</span> を押します。初回はランタイムの展開と Soloist のダウンロード（約 12 MB、Spotify から直接）が行われ、終わると再生画面に移ります。</p>
-    </li>
+    <main class="wrap">
+      <section id="about">
+        <h2>Overhear とは</h2>
+        <p>
+          Overhear は、古い Android 端末を Spotify Connect
+          のスピーカー兼再生画面にするアプリです。音を鳴らすのは Spotify
+          公式のヘッドレスクライアント <strong>Soloist</strong> で、Overhear
+          はそれを端末の上で動かします。非公式クライアントは使わず、DRM
+          の回避もしません。
+        </p>
+        <div class="grid-2">
+          <div class="card">
+            <h3>スピーカーとして</h3>
+            <p class="muted">
+              スマホや PC の Spotify
+              から再生先に選ぶだけ。曲名・アートワーク・キューが表示され、端末からも再生・一時停止・曲送りができます。音量は端末の音量キーとスマホの
+              Spotify の両方で変えられ、連動します。必要なのは Soloist の API
+              キーだけです。
+            </p>
+          </div>
+          <div class="card">
+            <h3>ライブラリ（任意）</h3>
+            <p class="muted">
+              Spotify
+              にログインすると、端末の画面で検索・お気に入りの曲・プレイリスト・アルバム・アーティスト・最近再生をたどれます。順番どおり・シャッフルの再生、選んだ曲からの再生、お気に入りへの追加・削除もできます。自分の
+              Spotify Developer アプリの Client ID が要ります。
+            </p>
+          </div>
+        </div>
+      </section>
 
-    <li id="step-select">
-      <h3>スマホの Spotify で再生先に選ぶ</h3>
-      <p>スマホの Spotify で再生先（デバイス）の一覧を開き、そのデバイス名を選びます。端末から音が出れば完了です。</p>
-    </li>
-  </ol>
-</section>
+      <section id="requirements">
+        <h2>必要なもの</h2>
+        <ul class="plain">
+          <li>
+            <strong>Android 4.1 以降</strong>（minSdk 16）の
+            <strong>ARMv7</strong> 端末。Wi-Fi につながること。
+          </li>
+          <li>
+            <strong>Spotify Premium</strong> のアカウント（Soloist の API
+            キーの発行に必要）。
+          </li>
+          <li>
+            端末と同じ Wi-Fi
+            につながるスマホ（初回の設定とログインに使います）。
+          </li>
+          <li>APK を端末へ移すための PC か、もう一台のスマホ。</li>
+        </ul>
+        <div class="note">
+          <p>
+            <strong
+              >動作確認は Xperia mini（ST15i、Android 4.3）だけです。</strong
+            >
+            ほかの端末でも動く見込みはありますが、確かめていません。
+          </p>
+        </div>
+      </section>
 
-<section id="usage">
-  <h2>使い方のメモ</h2>
-  <dl class="faq">
-    <dt>しばらく使わないと止まります（自動停止）</dt>
-    <dd>この端末で再生していない状態（一時停止中・<code>Standby</code>・接続待ちなど）が続くと、電池を守るためにサービスを止めます。時間は設定画面の「再生」の「再生していないときの自動停止」で選べます（既定 15 分。5 分・30 分・しない）。再生画面かライブラリを表示している間は数えません。</dd>
+      <section id="install">
+        <h2>インストール</h2>
+        <p>
+          古い Android のブラウザは、いまの GitHub の TLS
+          に対応していないため、端末から直接ダウンロードできません。PC
+          かスマホで APK をダウンロードしてから、端末へ移してください。
+        </p>
+        <ol class="sub">
+          <li>
+            <a
+              href="https://github.com/poTKC/overhear/releases/latest/download/overhear.apk"
+              >overhear.apk</a
+            >
+            を PC かスマホでダウンロードします。
+          </li>
+          <li>
+            次のどちらかで端末に入れます。
+            <ul class="plain">
+              <li>
+                <strong>ファイルを移して開く:</strong>
+                端末の設定の「セキュリティ」で「提供元不明のアプリ」を許可し、APK
+                を端末に移して（USB・SD カード・Bluetooth など、方法は問いません）ファイルマネージャーで開きます。
+              </li>
+              <li>
+                <strong>adb:</strong> USB デバッグを有効にして、PC
+                から次を実行します。
+              </li>
+            </ul>
+          </li>
+        </ol>
+        <pre><code>adb install -r overhear.apk</code></pre>
+        <div class="note">
+          <p>
+            <strong>更新は上書きインストールで。</strong> 同じ署名の APK
+            を上から入れれば（<code>-r</code>）、API
+            キーとログイン状態は残ります。アンインストールすると、保存した API
+            キーと Spotify のログインも消えます。署名の違う APK
+            は上書きできません。
+          </p>
+        </div>
+      </section>
 
-    <dt>止まったあとに再開するには</dt>
-    <dd>アプリ（再生画面かライブラリ）を開くと、自動停止のあとは再び開始します。止まっている間はアートワークの位置に大きな<strong>電源ボタン</strong>が出るので、それをタップしても開始できます（左下の <code>Stopped — tap to start</code> も同じ）。通知の ✕ や設定の「停止」で止めたときは、開いても自動では開始しません。</dd>
+      <section id="setup">
+        <h2>初回セットアップ</h2>
+        <p>
+          API キーや Client ID は端末では入力しません。端末に QR
+          コードを出し、同じ Wi-Fi のスマホで入力します。
+        </p>
 
-    <dt><code>Standby</code> と出ているとき</dt>
-    <dd>この端末がいまの再生先ではない状態です（ほかの端末に再生を移したあとなど）。最後の曲が表示されていれば、▶ を押すとその曲をこの端末で再生し直します。</dd>
+        <ol class="steps">
+          <li id="step-key">
+            <h3>Soloist の API キーを発行する</h3>
+            <p>
+              <a href="https://developer.spotify.com/dashboard/soloist"
+                >developer.spotify.com/dashboard/soloist</a
+              >
+              で、<strong>自分の Spotify Premium アカウント</strong>の Soloist
+              API キーを発行します。
+            </p>
+          </li>
 
-    <dt>6 か月ごとにログインし直す</dt>
-    <dd>開発モードの Spotify アプリでは、ログインが最初の認可から 6 か月で切れます。ライブラリに「Spotify のログインが切れました — タップしてスマホで認証」と出たら、「スマホで認証」を開き、入力欄は両方空欄のまま「保存してログイン」を押してください。</dd>
+          <li id="step-app">
+            <h3>
+              Spotify のアプリを作る
+              <span class="tag">ライブラリを使うときだけ</span>
+            </h3>
+            <p>
+              ライブラリは Spotify Web API を使うので、自分の Spotify Developer
+              のアプリが必要です（Overhear には Client ID
+              が組み込まれていません）。スピーカーとしてだけ使うなら、この手順は飛ばしてかまいません。
+            </p>
+            <ol class="sub">
+              <li>
+                <a href="https://developer.spotify.com/dashboard"
+                  >developer.spotify.com/dashboard</a
+                >
+                でアプリを作り、<strong>Web API</strong> を有効にします。
+              </li>
+              <li>
+                <strong>Redirect URI</strong>
+                に次を登録します（<strong>末尾のスラッシュまで含めます</strong>）。
+                <code class="uri"
+                  >https://potkc.github.io/overhear-auth/callback/</code
+                >
+              </li>
+              <li>
+                アプリの Settings に出る <strong>Client ID</strong>（32
+                文字の16進数）を控えます。
+              </li>
+            </ol>
+            <div class="note">
+              <p>
+                <strong>開発モードの制約:</strong> アプリの所有者が Spotify
+                Premium であること、使えるのは User Management
+                の許可リストに登録した最大 5
+                人までです。自分以外の人が同じアプリでログインするときは、その人の
+                Spotify のメールアドレスを User Management に登録してください。
+              </p>
+            </div>
+          </li>
 
-    <dt>音量</dt>
-    <dd>端末の音量キーでメディア音量を変えます。スマホの Spotify で音量を変えても、端末のメディア音量が連動します。</dd>
-  </dl>
-</section>
+          <li id="step-phone">
+            <h3>端末で「スマホで認証」する</h3>
+            <ol class="sub">
+              <li>
+                端末で Overhear を開きます。API
+                キーがまだないので設定画面が開きます。
+              </li>
+              <li>
+                「アカウント」の
+                <span class="ui">「スマホで認証」</span> を押すと、QR
+                コードが表示されます。
+              </li>
+              <li>
+                端末と<strong>同じ Wi-Fi</strong> につないだスマホで QR
+                コードを読み取ります。
+              </li>
+              <li>
+                開いたページに Soloist API キーと Client ID を貼り付け、<span
+                  class="ui"
+                  >「保存してログイン」</span
+                >
+                を押します。続けて Spotify
+                のログインと許可の画面が開くので、許可します。
+              </li>
+              <li>端末の画面が「完了」に変わります。</li>
+            </ol>
+            <p class="muted">
+              ライブラリを使わないなら、Client ID は空欄のまま「Spotify
+              にログインする」の印を外して
+              <span class="ui">「保存」</span> を押します。QR コードの画面は最大
+              5 分で閉じ、QR コードは一回限りです。
+            </p>
+          </li>
 
-<section id="privacy">
-  <h2>キーとログインの扱い</h2>
-  <ul class="plain">
-    <li>Soloist API キー・Client ID・Spotify のログイン情報は<strong>端末の中にだけ</strong>保存されます。Overhear には開発者のサーバーがなく、キーやトークンは Spotify 以外へは送られません。</li>
-    <li>「スマホで認証」の間、端末は Wi-Fi のアドレスで最大 5 分だけ待ち受けます。QR コードの一回限りの値がないアクセスは拒否します。</li>
-    <li>Redirect URI の中継ページ（<code>potkc.github.io/overhear-auth</code>）は、Spotify のログインの結果を LAN 内の端末へ転送するだけの静的なページです。転送先はプライベート IPv4 のアドレスに限ります。ソースは <a href="https://github.com/poTKC/overhear-auth">poTKC/overhear-auth</a> で公開しています。</li>
-    <li>Soloist は APK に含まれていません。端末上で Spotify の CDN から直接ダウンロードします。</li>
-  </ul>
-</section>
+          <li id="step-start">
+            <h3>「保存して開始」</h3>
+            <p>
+              設定画面に戻り、「再生」でデバイス名（既定は端末の機種名）を決め、必要なら「起動時・アプリを開いたときに自動で開始」を選んで
+              <span class="ui">「保存して開始」</span>
+              を押します。初回はランタイムの展開と Soloist のダウンロード（約 12
+              MB、Spotify から直接）が行われ、終わると再生画面に移ります。
+            </p>
+          </li>
 
-</main>
+          <li id="step-select">
+            <h3>スマホの Spotify で再生先に選ぶ</h3>
+            <p>
+              スマホの Spotify
+              で再生先（デバイス）の一覧を開き、そのデバイス名を選びます。端末から音が出れば完了です。
+            </p>
+          </li>
+        </ol>
+      </section>
 
-<footer>
-  <div class="wrap">
-    <ul>
-      <li><a href="https://github.com/poTKC/overhear">ソースコード（GitHub）</a></li>
-      <li><a href="https://github.com/poTKC/overhear/blob/main/LICENSE">MIT License</a></li>
-      <li><a href="https://github.com/poTKC/overhear/blob/main/THIRD_PARTY_NOTICES.md">サードパーティのライセンス</a></li>
-          </ul>
-    <p>Overhear のコードは MIT License です（Copyright © 2026 poTKC）。同梱のコンポーネントはそれぞれのライセンスに従います。</p>
-    <p>Spotify は Spotify AB の商標です。Overhear は個人のプロジェクトで、Spotify とは提携・関係していません。</p>
-  </div>
-</footer>
+      <section id="usage">
+        <h2>使い方のメモ</h2>
+        <dl class="faq">
+          <dt>しばらく使わないと止まります（自動停止）</dt>
+          <dd>
+            この端末で再生していない状態（一時停止中・<code>Standby</code>・接続待ちなど）が続くと、電池を守るためにサービスを止めます。時間は設定画面の「再生」の「再生していないときの自動停止」で選べます（既定
+            15 分。5 分・30
+            分・しない）。再生画面かライブラリを表示している間は数えません。
+          </dd>
 
-</body>
+          <dt>止まったあとに再開するには</dt>
+          <dd>
+            アプリ（再生画面かライブラリ）を開くと、自動停止のあとは再び開始します。止まっている間はアートワークの位置に大きな<strong>電源ボタン</strong>が出るので、それをタップしても開始できます（左下の
+            <code>Stopped — tap to start</code> も同じ）。通知の ✕
+            や設定の「停止」で止めたときは、開いても自動では開始しません。
+          </dd>
+
+          <dt><code>Standby</code> と出ているとき</dt>
+          <dd>
+            この端末がいまの再生先ではない状態です（ほかの端末に再生を移したあとなど）。最後の曲が表示されていれば、▶
+            を押すとその曲をこの端末で再生し直します。
+          </dd>
+
+          <dt>6 か月ごとにログインし直す</dt>
+          <dd>
+            開発モードの Spotify アプリでは、ログインが最初の認可から 6
+            か月で切れます。ライブラリに「Spotify のログインが切れました —
+            タップしてスマホで認証」と出たら、「スマホで認証」を開き、入力欄は両方空欄のまま「保存してログイン」を押してください。
+          </dd>
+
+          <dt>音量</dt>
+          <dd>
+            端末の音量キーでメディア音量を変えます。スマホの Spotify
+            で音量を変えても、端末のメディア音量が連動します。
+          </dd>
+        </dl>
+      </section>
+
+      <section id="privacy">
+        <h2>キーとログインの扱い</h2>
+        <ul class="plain">
+          <li>
+            Soloist API キー・Client ID・Spotify
+            のログイン情報は<strong>端末の中にだけ</strong>保存されます。Overhear
+            には開発者のサーバーがなく、キーやトークンは Spotify
+            以外へは送られません。
+          </li>
+          <li>
+            「スマホで認証」の間、端末は Wi-Fi のアドレスで最大 5
+            分だけ待ち受けます。QR
+            コードの一回限りの値がないアクセスは拒否します。
+          </li>
+          <li>
+            Redirect URI
+            の中継ページ（<code>potkc.github.io/overhear-auth</code>）は、Spotify
+            のログインの結果を LAN
+            内の端末へ転送するだけの静的なページです。転送先はプライベート IPv4
+            のアドレスに限ります。ソースは
+            <a href="https://github.com/poTKC/overhear-auth"
+              >poTKC/overhear-auth</a
+            >
+            で公開しています。
+          </li>
+          <li>
+            Soloist は APK に含まれていません。端末上で Spotify の CDN
+            から直接ダウンロードします。
+          </li>
+        </ul>
+      </section>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <ul>
+          <li>
+            <a href="https://github.com/poTKC/overhear"
+              >ソースコード（GitHub）</a
+            >
+          </li>
+          <li>
+            <a href="https://github.com/poTKC/overhear/blob/main/LICENSE"
+              >MIT License</a
+            >
+          </li>
+          <li>
+            <a
+              href="https://github.com/poTKC/overhear/blob/main/THIRD_PARTY_NOTICES.md"
+              >サードパーティのライセンス</a
+            >
+          </li>
+        </ul>
+        <p>
+          Overhear のコードは MIT License です（Copyright © 2026
+          poTKC）。同梱のコンポーネントはそれぞれのライセンスに従います。
+        </p>
+        <p>
+          Spotify は Spotify AB の商標です。Overhear
+          は個人のプロジェクトで、Spotify とは提携・関係していません。
+        </p>
+      </div>
+    </footer>
+  </body>
 </html>
