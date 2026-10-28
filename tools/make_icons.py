@@ -52,6 +52,7 @@ SVGS = {
     "Media/play-line.svg": "3dcfeba5edfd64745b8357898c33094e1a6477c180c45fbda4712c58758edf9f",
     "Arrows/arrow-right-s-line.svg": "2c579a4dbaf25e19a128d71e04f4cf43b19ad2487a0076ff7e7e5a94c9b3e013",
     "Business/bar-chart-fill.svg": "4914af6659705c720d88c6d9debf68f3ed61ca62c587834e06ef74e5f73d2eab",
+    "Device/shut-down-line.svg": "8b9785429cf04926282f55e5ad2dba64f12df861f2defa5cacb3672e6b4d247e",
 }
 DENSITIES = {"mdpi": 1.0, "hdpi": 1.5, "xhdpi": 2.0}
 
@@ -163,6 +164,7 @@ def main():
         plain(density, f, "ic_settings", "System/settings-3-line.svg", GREY, 20, 18)
         plain(density, f, "ic_close", "System/close-line.svg", WHITE, 24, 22)
         plain(density, f, "ic_more", "System/more-2-line.svg", WHITE, 20, 18)  # the track's ⋮ menu
+        plain(density, f, "ic_power", "Device/shut-down-line.svg", WHITE, 96, 96)  # over the art while stopped
         # library bar: back, reload, back to the player
         plain(density, f, "ic_back", "Arrows/arrow-left-line.svg", WHITE, 24, 20)
         plain(density, f, "ic_reload", "System/loop-right-line.svg", WHITE, 24, 20)

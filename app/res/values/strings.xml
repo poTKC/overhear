@@ -32,6 +32,7 @@
     <string name="shuffle">シャッフル</string>
     <string name="repeat">リピート</string>
     <string name="artwork">アートワーク</string>
+    <string name="start_service">再生サービスを開始</string>
     <string name="track_menu">曲のメニュー</string>
     <string name="track_open_album">アルバムを開く</string>
     <string name="like_add">お気に入りに追加</string>

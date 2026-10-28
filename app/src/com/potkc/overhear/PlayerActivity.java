@@ -84,6 +84,11 @@ import com.potkc.overhear.spotify.LikedTracks;
  * once per track, the item disabled while that or a change is under way). It is hidden (INVISIBLE,
  * keeping the layout) without a track, with nothing to offer, or without a
  * Spotify login.
+ *
+ * While the service is stopped, a big power button over a blank artwork
+ * starts it, as the status line's TAP_TO_START does. After this screen asks
+ * for a start, it reads as starting until the service appears (startAsked),
+ * so the stopped state does not flash meanwhile.
  */
 public class PlayerActivity extends Activity {
     private static final long TICK_MS = 500;
@@ -91,6 +96,12 @@ public class PlayerActivity extends Activity {
     private static final int QUEUE_SHOWN = 10;
     /** The played part of the seek bar while it is dragged (white otherwise). */
     private static final int SEEK_DRAG_COLOR = 0xff1ed760;
+    /** How long a start this screen asked for reads as starting before the service is there. */
+    private static final long START_WAIT_MS = 3000;
+    /** Under the power button: art_placeholder's background (tools/make_icons.py) without its note. */
+    private static final int STOPPED_ART_COLOR = 0xff282828;
+    /** artUrl while the stopped (blank) artwork shows. */
+    private static final String STOPPED_ART = "stopped";
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private Prefs prefs;
@@ -104,6 +115,8 @@ public class PlayerActivity extends Activity {
     private float artRadius;
     private float thumbRadius;
     private ImageView art;
+    /** Over the art while the service is stopped: starts it. */
+    private ImageButton power;
     private TextView title;
     private TextView subtitle;
     /** The ⋮ menu: the track's album and artists in the library. */
@@ -139,7 +152,9 @@ public class PlayerActivity extends Activity {
     private PlayerState state = new PlayerState();
     private boolean connected;
     private PlayerText.Action statusAction = PlayerText.Action.NONE;
-    /** The cover URL asked for the artwork view ("" = none). */
+    /** This screen started the service and it has not appeared yet (for up to START_WAIT_MS). */
+    private boolean startAsked;
+    /** The cover URL asked for the artwork view ("" = the placeholder; STOPPED_ART). */
     private String artUrl;
     private boolean seeking;
     private final SeekHold seekHold = new SeekHold();
@@ -181,6 +196,7 @@ public class PlayerActivity extends Activity {
         status = (TextView) findViewById(R.id.status);
         topStrip = new TopStrip(this);
         art = (ImageView) findViewById(R.id.artwork);
+        power = (ImageButton) findViewById(R.id.power);
         title = (TextView) findViewById(R.id.title);
         subtitle = (TextView) findViewById(R.id.subtitle);
         elapsed = (TextView) findViewById(R.id.elapsed);
@@ -215,7 +231,7 @@ public class PlayerActivity extends Activity {
 
         wireControls();
         wireGestures();
-        if (PlayerService.current() == null && prefs.isAutoStart()) PlayerService.start(this);
+        if (PlayerService.current() == null && prefs.isAutoStart()) startPlayerService();
     }
 
     private void wireControls() {
@@ -232,6 +248,11 @@ public class PlayerActivity extends Activity {
                 }
             });
         }
+        power.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                startPlayerService();
+            }
+        });
         findViewById(R.id.settings).setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 openSettings();
@@ -387,7 +408,7 @@ public class PlayerActivity extends Activity {
         applyFullscreen(); // setup may have changed it
         started = true;
         topStrip.resume();
-        PlayerService.restartIfIdleStopped(this); // it stopped itself for not playing
+        if (PlayerService.restartIfIdleStopped(this)) awaitStart(); // it stopped itself for not playing
         // Flags 0: connects when the service runs, never creates or keeps it.
         bound = bindService(new Intent(this, PlayerService.class), connection, 0);
         attach();
@@ -412,6 +433,7 @@ public class PlayerActivity extends Activity {
         dismissTrackMenu();
         if (artwork != null) artwork.cancelAll(Artwork.viewsOf(this));
         if (backdropFade != null) backdropFade.cancel();
+        main.removeCallbacks(startGivenUp);
         super.onDestroy();
     }
 
@@ -446,6 +468,10 @@ public class PlayerActivity extends Activity {
     /** Follows PlayerService.current(): it may have stopped or been recreated. */
     private void attach() {
         PlayerService s = started ? PlayerService.current() : null;
+        if (s != null && startAsked) {
+            startAsked = false;
+            main.removeCallbacks(startGivenUp);
+        }
         if (s != service) {
             if (service != null) service.removeUiListener(onServiceChanged);
             service = s;
@@ -453,6 +479,31 @@ public class PlayerActivity extends Activity {
         }
         render();
     }
+
+    /** Starts the service (onCreate's auto start, the power button, the status line). */
+    private void startPlayerService() {
+        PlayerService.start(this);
+        awaitStart();
+        if (started) render();
+    }
+
+    /**
+     * The service is on its way (created on a later turn of the main loop):
+     * read as starting, not stopped, until attach() sees it, or for
+     * START_WAIT_MS should it never come.
+     */
+    private void awaitStart() {
+        startAsked = true;
+        main.removeCallbacks(startGivenUp);
+        main.postDelayed(startGivenUp, START_WAIT_MS);
+    }
+
+    private final Runnable startGivenUp = new Runnable() {
+        @Override public void run() {
+            startAsked = false;
+            render();
+        }
+    };
 
     private void detach() {
         if (service != null) service.removeUiListener(onServiceChanged);
@@ -488,10 +539,16 @@ public class PlayerActivity extends Activity {
             state = new PlayerState();
             connected = false;
         }
-        PlayerText.Status st = service == null
-                ? PlayerText.status(false, null, false, null, 0, null, false, state, prefs.getDeviceName())
-                : PlayerText.status(true, service.getSupervisorState(), service.needsSetup(), service.getPhase(),
-                        service.getPhaseValue(), service.getAuthError(), connected, state, prefs.getDeviceName());
+        boolean stopped = service == null && !startAsked;
+        PlayerText.Status st;
+        if (stopped) {
+            st = PlayerText.status(false, null, false, null, 0, null, false, state, prefs.getDeviceName());
+        } else if (service == null) {
+            st = new PlayerText.Status(PlayerText.STARTING, PlayerText.Action.NONE); // startAsked
+        } else {
+            st = PlayerText.status(true, service.getSupervisorState(), service.needsSetup(), service.getPhase(),
+                    service.getPhaseValue(), service.getAuthError(), connected, state, prefs.getDeviceName());
+        }
         setText(status, st.text);
         statusAction = st.action;
 
@@ -499,7 +556,9 @@ public class PlayerActivity extends Activity {
         String noTrack = PlayerText.noTrackText(st); // Stopped, Standby, or the resource
         setText(title, hasTrack ? state.getTitle() : noTrack != null ? noTrack : getString(R.string.no_track));
         setText(subtitle, hasTrack ? PlayerText.subtitle(state.getArtists(), state.getAlbum()) : "");
-        showArtwork(hasTrack ? state.getMediumCoverUrl() : null);
+        showArtwork(hasTrack ? state.getMediumCoverUrl() : null, stopped);
+        int powerVisibility = stopped ? View.VISIBLE : View.GONE;
+        if (power.getVisibility() != powerVisibility) power.setVisibility(powerVisibility);
         // Without a Spotify login neither the library nor Liked Songs can be used.
         Spotify spotify = Spotify.get(this);
         boolean web = hasTrack && spotify.isLoggedIn();
@@ -574,13 +633,21 @@ public class PlayerActivity extends Activity {
         setText(elapsed, PlayerText.time(pos));
     }
 
-    private void showArtwork(String url) {
-        String u = url == null ? "" : url;
+    /** The cover at url, or without one the placeholder, blank under the power button while stopped. */
+    private void showArtwork(String url, boolean stopped) {
+        String u = url != null ? url : stopped ? STOPPED_ART : "";
         if (u.equals(artUrl)) return;
         artUrl = u;
         if (url == null) {
             artwork.cancel(art);
-            art.setImageDrawable(RoundedArt.placeholder(getResources(), artRadius));
+            if (stopped) {
+                GradientDrawable blank = new GradientDrawable();
+                blank.setColor(STOPPED_ART_COLOR);
+                blank.setCornerRadius(artRadius);
+                art.setImageDrawable(blank); // no intrinsic size: fills the view
+            } else {
+                art.setImageDrawable(RoundedArt.placeholder(getResources(), artRadius));
+            }
             setBackdrop(ArtColor.BACKGROUND);
             return;
         }
@@ -851,7 +918,7 @@ public class PlayerActivity extends Activity {
                 PlayerService.stop(this);
                 break;
             case START:
-                PlayerService.start(this);
+                startPlayerService();
                 break;
             case RETRY:
                 if (service != null) service.retry();
