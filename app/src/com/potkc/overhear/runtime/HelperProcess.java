@@ -67,14 +67,15 @@ public final class HelperProcess {
 
     /**
      * overhear-fetch args with env added to its environment (null for none)
-     * and stdin (null for none). Throws when the helper is not installed,
-     * cannot start, or printed more than MAX_STDOUT_BYTES; otherwise returns
+     * and stdin (null for none). Installs the runtime first if the helper
+     * is not there yet (RuntimeInstaller.ensureHelper). Throws when it cannot
+     * be installed or started, or printed more than MAX_STDOUT_BYTES; otherwise returns
      * whatever exit code it ended with.
      */
     public static Result run(RuntimeInstaller installer, List<String> args, Map<String, String> env,
             byte[] stdin, long timeoutMs) throws IOException {
+        installer.ensureHelper(); // a fresh install may log in or load covers before setup's start
         File helper = installer.helperBin();
-        if (!helper.canExecute()) throw new IOException("overhear-fetch is not installed yet");
         List<String> cmd = new ArrayList<String>();
         cmd.add(helper.getPath());
         cmd.addAll(args);

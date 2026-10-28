@@ -93,7 +93,10 @@ public final class RuntimeInstaller {
     public File dataDir() { return new File(filesDir, "soloist-data"); }
     public File cacheDir() { return new File(context.getCacheDir(), "soloist"); }
     public File homeDir() { return filesDir; }
-    /** The overhear-fetch helper (installed by ensureBundle). */
+    /** Guards installing the bundle, whichever instance does it. */
+    private static final Object BUNDLE_LOCK = new Object();
+
+    /** The overhear-fetch helper (installed by ensureBundle, or ensureHelper on first use). */
     public File helperBin() { return new File(runtimeDir(), HELPER); }
     /** The CA bundle for overhear-fetch --ca. */
     public File caFile() { return new File(runtimeDir(), SoloistCommand.CACERT); }
@@ -103,8 +106,30 @@ public final class RuntimeInstaller {
      * VERSION already matches the bundled one. The copy goes to a temp dir
      * that replaces the old one with renames, so a crash never leaves a half
      * copied runtime under the real name. Do not call while Soloist runs.
+     * Serialised across instances (BUNDLE_LOCK): the service, setup, the
+     * Spotify thread and the artwork loader each have their own.
      */
-    public synchronized void ensureBundle() throws IOException {
+    public void ensureBundle() throws IOException {
+        synchronized (BUNDLE_LOCK) {
+            installBundle();
+        }
+    }
+
+    /**
+     * Installs the bundle only if overhear-fetch is not there yet: a fresh
+     * install that logs in (スマホで認証) or loads a cover before setup's
+     * start. An installed runtime is never replaced here, so it is safe
+     * while Soloist runs.
+     */
+    public void ensureHelper() throws IOException {
+        synchronized (BUNDLE_LOCK) {
+            if (helperBin().canExecute() && caFile().isFile()) return;
+            Log.i(TAG, "overhear-fetch missing: installing the runtime first");
+            installBundle();
+        }
+    }
+
+    private void installBundle() throws IOException {
         AssetManager assets = context.getAssets();
         String bundled = readAll(assets.open(ASSET_DIR + "/" + VERSION)).trim();
         File dir = runtimeDir();
