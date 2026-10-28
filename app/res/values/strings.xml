@@ -80,7 +80,7 @@
     <string name="setup_spotify_logged_in">Spotify: ログイン中</string>
     <string name="setup_spotify_logged_in_as">Spotify: ログイン中（%s）</string>
     <string name="setup_spotify_logout">ログアウト</string>
-    <string name="setup_key_saved">Soloist API キー: 保存済み</string>
+    <string name="setup_key_saved">Soloist API キー: 設定済み</string>
     <string name="setup_key_missing">Soloist API キー: 未設定</string>
     <string name="setup_client_id_saved">Client ID: 設定済み</string>
     <string name="setup_client_id_missing">Client ID: 未設定</string>
