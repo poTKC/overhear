@@ -28,7 +28,8 @@ import com.potkc.overhear.spotify.SpotifyApi;
 /**
  * In three sections: アカウント (the Soloist API key; the Spotify Web API
  * login for the library, which takes effect at once, not on save, and the
- * Client ID it uses, saved with the rest: a change logs out), 再生 (the
+ * Client ID it uses, saved with the rest: a change logs out, and without
+ * one the login button stays disabled), 再生 (the
  * device name, the service row in edit mode, auto start) and 表示 (full
  * screen for the player and the library); then save and the licence notices. Saving installs the runtime and downloads
  * Soloist (with progress, cancellable) when the service is not running yet,
@@ -52,7 +53,7 @@ public class SetupActivity extends Activity {
     private Prefs prefs;
     private EditText key;
     private EditText name;
-    /** The stored Spotify Client ID, blank for the built-in one. */
+    /** The stored Spotify Client ID, blank for none (no login, no library). */
     private EditText clientId;
     private CheckBox showKey;
     private CheckBox autoStart;
@@ -268,8 +269,11 @@ public class SetupActivity extends Activity {
         Spotify spotify = Spotify.get(this);
         spotifyButton.setEnabled(true);
         if (!spotify.isLoggedIn()) {
-            spotifyStatus.setText(R.string.setup_spotify_logged_out);
+            // No Client ID saved (or not yet in use: useClientId shows this again).
+            boolean can = spotify.hasClientId();
+            spotifyStatus.setText(can ? R.string.setup_spotify_logged_out : R.string.setup_spotify_need_client_id);
             spotifyButton.setText(R.string.setup_spotify_login);
+            spotifyButton.setEnabled(can);
             return;
         }
         spotifyStatus.setText(R.string.setup_spotify_logged_in);

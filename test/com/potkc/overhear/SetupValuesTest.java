@@ -8,8 +8,6 @@ import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
-import com.potkc.overhear.spotify.SpotifyConfig;
-
 public class SetupValuesTest {
     @Test public void defaults() {
         assertTrue(SetupValues.DEFAULT_AUTO_START);
@@ -90,16 +88,17 @@ public class SetupValuesTest {
         assertEquals("0123456789abcdef0123456789abcdef", v.spotifyClientId());
     }
 
-    @Test public void aBlankClientIdIsTheBuiltInOne() {
+    @Test public void aBlankClientIdIsNone() {
         for (String blank : new String[] {null, "", "  "}) {
             SetupValues v = new SetupValues("k", "n", "M", blank, true, true, 15);
             assertNull(v.clientIdToStore());
-            assertEquals(SpotifyConfig.CLIENT_ID, v.spotifyClientId());
+            assertEquals("", v.spotifyClientId()); // no built-in one to fall back on
+            assertTrue(SetupValues.isValidClientId(blank)); // allowed: the library is off
         }
-        assertEquals(SpotifyConfig.CLIENT_ID, SetupValues.effectiveClientId(null));
-        assertEquals(SpotifyConfig.CLIENT_ID, SetupValues.effectiveClientId(" "));
+        assertEquals("", SetupValues.effectiveClientId(null));
+        assertEquals("", SetupValues.effectiveClientId(""));
+        assertEquals("", SetupValues.effectiveClientId(" "));
         assertEquals("0123456789abcdef0123456789abcdef",
                 SetupValues.effectiveClientId("0123456789abcdef0123456789abcdef"));
-        assertTrue(SetupValues.isValidClientId(SpotifyConfig.CLIENT_ID));
     }
 }

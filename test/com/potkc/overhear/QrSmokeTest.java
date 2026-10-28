@@ -13,7 +13,8 @@ public class QrSmokeTest {
     @Test public void encodesALongAuthorizeUrl() {
         String challenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
         String nonce = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
-        String url = Pkce.authorizeUrl(SpotifyConfig.CLIENT_ID,
+        String clientId = "0123456789abcdef0123456789abcdef"; // a Client ID's length: 32 hex digits
+        String url = Pkce.authorizeUrl(clientId,
                 SpotifyConfig.REDIRECT_URI, SpotifyConfig.SCOPES, challenge,
                 Pkce.state("192.168.40.95", 8889, nonce));
         QrCode qr = QrCode.encodeText(url, QrCode.Ecc.LOW);

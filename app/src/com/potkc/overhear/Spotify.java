@@ -21,7 +21,8 @@ import com.potkc.overhear.spotify.SpotifyConfig;
  * results come back on the main thread. Calls run one at a time in the
  * order given. get() and run() may be called from any thread. The Client ID
  * is the one in Prefs at first; setup changes it through
- * SpotifyAuth.setClientId, which logs out.
+ * SpotifyAuth.setClientId, which logs out. Without one there is no login
+ * and so no library (hasClientId).
  */
 final class Spotify {
     static final String REDIRECT_URI = SpotifyConfig.REDIRECT_URI;
@@ -100,6 +101,11 @@ final class Spotify {
     /** Safe on the main thread. */
     boolean isLoggedIn() {
         return auth.isLoggedIn();
+    }
+
+    /** Whether setup has a Client ID, without which nobody can log in. Safe on the main thread. */
+    boolean hasClientId() {
+        return auth.hasClientId();
     }
 
     /**

@@ -61,9 +61,9 @@ public final class Prefs {
     /**
      * Stores the device name, the Spotify Client ID, auto start, full screen,
      * the idle stop and, unless the key is blank, the key, in one commit.
-     * A Client ID that changes the one in use also drops the refresh token
-     * (it belongs to the old one) and the library page, as SpotifyAuth's
-     * logOut() does, in the same commit; the caller then logs SpotifyAuth
+     * A Client ID that changes the one in use (or clears it) also drops the
+     * refresh token (it belongs to the old one) and the library page, as
+     * SpotifyAuth's logOut() does, in the same commit; the caller then logs SpotifyAuth
      * out too (setClientId), for what it holds in memory. Returns whether
      * it was written.
      */
@@ -103,12 +103,12 @@ public final class Prefs {
         prefs.edit().putBoolean(AUTO_START, autoStart).commit();
     }
 
-    /** The Spotify Client ID the user entered, or "" for the built-in one. */
+    /** The Spotify Client ID the user entered, or "" for none. */
     public String getStoredSpotifyClientId() {
         return prefs.getString(SPOTIFY_CLIENT_ID, "");
     }
 
-    /** The Spotify Client ID in use: the stored one, else SpotifyConfig.CLIENT_ID. */
+    /** The Spotify Client ID in use, or "" for none: no login, no library (SetupValues.effectiveClientId). */
     public String getSpotifyClientId() {
         return SetupValues.effectiveClientId(getStoredSpotifyClientId());
     }

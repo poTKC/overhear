@@ -2,8 +2,6 @@ package com.potkc.overhear;
 
 import java.util.Locale;
 
-import com.potkc.overhear.spotify.SpotifyConfig;
-
 /**
  * What the setup screen saves, normalized for Prefs.save (one commit), and
  * the settings' defaults. Pure Java (host tests).
@@ -56,7 +54,7 @@ final class SetupValues {
         return typed == null ? "" : typed.trim().toLowerCase(Locale.ROOT);
     }
 
-    /** Blank (the built-in one) or, once normalized, 32 hex digits. */
+    /** Blank (none: no library) or, once normalized, 32 hex digits. */
     static boolean isValidClientId(String typed) {
         String c = normalizeClientId(typed);
         if (c.isEmpty()) return true;
@@ -68,14 +66,14 @@ final class SetupValues {
         return true;
     }
 
-    /** The Client ID in use: the stored one, or SpotifyConfig.CLIENT_ID when none (null or blank). */
+    /** The Client ID in use: the stored one trimmed, or "" when none (null or blank: no library). */
     static String effectiveClientId(String stored) {
-        return stored == null || stored.trim().isEmpty() ? SpotifyConfig.CLIENT_ID : stored.trim();
+        return stored == null ? "" : stored.trim();
     }
 
     /**
      * A blank deviceName becomes defaultDeviceName(model); a negative
-     * idleStopMinutes, 0 (never); a blank clientId, the built-in one. The
+     * idleStopMinutes, 0 (never); a blank clientId, none. The
      * clientId must pass isValidClientId (SetupActivity checks first).
      */
     SetupValues(String key, String deviceName, String model, String clientId, boolean autoStart,
@@ -100,12 +98,12 @@ final class SetupValues {
         return deviceName;
     }
 
-    /** The normalized Client ID, or null for the built-in one (nothing stored). */
+    /** The normalized Client ID, or null for none (nothing stored). */
     String clientIdToStore() {
         return clientId;
     }
 
-    /** The Client ID these values put in use (effectiveClientId). */
+    /** The Client ID these values put in use (effectiveClientId): "" for none. */
     String spotifyClientId() {
         return effectiveClientId(clientId);
     }

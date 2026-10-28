@@ -87,7 +87,11 @@
     <string name="setup_spotify_login">ログイン</string>
     <string name="setup_spotify_logout">ログアウト</string>
     <string name="setup_client_id_label">Client ID</string>
-    <string name="setup_client_id_hint">空欄なら組み込みの ID を使用</string>
+    <string name="setup_client_id_hint">Developer アプリの Client ID</string>
+    <!-- Beside the disabled login button: short, it shares the row -->
+    <string name="setup_spotify_need_client_id">Client ID が必要です</string>
+    <!-- The library and the login screen without a Spotify Client ID -->
+    <string name="need_client_id">設定で Client ID を保存すると使えます</string>
     <string name="setup_bad_client_id">Client ID は 32 文字の16進数（0–9, a–f）です</string>
 
     <!-- Spotify login (the html_* pages are shown on the phone) -->

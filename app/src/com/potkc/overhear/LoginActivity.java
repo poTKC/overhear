@@ -46,7 +46,8 @@ import io.nayuki.qrcodegen.QrCode;
  * Each connection gets five seconds in all to send its request line and
  * headers, so a slow peer cannot hold the listener. Leaving the screen
  * during an exchange does not stop it: the login may still complete, and
- * Setup then shows it (the tokens are saved either way).
+ * Setup then shows it (the tokens are saved either way). Without a Client
+ * ID in setup it only says so: there is nothing to log in to.
  * The code, the verifier and the request line are never logged.
  */
 public class LoginActivity extends Activity {
@@ -96,6 +97,13 @@ public class LoginActivity extends Activity {
             }
         });
 
+        // As saved: setup's SpotifyAuth.setClientId may still wait behind a call,
+        // but runs before this login's exchange, which checks the ID again.
+        String clientId = new Prefs(this).getSpotifyClientId();
+        if (clientId.isEmpty()) {
+            message.setText(R.string.need_client_id);
+            return;
+        }
         byte[] ip = wifiAddress(this);
         if (ip == null) {
             message.setText(R.string.login_need_wifi);
@@ -115,9 +123,6 @@ public class LoginActivity extends Activity {
         } catch (IOException e) {
             throw new AssertionError(e); // only for a wrong length
         }
-        // As saved: setup's SpotifyAuth.setClientId may still wait behind a call,
-        // but runs before this login's exchange, which checks the ID again.
-        String clientId = new Prefs(this).getSpotifyClientId();
         listener = new Listener(address, state, pkce.verifier, clientId);
         listener.start();
         main.postDelayed(expire, LISTEN_MS);
