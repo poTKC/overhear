@@ -126,9 +126,9 @@ adb install -r build/overhear.apk
 ### Spotify のアプリの準備
 
 ライブラリは Spotify Web API を使うので、Spotify Developer のアプリ（Client ID）が必要です。
-コードに埋め込んだ Client ID（`app/src/com/potkc/overhear/spotify/SpotifyConfig.java` の `CLIENT_ID`）は
-作者のアプリのもので、開発モードのため作者が許可した人しか使えません。ほかの人が使う場合は自分のアプリを作り、
-`SpotifyConfig.CLIENT_ID` を書き換えてビルドしてください。
+組み込みの Client ID は作者のアプリのもので、開発モードのため作者が許可した人（最大 5 人）しか使えません。
+ほかの人は次の手順で自分のアプリを作り、その Client ID を設定画面の「Spotify（ライブラリ）」の「Client ID」に入れて保存してください
+（空欄なら組み込みのものを使います）。Client ID を変えるとログアウトするので、ログインし直してください。
 
 1. <https://developer.spotify.com/dashboard> でアプリを作り、Web API を有効にします。
 2. Redirect URI に `https://potkc.github.io/overhear-auth/callback/` を登録します（**末尾のスラッシュまで含めます**）。
