@@ -496,7 +496,8 @@ public class PlayerActivity extends Activity {
         statusAction = st.action;
 
         boolean hasTrack = connected && state.getTitle() != null;
-        setText(title, hasTrack ? state.getTitle() : getString(R.string.no_track));
+        String noTrack = PlayerText.noTrackText(st); // Stopped, Standby, or the resource
+        setText(title, hasTrack ? state.getTitle() : noTrack != null ? noTrack : getString(R.string.no_track));
         setText(subtitle, hasTrack ? PlayerText.subtitle(state.getArtists(), state.getAlbum()) : "");
         showArtwork(hasTrack ? state.getMediumCoverUrl() : null);
         // Without a Spotify login neither the library nor Liked Songs can be used.

@@ -2,6 +2,7 @@ package com.potkc.overhear;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import java.util.Arrays;
@@ -67,6 +68,29 @@ public class PlayerTextTest {
         s = PlayerText.status(true, Supervisor.State.RUNNING, false, PlayerText.Phase.READY, 0, null, true,
                 state(true, false), "Kitchen");
         assertEquals("Standby", s.text);
+    }
+
+    @Test public void noTrackTextFollowsTheStatusLine() throws Exception {
+        PlayerText.Status s = PlayerText.status(false, null, false, null, 0, null, false, new PlayerState(), "ST15i");
+        assertEquals("Stopped", PlayerText.noTrackText(s));
+        s = PlayerText.status(true, Supervisor.State.RUNNING, false, PlayerText.Phase.READY, 0, null, true,
+                state(true, false), "ST15i");
+        assertEquals("Standby", PlayerText.noTrackText(s));
+        s = PlayerText.status(true, Supervisor.State.RUNNING, false, PlayerText.Phase.READY, 0, null, true,
+                state(false, false), "ST15i");
+        assertEquals("Standby", PlayerText.noTrackText(s));
+    }
+
+    @Test public void noTrackTextIsTheResourceOtherwise() throws Exception {
+        // Active with no track, starting, failed, a login error: "再生中の曲はありません".
+        assertNull(PlayerText.noTrackText(PlayerText.status(true, Supervisor.State.RUNNING, false,
+                PlayerText.Phase.READY, 0, null, true, state(true, true), "ST15i")));
+        assertNull(PlayerText.noTrackText(running(null, 0)));
+        assertNull(PlayerText.noTrackText(running(PlayerText.Phase.DOWNLOADING, 40)));
+        assertNull(PlayerText.noTrackText(PlayerText.status(true, Supervisor.State.FAILED, false,
+                PlayerText.Phase.STOPPED, 0, null, true, state(true, false), "ST15i")));
+        assertNull(PlayerText.noTrackText(PlayerText.status(true, Supervisor.State.RUNNING, false,
+                PlayerText.Phase.LOGIN_ERROR, 0, "login failed", true, state(false, false), "ST15i")));
     }
 
     @Test public void activeIsConnectedWhetherPlayingOrPaused() throws Exception {

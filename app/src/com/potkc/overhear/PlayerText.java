@@ -10,7 +10,7 @@ import com.potkc.overhear.spotify.QueueTracks;
 
 /**
  * What the player screen says: the status line and its tap action, track
- * text and times, the ⋮ menu's pages and setup's service button. Pure Java
+ * text (or what stands in for it) and times, the ⋮ menu's pages and setup's service button. Pure Java
  * (host tests).
  */
 final class PlayerText {
@@ -36,7 +36,8 @@ final class PlayerText {
     // The on-screen status line, short and in English (bottom-left of the player).
     static final String CONNECTED = "Connected";
     static final String STANDBY = "Standby";
-    static final String TAP_TO_START = "Stopped \u2014 tap to start";
+    static final String STOPPED = "Stopped";
+    static final String TAP_TO_START = STOPPED + " \u2014 tap to start";
     static final String TAP_TO_RETRY = "Failed \u2014 tap to retry";
     static final String CHECK_KEY = "Check API key \u2014 tap";
     static final String LOGIN_ERROR = "Login error \u2014 tap";
@@ -83,6 +84,18 @@ final class PlayerText {
             return new Status(STANDBY, Action.NONE);
         }
         return new Status(phaseText(phase, value), Action.NONE);
+    }
+
+    /**
+     * The title line without a track, after the status line: STOPPED while
+     * the service is not running, STANDBY in Standby, else null (the
+     * no_track resource). In Standby with the last track known, the title
+     * shows that track instead.
+     */
+    static String noTrackText(Status status) {
+        if (status.action == Action.START) return STOPPED;
+        if (STANDBY.equals(status.text)) return STANDBY;
+        return null;
     }
 
     private static String phaseText(Phase phase, int value) {
