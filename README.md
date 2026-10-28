@@ -9,7 +9,8 @@ Spotify にログインすれば、端末の画面で自分のライブラリを
 曲をお気に入りに追加・削除したりすることもできます。
 
 スピーカーとして使うだけなら Soloist の API キーだけで動きます。ライブラリ（選曲・検索・お気に入り）を使うときは、
-加えて Spotify Web API へのログインが要ります。Web API には音を鳴らす機能がないので、再生はいつも Soloist が行います。
+加えて自分で作った Spotify Developer のアプリの Client ID を設定画面に入れ、Spotify Web API にログインします
+（Client ID は組み込まれていません）。Web API には音を鳴らす機能がないので、再生はいつも Soloist が行います。
 
 Spotify 公式のヘッドレスクライアント **Soloist** を、APK に同梱した glibc の上で動かします。
 非公式クライアントは使わず、DRM の回避もしません。
@@ -118,19 +119,21 @@ adb install -r build/overhear.apk
    「起動時・アプリを開いたときに自動で開始」を選んで「保存して開始」を押します。
    ランタイムの展開と Soloist のダウンロード（約 12 MB）が終わると再生画面に移ります。
 3. スマホの Spotify で再生先にそのデバイス名を選びます。
-4. 端末でライブラリを使うなら、設定画面の「アカウント」にある「Spotify（ライブラリ）」の「ログイン」から Spotify にログインします
-   （次の「Spotify へのログイン（ライブラリ）」を参照）。
+4. 端末でライブラリを使うなら、自分の Spotify Developer のアプリの Client ID を設定画面の「アカウント」の
+   「Client ID」に入れて保存し、「Spotify（ライブラリ）」の「ログイン」から Spotify にログインします
+   （次の「Spotify へのログイン（ライブラリ）」を参照）。Client ID が空欄の間は、ライブラリは使えません。
 
 ## Spotify へのログイン（ライブラリ）
 
 ### Spotify のアプリの準備
 
-ライブラリは Spotify Web API を使うので、Spotify Developer のアプリ（Client ID）が必要です。
-組み込みの Client ID は作者のアプリのもので、開発モードのため作者が許可した人（最大 5 人）しか使えません。
-ほかの人は次の手順で自分のアプリを作り、その Client ID を設定画面の「Spotify（ライブラリ）」の「Client ID」に入れて保存してください
-（空欄なら組み込みのものを使います）。Client ID を変えるとログアウトするので、ログインし直してください。
+ライブラリは Spotify Web API を使うので、自分の Spotify Developer のアプリ（Client ID）が必要です。
+アプリには Client ID が組み込まれていません。次の手順でアプリを作り、その Client ID を設定画面の「Client ID」に入れて
+保存してください。空欄の間はログインボタンが押せず、ライブラリも使えません。
+Client ID を変えたり消したりするとログアウトするので、ログインし直してください。
 
 1. <https://developer.spotify.com/dashboard> でアプリを作り、Web API を有効にします。
+   アプリの Settings に出る Client ID（32 文字の16進数）を設定画面に入れます。
 2. Redirect URI に `https://potkc.github.io/overhear-auth/callback/` を登録します（**末尾のスラッシュまで含めます**）。
    これはログインの結果を LAN 内の端末へ転送するだけの中継ページです（ソースは
    [poTKC/overhear-auth](https://github.com/poTKC/overhear-auth)。転送先はプライベート IPv4 のアドレスに限ります）。
