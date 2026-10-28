@@ -10,6 +10,10 @@ Spotify にログインすれば、端末の画面で自分のライブラリを
 アルバムやプレイリストを順番どおり・シャッフルで再生したり、選んだ曲から再生したり、
 曲をお気に入りに追加・削除したりすることもできます。
 
+対応するのは Android 4.1〜7.1 の ARMv7 端末です（動作確認は Android 4.3 の Xperia mini ST15i のみ）。
+Android 8.0 以降はアプリの制限（seccomp）で Soloist が動きません。Android 7.0 以降なら Spotify の公式アプリが使えるので、
+Overhear を使う必要はありません。
+
 スピーカーとして使うだけなら Soloist の API キーだけで動きます。ライブラリ（選曲・検索・お気に入り）を使うときは、
 加えて自分で作った Spotify Developer のアプリの Client ID を「スマホで認証」で入れ、Spotify Web API にログインします
 （Client ID は組み込まれていません）。Web API には音を鳴らす機能がないので、再生はいつも Soloist が行います。
@@ -80,7 +84,7 @@ tools/      raw2png.py（スクリーンショット変換）、make_icons.py（
 - [zig](https://ziglang.org/)（fakepulse と libargkey のクロスコンパイル）
 - Go（`runtime/build.sh` が `GOTOOLCHAIN=go1.27.3` でツールチェーンを固定します）
 - `bsdtar`、`ar`、`python3`、`curl`、`shasum`、`zip`
-- 実機: Android 4.1 以降の ARMv7 端末と `adb`
+- 実機: Android 4.1〜7.1 の ARMv7 端末と `adb`
 
 ## ビルド
 

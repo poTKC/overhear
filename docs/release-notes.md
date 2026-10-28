@@ -18,7 +18,8 @@
 
 ## 必要なもの
 
-- Android 4.1 以降（minSdk 16）の ARMv7 端末、Wi-Fi
+- Android 4.1〜7.1 の ARMv7 端末、Wi-Fi（動作確認は Android 4.3 のみ。Android 8.0 以降は Soloist が動きません。
+  Android 7.0 以降なら Spotify の公式アプリが使えるので、Overhear を使う必要はありません）
 - Spotify Premium（Soloist API キーの発行に必要）
 - ライブラリを使うときは、自分で作った Spotify Developer のアプリの Client ID
   （Redirect URI `https://potkc.github.io/overhear-auth/callback/`。開発モードでは許可リストの最大 5 人まで、6 か月ごとにログインし直し）
