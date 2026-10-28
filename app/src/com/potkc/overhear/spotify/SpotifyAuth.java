@@ -13,7 +13,9 @@ import org.json.JSONObject;
  * store. Never logs tokens. Thread-safe (synchronized); accessToken() and
  * exchangeCode() may block for a whole helper call while holding the lock,
  * so never call them on the main thread. isLoggedIn() takes no lock and
- * reads the store directly, so the TokenStore must be thread-safe.
+ * reads the store directly, so the TokenStore must be thread-safe. The
+ * Client ID can change (setClientId), which logs out: a refresh token
+ * belongs to the client it was issued to.
  * Pure Java.
  */
 public final class SpotifyAuth {
@@ -38,7 +40,7 @@ public final class SpotifyAuth {
     private final ApiTransport transport;
     private final TokenStore store;
     private final Clock clock;
-    private final String clientId;
+    private volatile String clientId; // written under this
     private String access; // guarded by this
     private long expiresAtMs; // guarded by this
     private volatile int generation;
@@ -63,11 +65,33 @@ public final class SpotifyAuth {
         return generation;
     }
 
+    /** Safe on the main thread. */
+    public String clientId() {
+        return clientId;
+    }
+
+    /**
+     * Uses id from now on; a different one logs out (logOut()). Returns
+     * whether it did.
+     */
+    public synchronized boolean setClientId(String id) {
+        if (id.equals(clientId)) return false;
+        clientId = id;
+        logOut();
+        return true;
+    }
+
     /**
      * Trades a login's code for tokens and keeps the refresh token. A refused
-     * code leaves any existing login alone.
+     * code leaves any existing login alone. authorizedFor is the Client ID the
+     * login was authorized for: if it is no longer the one in use, the code
+     * is refused here, so no token is stored for the wrong client.
      */
-    public synchronized void exchangeCode(String code, String verifier, String redirectUri) throws IOException {
+    public synchronized void exchangeCode(String code, String verifier, String redirectUri, String authorizedFor)
+            throws IOException {
+        if (!authorizedFor.equals(clientId)) {
+            throw new SpotifyException(SpotifyException.Reason.HTTP, 400, -1, "login for another client ID");
+        }
         tokenRequest("grant_type=authorization_code&code=" + Pkce.enc(code) + "&redirect_uri="
                 + Pkce.enc(redirectUri) + "&client_id=" + Pkce.enc(clientId) + "&code_verifier="
                 + Pkce.enc(verifier), false);

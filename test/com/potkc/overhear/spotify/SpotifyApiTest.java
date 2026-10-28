@@ -153,7 +153,7 @@ public class SpotifyApiTest {
         FakeTransport t = new FakeTransport()
                 .reply(200, "{\"access_token\":\"A1\",\"expires_in\":3600,\"refresh_token\":\"R1\"}");
         MemoryStore s = new MemoryStore();
-        new SpotifyAuth(t, s, clock, "cid").exchangeCode("C", "V", "https://x/cb/");
+        new SpotifyAuth(t, s, clock, "cid").exchangeCode("C", "V", "https://x/cb/", "cid");
         assertEquals("R1", s.refresh);
         assertEquals("TOKEN grant_type=authorization_code&code=C&redirect_uri=https%3A%2F%2Fx%2Fcb%2F"
                 + "&client_id=cid&code_verifier=V", t.log.get(0));
@@ -179,7 +179,7 @@ public class SpotifyApiTest {
         MemoryStore s = new MemoryStore();
         s.refresh = "R";
         try {
-            new SpotifyAuth(t, s, clock, "cid").exchangeCode("C", "V", "https://x/cb/");
+            new SpotifyAuth(t, s, clock, "cid").exchangeCode("C", "V", "https://x/cb/", "cid");
             fail();
         } catch (SpotifyException e) {
             assertEquals(SpotifyException.Reason.HTTP, e.reason);
@@ -188,6 +188,44 @@ public class SpotifyApiTest {
             fail(e.toString());
         }
         assertEquals("R", s.refresh);
+    }
+
+    @Test public void aNewClientIdLogsOutAndIsUsedFromThenOn() throws IOException {
+        FakeTransport t = new FakeTransport()
+                .reply(200, "{\"access_token\":\"A1\",\"expires_in\":3600}")
+                .reply(200, "{\"access_token\":\"A2\",\"expires_in\":3600}");
+        MemoryStore s = new MemoryStore();
+        s.refresh = "R";
+        SpotifyAuth auth = new SpotifyAuth(t, s, clock, "cid");
+        assertEquals("A1", auth.accessToken());
+        int g = auth.generation();
+        assertFalse(auth.setClientId("cid")); // unchanged: nothing happens
+        assertEquals(g, auth.generation());
+        assertEquals("R", s.refresh);
+        assertTrue(auth.setClientId("other"));
+        assertEquals("other", auth.clientId());
+        assertNull(s.refresh);
+        assertFalse(auth.isLoggedIn());
+        assertTrue(auth.generation() != g);
+        s.refresh = "R2";
+        assertEquals("A2", auth.accessToken()); // the old access token was dropped
+        assertEquals("TOKEN grant_type=refresh_token&refresh_token=R2&client_id=other", t.log.get(1));
+    }
+
+    @Test public void aCodeForAnotherClientIdIsRefusedUnsent() {
+        FakeTransport t = new FakeTransport();
+        MemoryStore s = new MemoryStore();
+        SpotifyAuth auth = new SpotifyAuth(t, s, clock, "cid");
+        try {
+            auth.exchangeCode("C", "V", "https://x/cb/", "old");
+            fail();
+        } catch (SpotifyException e) {
+            assertEquals(SpotifyException.Reason.HTTP, e.reason);
+        } catch (IOException e) {
+            fail(e.toString());
+        }
+        assertTrue(t.log.isEmpty());
+        assertNull(s.refresh);
     }
 
     @Test public void nullRefreshTokenKeepsTheStoredOne() throws IOException {
@@ -333,7 +371,7 @@ public class SpotifyApiTest {
         FakeTransport t = new FakeTransport().reply(400, "{\"error\":\"invalid_grant\"}");
         MemoryStore s = new MemoryStore();
         try {
-            new SpotifyAuth(t, s, clock, "cid").exchangeCode("SECRET_CODE", "SECRET_VERIFIER", "https://x/cb/");
+            new SpotifyAuth(t, s, clock, "cid").exchangeCode("SECRET_CODE", "SECRET_VERIFIER", "https://x/cb/", "cid");
             fail();
         } catch (IOException e) {
             assertFalse(e.getMessage().contains("SECRET"));
@@ -591,7 +629,7 @@ public class SpotifyApiTest {
         SpotifyApi a = loggedIn(t);
         a.play("ST15i", "spotify:album:X", null);
         a.auth().logOut();
-        a.auth().exchangeCode("C", "V", "https://x/cb/");
+        a.auth().exchangeCode("C", "V", "https://x/cb/", "cid");
         a.play("ST15i", "spotify:album:X", null);
         assertEquals("GET /me/player/devices A2", t.log.get(4));
         assertEquals(6, t.log.size());
@@ -605,7 +643,7 @@ public class SpotifyApiTest {
         SpotifyApi a = loggedIn(t);
         assertEquals("potkc", a.me());
         a.auth().logOut();
-        a.auth().exchangeCode("C", "V", "https://x/cb/");
+        a.auth().exchangeCode("C", "V", "https://x/cb/", "cid");
         assertEquals("other", a.me());
         assertEquals("GET /me A2", t.log.get(3));
         assertEquals(4, t.log.size());
@@ -629,7 +667,7 @@ public class SpotifyApiTest {
         } catch (SpotifyException e) {
             assertEquals(SpotifyException.Reason.LOGIN_REQUIRED, e.reason);
         }
-        a.auth().exchangeCode("C", "V", "https://x/cb/");
+        a.auth().exchangeCode("C", "V", "https://x/cb/", "cid");
         assertEquals("other", a.me());
         assertEquals("GET /me A2", t.log.get(4));
         assertEquals(5, t.log.size());

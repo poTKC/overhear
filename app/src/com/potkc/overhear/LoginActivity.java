@@ -318,7 +318,7 @@ public class LoginActivity extends Activity {
             final boolean[] ok = new boolean[1]; // written before countDown(), read after await()
             Spotify.get(LoginActivity.this).run(new Spotify.Call<String>() {
                 @Override public String run(SpotifyApi api) throws IOException {
-                    api.auth().exchangeCode(code, verifier, Spotify.REDIRECT_URI);
+                    api.auth().exchangeCode(code, verifier, Spotify.REDIRECT_URI, Spotify.CLIENT_ID);
                     try {
                         return api.me();
                     } catch (IOException e) {
