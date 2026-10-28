@@ -58,6 +58,20 @@
                 android:layout_height="match_parent"
                 android:contentDescription="@string/artwork"
                 android:scaleType="fitXY" />
+
+            <!-- While the service is stopped: the big power button that starts it, over a
+                 blank placeholder. It takes the touches on itself only; the rest of the art still
+                 flings the queue open. -->
+            <ImageButton
+                android:id="@+id/power"
+                android:layout_width="128dp"
+                android:layout_height="128dp"
+                android:layout_gravity="center"
+                android:background="@drawable/btn_round_bg"
+                android:contentDescription="@string/start_service"
+                android:scaleType="center"
+                android:src="@drawable/ic_power"
+                android:visibility="gone" />
         </FrameLayout>
 
         <View

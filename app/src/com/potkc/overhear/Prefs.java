@@ -15,6 +15,8 @@ public final class Prefs {
     private static final String DEVICE_NAME = "device_name";
     private static final String AUTO_START = "auto_start";
     private static final String FULLSCREEN = "fullscreen";
+    private static final String IDLE_STOP_MINUTES = "idle_stop_minutes";
+    private static final String SPOTIFY_CLIENT_ID = "spotify_client_id";
     private static final String SPOTIFY_REFRESH = "spotify_refresh";
     private static final String LIBRARY_PATH = "library_path";
 
@@ -33,15 +35,6 @@ public final class Prefs {
         return !getApiKey().isEmpty();
     }
 
-    /** Stores the trimmed key; null or blank clears it. Returns whether it was written. */
-    public boolean setApiKey(String key) {
-        String k = key == null ? "" : key.trim();
-        SharedPreferences.Editor e = prefs.edit();
-        if (k.isEmpty()) e.remove(API_KEY);
-        else e.putString(API_KEY, k);
-        return e.commit();
-    }
-
     /** The device name until the user sets one: the model name, or "Overhear". */
     public static String defaultDeviceName() {
         return SetupValues.defaultDeviceName(Build.MODEL);
@@ -57,15 +50,38 @@ public final class Prefs {
     }
 
     /**
-     * Stores the device name, auto start, full screen and, unless the key is
-     * blank, the key, in one commit. Returns whether it was written.
+     * Stores the device name, auto start, full screen and the idle stop in
+     * one commit (setup's 保存; the key and the Client ID come from
+     * saveAccount). Returns whether it was written.
      */
     boolean save(SetupValues v) {
         SharedPreferences.Editor e = prefs.edit();
-        if (v.keyToStore() != null) e.putString(API_KEY, v.keyToStore());
         e.putString(DEVICE_NAME, v.deviceName());
         e.putBoolean(AUTO_START, v.autoStart());
         e.putBoolean(FULLSCREEN, v.fullscreen());
+        e.putInt(IDLE_STOP_MINUTES, v.idleStopMinutes());
+        return e.commit();
+    }
+
+    /**
+     * Stores what 「スマホで認証」 sent (PhoneSetup.Submission), in one commit:
+     * the key unless null, and the Client ID (normalized) unless null. A
+     * Client ID that changes the one in use also drops the refresh token
+     * (it belongs to the old one) and the library page, as SpotifyAuth's
+     * logOut() does, in the same commit; the caller then logs SpotifyAuth
+     * out too (setClientId), for what it holds in memory. Returns whether
+     * it was written.
+     */
+    boolean saveAccount(String key, String clientId) {
+        SharedPreferences.Editor e = prefs.edit();
+        if (key != null) e.putString(API_KEY, key);
+        if (clientId != null) {
+            e.putString(SPOTIFY_CLIENT_ID, clientId);
+            if (!SetupValues.effectiveClientId(clientId).equals(getSpotifyClientId())) {
+                e.remove(SPOTIFY_REFRESH);
+                e.putString(LIBRARY_PATH, "");
+            }
+        }
         return e.commit();
     }
 
@@ -79,8 +95,23 @@ public final class Prefs {
         return prefs.getBoolean(FULLSCREEN, SetupValues.DEFAULT_FULLSCREEN);
     }
 
+    /** Stop the service after this many minutes of not playing; 0 never. */
+    public int getIdleStopMinutes() {
+        return prefs.getInt(IDLE_STOP_MINUTES, SetupValues.DEFAULT_IDLE_STOP_MINUTES);
+    }
+
     public void setAutoStart(boolean autoStart) {
         prefs.edit().putBoolean(AUTO_START, autoStart).commit();
+    }
+
+    /** The Spotify Client ID the user entered, or "" for none. */
+    public String getStoredSpotifyClientId() {
+        return prefs.getString(SPOTIFY_CLIENT_ID, "");
+    }
+
+    /** The Spotify Client ID in use, or "" for none: no login, no library (SetupValues.effectiveClientId). */
+    public String getSpotifyClientId() {
+        return SetupValues.effectiveClientId(getStoredSpotifyClientId());
     }
 
     /** The Spotify refresh token or null. Never log it. */

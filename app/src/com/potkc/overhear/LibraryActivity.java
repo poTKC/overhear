@@ -282,6 +282,7 @@ public class LibraryActivity extends Activity {
         TopStrip.apply(this, topStrip, prefs); // setup may have changed it
         topStrip.resume();
         active = this;
+        PlayerService.restartIfIdleStopped(this); // it stopped itself for not playing; connection follows
         if (spotify.generation() != stackGeneration) {
             // Logged out or in again (LoginActivity) meanwhile: the pages may be another account's.
             stackGeneration = spotify.generation();
@@ -733,6 +734,10 @@ public class LibraryActivity extends Activity {
     }
 
     private void topRows(List<Row> rows) {
+        if (!spotify.hasClientId()) {
+            rows.add(clientIdRow(null));
+            return;
+        }
         if (!spotify.isLoggedIn()) {
             rows.add(Row.menu(R.drawable.ic_lib_login, getString(R.string.library_login), true, new Runnable() {
                 @Override public void run() {
@@ -806,7 +811,9 @@ public class LibraryActivity extends Activity {
         if (l.error == null) return;
         SpotifyException.Reason reason = l.error instanceof SpotifyException
                 ? ((SpotifyException) l.error).reason : null;
-        if (reason == SpotifyException.Reason.LOGIN_REQUIRED) {
+        if (reason == SpotifyException.Reason.LOGIN_REQUIRED && !spotify.hasClientId()) {
+            rows.add(clientIdRow(l));
+        } else if (reason == SpotifyException.Reason.LOGIN_REQUIRED) {
             rows.add(Row.note(getString(R.string.library_login_expired), new Runnable() {
                 @Override public void run() {
                     l.error = null; // loads again once back from the login
@@ -824,6 +831,19 @@ public class LibraryActivity extends Activity {
                 }
             }));
         }
+    }
+
+    /**
+     * No Client ID saved, so no login: says so, and a tap opens スマホで認証
+     * (LoginActivity), which can save one and log in (l's error, if any, is dropped).
+     */
+    private Row clientIdRow(final Loaded l) {
+        return Row.note(getString(R.string.need_client_id), new Runnable() {
+            @Override public void run() {
+                if (l != null) l.error = null; // loads again once back, logged in or not
+                startActivity(new Intent(LibraryActivity.this, LoginActivity.class));
+            }
+        });
     }
 
     /** ▶ plays contextUri in order from its first track, ⇄ shuffled from a random one. */

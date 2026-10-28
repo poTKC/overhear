@@ -25,6 +25,7 @@
     <style name="Theme.Overhear.Setup">
         <item name="android:editTextStyle">@style/Overhear.EditText</item>
         <item name="android:checkboxStyle">@style/Overhear.CheckBox</item>
+        <item name="android:spinnerStyle">@style/Overhear.Spinner</item>
         <item name="android:buttonStyle">@style/Overhear.Button</item>
         <item name="android:progressBarStyleHorizontal">@style/Overhear.ProgressBar.Horizontal</item>
         <item name="android:listChoiceBackgroundIndicator">@drawable/holo_w_list_selector_holo_dark</item>
@@ -71,6 +72,11 @@
 
     <style name="Overhear.CheckBox" parent="@android:style/Widget.Holo.CompoundButton.CheckBox">
         <item name="android:button">@drawable/holo_w_btn_check_holo_dark</item>
+    </style>
+
+    <style name="Overhear.Spinner" parent="@android:style/Widget.Holo.Spinner">
+        <item name="android:background">@drawable/holo_w_spinner_background_holo_dark</item>
+        <item name="android:dropDownSelector">@drawable/holo_w_list_selector_holo_dark</item>
     </style>
 
     <style name="Overhear.Button" parent="@android:style/Widget.Holo.Button">

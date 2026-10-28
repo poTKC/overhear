@@ -20,6 +20,13 @@ public class PkceTest {
         assertEquals(Pkce.challengeOf(p.verifier), p.challenge);
     }
 
+    @Test public void noncesAreBase64UrlAndDiffer() {
+        SecureRandom r = new SecureRandom();
+        String a = Pkce.nonce(r);
+        assertTrue(a.matches("[A-Za-z0-9_-]{43}"));
+        assertNotEquals(a, Pkce.nonce(r));
+    }
+
     @Test public void stateCarriesTheDeviceAddress() {
         assertEquals("192.168.40.50:8889~abc", Pkce.state("192.168.40.50", 8889, "abc"));
     }

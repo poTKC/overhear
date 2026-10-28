@@ -7,14 +7,13 @@ import android.graphics.Paint;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.text.InputType;
 import android.view.View;
-import android.view.WindowManager;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
-import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.ProgressBar;
+import android.widget.Spinner;
 import android.widget.TextView;
 
 import java.io.IOException;
@@ -24,19 +23,18 @@ import com.potkc.overhear.runtime.RuntimeInstaller;
 import com.potkc.overhear.spotify.SpotifyApi;
 
 /**
- * In three sections: アカウント (the Soloist API key; the Spotify Web API
- * login for the library, which takes effect at once, not on save), 再生 (the
- * device name, the service row in edit mode, auto start) and 表示 (full
- * screen for the player and the library); then save and the licence notices. Saving installs the runtime and downloads
- * Soloist (with progress, cancellable) when the service is not running yet,
- * then starts the service and opens the player; from the player
- * (EXTRA_EDIT) a change restarts Soloist through the running service and
- * returns. There (edit mode only) a button also stops or starts the
+ * In three sections: アカウント (read only: whether the Soloist API key and
+ * the Spotify Client ID are stored, and the Spotify login, with ログアウト
+ * while logged in, which takes effect at once; 「スマホで認証」
+ * (LoginActivity) is the only way to change them, and onResume shows them
+ * again), 再生 (the device name, the service row in edit mode, auto start)
+ * and 表示 (full screen for the player and the library); then save and the
+ * licence notices. Saving needs a stored key; it installs the runtime and
+ * downloads Soloist (with progress, cancellable) when the service is not
+ * running yet, then starts the service and opens the player; from the
+ * player (EXTRA_EDIT) a change restarts Soloist through the running service
+ * and returns. There (edit mode only) a button also stops or starts the
  * service at once, as its label says (PlayerText.serviceLabel).
- *
- * The stored key is never put into the field (nor saved instance state or
- * screenshots: FLAG_SECURE): the field stays empty with a hint, and only a
- * newly typed key replaces it.
  */
 public class SetupActivity extends Activity {
     /** Opened from the player's settings: return there when done. */
@@ -47,17 +45,20 @@ public class SetupActivity extends Activity {
     private static final long SERVICE_RECHECK_MS = 500;
     private static final long SERVICE_RECHECK_LATE_MS = 1500;
     private Prefs prefs;
-    private EditText key;
     private EditText name;
-    private CheckBox showKey;
     private CheckBox autoStart;
     private CheckBox fullscreen;
+    /** Choices in SetupValues.IDLE_STOP_CHOICES order. */
+    private Spinner idleStop;
     private Button save;
     private Button cancel;
     private ProgressBar progress;
     private TextView message;
+    private TextView keyStatus;
+    private TextView clientIdStatus;
     private TextView spotifyStatus;
-    private Button spotifyButton;
+    private Button spotifyLogout;
+    private Button phoneSetup;
     private TextView serviceStatus;
     private Button serviceButton;
     /** Bumped per Spotify status refresh: older me() results are ignored. Main thread. */
@@ -72,22 +73,26 @@ public class SetupActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        // The key is a secret: no screenshots, no recents thumbnail.
-        getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
         setContentView(R.layout.activity_setup);
         prefs = new Prefs(this);
         edit = getIntent().getBooleanExtra(EXTRA_EDIT, false);
-        key = (EditText) findViewById(R.id.api_key);
         name = (EditText) findViewById(R.id.device_name);
-        showKey = (CheckBox) findViewById(R.id.show_key);
         autoStart = (CheckBox) findViewById(R.id.auto_start);
         fullscreen = (CheckBox) findViewById(R.id.fullscreen);
+        idleStop = (Spinner) findViewById(R.id.idle_stop);
+        ArrayAdapter<CharSequence> idleStops = ArrayAdapter.createFromResource(this,
+                R.array.setup_idle_stop_entries, R.layout.setup_spinner_item);
+        idleStops.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        idleStop.setAdapter(idleStops);
         save = (Button) findViewById(R.id.save);
         cancel = (Button) findViewById(R.id.cancel);
         progress = (ProgressBar) findViewById(R.id.progress);
         message = (TextView) findViewById(R.id.message);
+        keyStatus = (TextView) findViewById(R.id.key_status);
+        clientIdStatus = (TextView) findViewById(R.id.client_id_status);
         spotifyStatus = (TextView) findViewById(R.id.spotify_status);
-        spotifyButton = (Button) findViewById(R.id.spotify_button);
+        spotifyLogout = (Button) findViewById(R.id.spotify_logout);
+        phoneSetup = (Button) findViewById(R.id.phone_setup);
 
         serviceStatus = (TextView) findViewById(R.id.service_status);
         serviceButton = (Button) findViewById(R.id.service_button);
@@ -101,21 +106,12 @@ public class SetupActivity extends Activity {
                 }
             });
         }
-        if (prefs.hasApiKey()) key.setHint(R.string.setup_key_saved_hint);
         if (savedInstanceState == null) {
             name.setText(prefs.getDeviceName());
             autoStart.setChecked(prefs.isAutoStart());
             fullscreen.setChecked(prefs.isFullscreen());
+            idleStop.setSelection(SetupValues.idleStopIndex(prefs.getIdleStopMinutes()));
         }
-        showKey.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override public void onCheckedChanged(CompoundButton b, boolean checked) {
-                int sel = key.getSelectionEnd();
-                key.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-                        | (checked ? InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
-                                : InputType.TYPE_TEXT_VARIATION_PASSWORD));
-                if (sel >= 0) key.setSelection(Math.min(sel, key.length()));
-            }
-        });
         save.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 onSave();
@@ -126,9 +122,14 @@ public class SetupActivity extends Activity {
                 cancelInstall();
             }
         });
-        spotifyButton.setOnClickListener(new View.OnClickListener() {
+        spotifyLogout.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
-                onSpotifyButton();
+                onLogout();
+            }
+        });
+        phoneSetup.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                startActivity(new Intent(SetupActivity.this, LoginActivity.class));
             }
         });
         TextView licenses = (TextView) findViewById(R.id.licenses);
@@ -144,8 +145,16 @@ public class SetupActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        showSpotify();
+        showAccount(); // スマホで認証 may have changed it
         showService();
+    }
+
+    /** The account section as stored now. */
+    private void showAccount() {
+        keyStatus.setText(prefs.hasApiKey() ? R.string.setup_key_saved : R.string.setup_key_missing);
+        clientIdStatus.setText(prefs.getSpotifyClientId().isEmpty()
+                ? R.string.setup_client_id_missing : R.string.setup_client_id_saved);
+        showSpotify();
     }
 
     /** Whether the service runs, and the button that changes it (edit mode). */
@@ -199,16 +208,11 @@ public class SetupActivity extends Activity {
         super.onBackPressed();
     }
 
-    private void onSpotifyButton() {
-        final Spotify spotify = Spotify.get(this);
-        if (!spotify.isLoggedIn()) {
-            startActivity(new Intent(this, LoginActivity.class));
-            return;
-        }
+    private void onLogout() {
         // logOut() takes the auth lock, which a call in progress may hold for
         // up to its timeout: do it on the Spotify thread, not here.
-        spotifyButton.setEnabled(false);
-        spotify.run(new Spotify.Call<Void>() {
+        spotifyLogout.setEnabled(false);
+        Spotify.get(this).run(new Spotify.Call<Void>() {
             @Override public Void run(SpotifyApi api) {
                 api.auth().logOut();
                 return null;
@@ -228,14 +232,15 @@ public class SetupActivity extends Activity {
     private void showSpotify() {
         final int my = ++spotifyRefresh;
         Spotify spotify = Spotify.get(this);
-        spotifyButton.setEnabled(true);
+        spotifyLogout.setEnabled(installing == null);
         if (!spotify.isLoggedIn()) {
-            spotifyStatus.setText(R.string.setup_spotify_logged_out);
-            spotifyButton.setText(R.string.setup_spotify_login);
+            spotifyStatus.setText(spotify.hasClientId()
+                    ? R.string.setup_spotify_logged_out : R.string.setup_spotify_need_client_id);
+            spotifyLogout.setVisibility(View.GONE);
             return;
         }
         spotifyStatus.setText(R.string.setup_spotify_logged_in);
-        spotifyButton.setText(R.string.setup_spotify_logout);
+        spotifyLogout.setVisibility(View.VISIBLE);
         spotify.run(new Spotify.Call<String>() {
             @Override public String run(SpotifyApi api) throws IOException {
                 return api.me();
@@ -247,7 +252,7 @@ public class SetupActivity extends Activity {
             }
 
             @Override public void failed(IOException e) {
-                // A login that expired was dropped: show the login button again.
+                // A login that expired was dropped: say so, without ログアウト.
                 if (!destroyed && my == spotifyRefresh && !Spotify.get(SetupActivity.this).isLoggedIn()) {
                     showSpotify();
                 }
@@ -257,23 +262,19 @@ public class SetupActivity extends Activity {
 
     private void onSave() {
         if (installing != null) return;
-        String typed = key.getText().toString().trim();
-        String n = name.getText().toString().trim();
-        if (typed.isEmpty() && !prefs.hasApiKey()) {
+        if (!prefs.hasApiKey()) {
             message.setText(R.string.setup_need_key);
-            key.requestFocus();
             return;
         }
+        String n = name.getText().toString().trim();
         if (n.isEmpty()) n = Prefs.defaultDeviceName();
-        boolean changed = (!typed.isEmpty() && !typed.equals(prefs.getApiKey()))
-                || !n.equals(prefs.getDeviceName());
-        if (!prefs.save(new SetupValues(typed, n, android.os.Build.MODEL, autoStart.isChecked(), fullscreen.isChecked()))) {
+        boolean changed = !n.equals(prefs.getDeviceName());
+        SetupValues values = new SetupValues(n, android.os.Build.MODEL, autoStart.isChecked(),
+                fullscreen.isChecked(), SetupValues.idleStopMinutes(idleStop.getSelectedItemPosition()));
+        if (!prefs.save(values)) {
             message.setText(R.string.setup_save_failed);
             return;
         }
-        key.setText("");
-        key.setHint(R.string.setup_key_saved_hint);
-
         PlayerService running = PlayerService.current();
         if (running != null) {
             // The service owns the runtime: let it restart with the new settings
@@ -357,11 +358,12 @@ public class SetupActivity extends Activity {
 
     private void setWorking(boolean working) {
         save.setEnabled(!working);
-        key.setEnabled(!working);
+        phoneSetup.setEnabled(!working);
+        spotifyLogout.setEnabled(!working);
         name.setEnabled(!working);
-        showKey.setEnabled(!working);
         autoStart.setEnabled(!working);
         fullscreen.setEnabled(!working);
+        idleStop.setEnabled(!working);
         cancel.setVisibility(working ? View.VISIBLE : View.GONE);
         progress.setVisibility(working ? View.VISIBLE : View.GONE);
         progress.setIndeterminate(true);

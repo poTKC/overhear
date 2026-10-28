@@ -83,6 +83,15 @@ import com.potkc.overhear.spotify.SpotifyApi;
  * Volume: fakepulse plays at unity gain and VolumeSync ties Soloist's volume
  * (the phone's Spotify slider) to the STREAM_MUSIC index both ways, while
  * the service runs.
+ *
+ * Idle stop: idle costs several times the battery of no service at all, and
+ * the wake lock cannot go (the device would vanish from Spotify), so after
+ * Prefs.getIdleStopMinutes of not playing (IdleStop) the service stops
+ * itself as the notification's stop does. The countdown waits while the
+ * player or library is visible (a UI listener) or a play here or jump is
+ * under way, and starts over at each control. The next player or library
+ * onResume starts it again (restartIfIdleStopped); a stop by the user does
+ * not.
  */
 public final class PlayerService extends Service {
     private static final String TAG = "OverhearService";
@@ -117,6 +126,8 @@ public final class PlayerService extends Service {
     private static volatile SoloistProcess previousSoloist;
     /** Serialises installs and downloads across service instances and SetupActivity. */
     static final Object INSTALL_LOCK = new Object();
+    /** The last instance stopped itself for not playing (and none has begun since). Main thread. */
+    private static boolean idleStopped;
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private HandlerThread workerThread;
@@ -181,6 +192,8 @@ public final class PlayerService extends Service {
     private static final long PLAY_HERE_TIMEOUT_MS = 5000;
     /** The last play of another user's playlist the library asked for; or null. */
     private OthersTracker others;
+    /** When to stop for not playing; checkIdle keeps idleTimer at its deadline. */
+    private final IdleStop idleStop = new IdleStop();
     private final IBinder binder = new LocalBinder();
     private final CopyOnWriteArrayList<Runnable> uiListeners = new CopyOnWriteArrayList<Runnable>();
 
@@ -198,7 +211,20 @@ public final class PlayerService extends Service {
 
     /** Stops Soloist and the service. */
     public static void stop(Context c) {
+        idleStopped = false; // the user's stop: opening the player does not undo it
         c.stopService(new Intent(c, PlayerService.class));
+    }
+
+    /**
+     * From the player's and library's onResume: starts the service again if
+     * it last stopped itself for not playing (not the user's stop). True if
+     * it did.
+     */
+    static boolean restartIfIdleStopped(Context c) {
+        if (!idleStopped) return false;
+        Log.i(TAG, "opened after an idle stop: starting again");
+        start(c);
+        return true;
     }
 
     /** The running instance or null. Main thread only. */
@@ -325,6 +351,7 @@ public final class PlayerService extends Service {
     }
 
     private void begin() {
+        idleStopped = false;
         if (!prefs.hasApiKey()) {
             Log.w(TAG, "no API key: not starting");
             Notification n = new Notification.Builder(this)
@@ -345,6 +372,8 @@ public final class PlayerService extends Service {
         registerMedia();
         supervisor.begin(isWifiUp());
         if (supervisor.state() == Supervisor.State.WAIT_WIFI) setStatus(getString(R.string.status_wait_wifi), PlayerText.Phase.WAIT_WIFI, 0);
+        idleStop.reset(); // a start counts as input
+        checkIdle();
     }
 
     @Override
@@ -390,14 +419,18 @@ public final class PlayerService extends Service {
      */
     void addUiListener(Runnable r) {
         uiListeners.addIfAbsent(r);
+        checkIdle(); // a visible screen holds the idle stop
     }
 
     void removeUiListener(Runnable r) {
         uiListeners.remove(r);
+        checkIdle();
     }
 
+    /** Also re-evaluates the idle stop: every state, connection, status, jump and play here change comes here. */
     private void notifyUi() {
         for (Runnable r : uiListeners) r.run();
+        checkIdle();
     }
 
     PlayerState getPlayerState() {
@@ -454,6 +487,8 @@ public final class PlayerService extends Service {
             webJump.onUserInput();
             notifyUi();
         }
+        idleStop.reset();
+        checkIdle();
     }
 
     // --- another user's playlist ---
@@ -531,11 +566,13 @@ public final class PlayerService extends Service {
                 return false;
             }
             lastControlMs = SystemClock.elapsedRealtime();
+            idleStop.reset();
             Log.i(TAG, "queue tap while inactive: " + (p.contextUri != null ? p.contextUri + " from " : "") + p.trackUri);
             playHere(p);
             return false; // not a jump: nothing for the player to wait for
         }
         lastControlMs = SystemClock.elapsedRealtime();
+        idleStop.reset();
         if (QueueRoute.useWebApi(state.getQueue(), index, state.getTrackUri(), state.getContextUri(),
                 state.isShuffle(), spotify.isLoggedIn())) {
             webJump(spotify, index, item, state.getContextUri());
@@ -595,7 +632,8 @@ public final class PlayerService extends Service {
                 else Log.w(TAG, "web jump: " + why);
                 clearWebJump();
                 countJump(ok);
-                // The caller notifies the UI.
+                idleStop.reset();
+                // The caller notifies the UI (and so checks the idle stop).
             }
         };
         WebJump j = new WebJump(index, item.uid, item.uri, webJumpClock, WebJump.DEFAULT_TIMEOUT_MS,
@@ -744,7 +782,8 @@ public final class PlayerService extends Service {
             jump = null;
             countJump(ok);
             main.removeCallbacks(jumpTimer);
-            // The caller notifies the UI (onState, onConnected, the timer).
+            idleStop.reset();
+            // The caller notifies the UI (onState, onConnected, the timer), which checks the idle stop.
         }
     };
 
@@ -1005,6 +1044,45 @@ public final class PlayerService extends Service {
         audioManager.unregisterMediaButtonEventReceiver(mediaButtons);
     }
 
+    // --- idle stop ---
+
+    /**
+     * Idle: not playing here (Standby, paused, no track, disconnected,
+     * restarting and failed all count), no player or library visible, and
+     * no play here or jump under way.
+     */
+    private boolean isIdle() {
+        return !isPlaying() && uiListeners.isEmpty() && !playingHere && jump == null && webJump == null;
+    }
+
+    /**
+     * Re-evaluates the idle stop (reading the setting each time, so a change
+     * in setup applies) and keeps idleTimer at its deadline; past it, stops
+     * the service as the notification's stop does.
+     */
+    private void checkIdle() {
+        if (destroyed || !begun) return;
+        long now = SystemClock.elapsedRealtime();
+        int minutes = prefs.getIdleStopMinutes();
+        long deadline = idleStop.update(now, isIdle(), IdleStop.timeoutMs(minutes));
+        main.removeCallbacks(idleTimer);
+        if (idleStop.shouldStop(now)) {
+            Log.i(TAG, "not playing for " + minutes + " min: stopping");
+            idleStopped = true;
+            begun = false; // nothing more until onDestroy
+            stopSelf();
+        } else if (deadline >= 0) {
+            main.postDelayed(idleTimer, deadline - now);
+        }
+    }
+
+    /** At the deadline (late if the CPU slept: the check reads the real time). */
+    private final Runnable idleTimer = new Runnable() {
+        @Override public void run() {
+            checkIdle();
+        }
+    };
+
     // --- controls ---
 
     private void playPause() {
@@ -1140,6 +1218,7 @@ public final class PlayerService extends Service {
         main.removeCallbacks(playHereTimeout);
         if (!playingHere) return;
         playingHere = false;
+        idleStop.reset();
         notifyUi();
     }
 

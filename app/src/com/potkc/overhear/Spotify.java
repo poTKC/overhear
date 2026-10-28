@@ -19,10 +19,12 @@ import com.potkc.overhear.spotify.SpotifyConfig;
  * The app's Spotify Web API access: one SpotifyApi over HelperTransport,
  * the login in Prefs, and a single background thread for calls, whose
  * results come back on the main thread. Calls run one at a time in the
- * order given. get() and run() may be called from any thread.
+ * order given. get() and run() may be called from any thread. The Client ID
+ * is the one in Prefs at first; 「スマホで認証」 (LoginActivity) changes it
+ * through SpotifyAuth.setClientId, which logs out. Without one there is no login
+ * and so no library (hasClientId).
  */
 final class Spotify {
-    static final String CLIENT_ID = SpotifyConfig.CLIENT_ID;
     static final String REDIRECT_URI = SpotifyConfig.REDIRECT_URI;
     static final String SCOPES = SpotifyConfig.SCOPES;
 
@@ -70,7 +72,7 @@ final class Spotify {
             }
         };
         HelperTransport transport = new HelperTransport(new RuntimeInstaller(app));
-        auth = new SpotifyAuth(transport, store, clock, CLIENT_ID);
+        auth = new SpotifyAuth(transport, store, clock, prefs.getSpotifyClientId());
         api = new SpotifyApi(transport, auth);
         thread = Executors.newSingleThreadExecutor(new ThreadFactory() {
             @Override public Thread newThread(Runnable r) {
@@ -99,6 +101,11 @@ final class Spotify {
     /** Safe on the main thread. */
     boolean isLoggedIn() {
         return auth.isLoggedIn();
+    }
+
+    /** Whether a Client ID is saved, without which nobody can log in. Safe on the main thread. */
+    boolean hasClientId() {
+        return auth.hasClientId();
     }
 
     /**
