@@ -1,7 +1,8 @@
 package com.potkc.overhear.spotify;
 
 /**
- * The app's Spotify Web API registration: the client ID, the relay page the
+ * The app's Spotify Web API registration: the built-in client ID (setup
+ * can replace it: Prefs.getSpotifyClientId), the relay page the
  * login redirects to, and the scopes it asks for (in this order: the QR code
  * size was checked with exactly this string). Pure Java, so the host tests
  * use the same values.

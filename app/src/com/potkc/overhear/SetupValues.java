@@ -1,5 +1,9 @@
 package com.potkc.overhear;
 
+import java.util.Locale;
+
+import com.potkc.overhear.spotify.SpotifyConfig;
+
 /**
  * What the setup screen saves, normalized for Prefs.save (one commit), and
  * the settings' defaults. Pure Java (host tests).
@@ -18,6 +22,7 @@ final class SetupValues {
 
     private final String key;
     private final String deviceName;
+    private final String clientId;
     private final boolean autoStart;
     private final boolean fullscreen;
     private final int idleStopMinutes;
@@ -46,13 +51,41 @@ final class SetupValues {
         return index >= 0 && index < IDLE_STOP_CHOICES.length ? IDLE_STOP_CHOICES[index] : DEFAULT_IDLE_STOP_MINUTES;
     }
 
-    /** A blank deviceName becomes defaultDeviceName(model); a negative idleStopMinutes, 0 (never). */
-    SetupValues(String key, String deviceName, String model, boolean autoStart, boolean fullscreen,
-            int idleStopMinutes) {
+    /** The typed Spotify Client ID trimmed and in lower case (as the dashboard shows it); "" when blank. */
+    static String normalizeClientId(String typed) {
+        return typed == null ? "" : typed.trim().toLowerCase(Locale.ROOT);
+    }
+
+    /** Blank (the built-in one) or, once normalized, 32 hex digits. */
+    static boolean isValidClientId(String typed) {
+        String c = normalizeClientId(typed);
+        if (c.isEmpty()) return true;
+        if (c.length() != 32) return false;
+        for (int i = 0; i < c.length(); i++) {
+            char ch = c.charAt(i);
+            if ((ch < '0' || ch > '9') && (ch < 'a' || ch > 'f')) return false;
+        }
+        return true;
+    }
+
+    /** The Client ID in use: the stored one, or SpotifyConfig.CLIENT_ID when none (null or blank). */
+    static String effectiveClientId(String stored) {
+        return stored == null || stored.trim().isEmpty() ? SpotifyConfig.CLIENT_ID : stored.trim();
+    }
+
+    /**
+     * A blank deviceName becomes defaultDeviceName(model); a negative
+     * idleStopMinutes, 0 (never); a blank clientId, the built-in one. The
+     * clientId must pass isValidClientId (SetupActivity checks first).
+     */
+    SetupValues(String key, String deviceName, String model, String clientId, boolean autoStart,
+            boolean fullscreen, int idleStopMinutes) {
         String k = key == null ? "" : key.trim();
         this.key = k.isEmpty() ? null : k;
         String n = deviceName == null ? "" : deviceName.trim();
         this.deviceName = n.isEmpty() ? defaultDeviceName(model) : n;
+        String c = normalizeClientId(clientId);
+        this.clientId = c.isEmpty() ? null : c;
         this.autoStart = autoStart;
         this.fullscreen = fullscreen;
         this.idleStopMinutes = Math.max(0, idleStopMinutes);
@@ -65,6 +98,16 @@ final class SetupValues {
 
     String deviceName() {
         return deviceName;
+    }
+
+    /** The normalized Client ID, or null for the built-in one (nothing stored). */
+    String clientIdToStore() {
+        return clientId;
+    }
+
+    /** The Client ID these values put in use (effectiveClientId). */
+    String spotifyClientId() {
+        return effectiveClientId(clientId);
     }
 
     boolean autoStart() {

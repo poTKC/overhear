@@ -84,6 +84,27 @@
         </LinearLayout>
 
         <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/setup_client_id_label"
+            android:textColor="#ffffffff"
+            android:textStyle="bold"
+            android:textSize="13sp" />
+
+        <!-- Saved with the rest; a change logs out (Prefs.save). -->
+        <EditText
+            android:id="@+id/client_id"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/setup_client_id_hint"
+            android:imeOptions="actionNext|flagNoExtractUi"
+            android:inputType="text|textNoSuggestions"
+            android:maxLength="64"
+            android:singleLine="true"
+            android:textSize="14sp" />
+
+        <TextView
             style="@style/Overhear.SetupSection"
             android:layout_marginTop="16dp"
             android:text="@string/setup_section_playback" />

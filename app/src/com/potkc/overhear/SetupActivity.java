@@ -27,7 +27,8 @@ import com.potkc.overhear.spotify.SpotifyApi;
 
 /**
  * In three sections: アカウント (the Soloist API key; the Spotify Web API
- * login for the library, which takes effect at once, not on save), 再生 (the
+ * login for the library, which takes effect at once, not on save, and the
+ * Client ID it uses, saved with the rest: a change logs out), 再生 (the
  * device name, the service row in edit mode, auto start) and 表示 (full
  * screen for the player and the library); then save and the licence notices. Saving installs the runtime and downloads
  * Soloist (with progress, cancellable) when the service is not running yet,
@@ -51,6 +52,8 @@ public class SetupActivity extends Activity {
     private Prefs prefs;
     private EditText key;
     private EditText name;
+    /** The stored Spotify Client ID, blank for the built-in one. */
+    private EditText clientId;
     private CheckBox showKey;
     private CheckBox autoStart;
     private CheckBox fullscreen;
@@ -83,6 +86,7 @@ public class SetupActivity extends Activity {
         edit = getIntent().getBooleanExtra(EXTRA_EDIT, false);
         key = (EditText) findViewById(R.id.api_key);
         name = (EditText) findViewById(R.id.device_name);
+        clientId = (EditText) findViewById(R.id.client_id);
         showKey = (CheckBox) findViewById(R.id.show_key);
         autoStart = (CheckBox) findViewById(R.id.auto_start);
         fullscreen = (CheckBox) findViewById(R.id.fullscreen);
@@ -113,6 +117,7 @@ public class SetupActivity extends Activity {
         if (prefs.hasApiKey()) key.setHint(R.string.setup_key_saved_hint);
         if (savedInstanceState == null) {
             name.setText(prefs.getDeviceName());
+            clientId.setText(prefs.getStoredSpotifyClientId());
             autoStart.setChecked(prefs.isAutoStart());
             fullscreen.setChecked(prefs.isFullscreen());
             idleStop.setSelection(SetupValues.idleStopIndex(prefs.getIdleStopMinutes()));
@@ -234,6 +239,29 @@ public class SetupActivity extends Activity {
         });
     }
 
+    /**
+     * After a save that changed the Client ID (and dropped the stored login,
+     * Prefs.save): Spotify uses id from now on and logs out, which also drops
+     * the access token and starts a new generation. On the Spotify thread,
+     * as for logOut(): after any call in progress, which used the old ID with
+     * its own login.
+     */
+    private void useClientId(final String id) {
+        Spotify.get(this).run(new Spotify.Call<Boolean>() {
+            @Override public Boolean run(SpotifyApi api) {
+                return api.auth().setClientId(id);
+            }
+        }, new Spotify.Callback<Boolean>() {
+            @Override public void done(Boolean loggedOut) {
+                if (!destroyed && loggedOut) showSpotify();
+            }
+
+            @Override public void failed(IOException e) {
+                if (!destroyed) showSpotify();
+            }
+        });
+    }
+
     /** Shows the login state now, then the user ID once me() answers. */
     private void showSpotify() {
         final int my = ++spotifyRefresh;
@@ -274,16 +302,26 @@ public class SetupActivity extends Activity {
             key.requestFocus();
             return;
         }
+        String cid = clientId.getText().toString();
+        if (!SetupValues.isValidClientId(cid)) {
+            message.setText(R.string.setup_bad_client_id);
+            clientId.requestFocus();
+            return;
+        }
         if (n.isEmpty()) n = Prefs.defaultDeviceName();
         boolean changed = (!typed.isEmpty() && !typed.equals(prefs.getApiKey()))
                 || !n.equals(prefs.getDeviceName());
-        if (!prefs.save(new SetupValues(typed, n, android.os.Build.MODEL, autoStart.isChecked(), fullscreen.isChecked(),
-                SetupValues.idleStopMinutes(idleStop.getSelectedItemPosition())))) {
+        SetupValues values = new SetupValues(typed, n, android.os.Build.MODEL, cid, autoStart.isChecked(),
+                fullscreen.isChecked(), SetupValues.idleStopMinutes(idleStop.getSelectedItemPosition()));
+        boolean newClient = !values.spotifyClientId().equals(prefs.getSpotifyClientId());
+        if (!prefs.save(values)) {
             message.setText(R.string.setup_save_failed);
             return;
         }
         key.setText("");
         key.setHint(R.string.setup_key_saved_hint);
+        clientId.setText(prefs.getStoredSpotifyClientId());
+        if (newClient) useClientId(values.spotifyClientId());
 
         PlayerService running = PlayerService.current();
         if (running != null) {
@@ -370,6 +408,7 @@ public class SetupActivity extends Activity {
         save.setEnabled(!working);
         key.setEnabled(!working);
         name.setEnabled(!working);
+        clientId.setEnabled(!working);
         showKey.setEnabled(!working);
         autoStart.setEnabled(!working);
         fullscreen.setEnabled(!working);

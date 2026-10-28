@@ -16,6 +16,7 @@ public final class Prefs {
     private static final String AUTO_START = "auto_start";
     private static final String FULLSCREEN = "fullscreen";
     private static final String IDLE_STOP_MINUTES = "idle_stop_minutes";
+    private static final String SPOTIFY_CLIENT_ID = "spotify_client_id";
     private static final String SPOTIFY_REFRESH = "spotify_refresh";
     private static final String LIBRARY_PATH = "library_path";
 
@@ -58,13 +59,25 @@ public final class Prefs {
     }
 
     /**
-     * Stores the device name, auto start, full screen, the idle stop and,
-     * unless the key is blank, the key, in one commit. Returns whether it was written.
+     * Stores the device name, the Spotify Client ID, auto start, full screen,
+     * the idle stop and, unless the key is blank, the key, in one commit.
+     * A Client ID that changes the one in use also drops the refresh token
+     * (it belongs to the old one) and the library page, as SpotifyAuth's
+     * logOut() does, in the same commit; the caller then logs SpotifyAuth
+     * out too (setClientId), for what it holds in memory. Returns whether
+     * it was written.
      */
     boolean save(SetupValues v) {
+        boolean newClient = !v.spotifyClientId().equals(getSpotifyClientId());
         SharedPreferences.Editor e = prefs.edit();
         if (v.keyToStore() != null) e.putString(API_KEY, v.keyToStore());
         e.putString(DEVICE_NAME, v.deviceName());
+        if (v.clientIdToStore() == null) e.remove(SPOTIFY_CLIENT_ID);
+        else e.putString(SPOTIFY_CLIENT_ID, v.clientIdToStore());
+        if (newClient) {
+            e.remove(SPOTIFY_REFRESH);
+            e.putString(LIBRARY_PATH, "");
+        }
         e.putBoolean(AUTO_START, v.autoStart());
         e.putBoolean(FULLSCREEN, v.fullscreen());
         e.putInt(IDLE_STOP_MINUTES, v.idleStopMinutes());
@@ -88,6 +101,16 @@ public final class Prefs {
 
     public void setAutoStart(boolean autoStart) {
         prefs.edit().putBoolean(AUTO_START, autoStart).commit();
+    }
+
+    /** The Spotify Client ID the user entered, or "" for the built-in one. */
+    public String getStoredSpotifyClientId() {
+        return prefs.getString(SPOTIFY_CLIENT_ID, "");
+    }
+
+    /** The Spotify Client ID in use: the stored one, else SpotifyConfig.CLIENT_ID. */
+    public String getSpotifyClientId() {
+        return SetupValues.effectiveClientId(getStoredSpotifyClientId());
     }
 
     /** The Spotify refresh token or null. Never log it. */

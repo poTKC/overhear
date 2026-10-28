@@ -115,10 +115,13 @@ public class LoginActivity extends Activity {
         } catch (IOException e) {
             throw new AssertionError(e); // only for a wrong length
         }
-        listener = new Listener(address, state, pkce.verifier);
+        // As saved: setup's SpotifyAuth.setClientId may still wait behind a call,
+        // but runs before this login's exchange, which checks the ID again.
+        String clientId = new Prefs(this).getSpotifyClientId();
+        listener = new Listener(address, state, pkce.verifier, clientId);
         listener.start();
         main.postDelayed(expire, LISTEN_MS);
-        qr.setCode(QrCode.encodeText(Pkce.authorizeUrl(Spotify.CLIENT_ID, Spotify.REDIRECT_URI, Spotify.SCOPES,
+        qr.setCode(QrCode.encodeText(Pkce.authorizeUrl(clientId, Spotify.REDIRECT_URI, Spotify.SCOPES,
                 pkce.challenge, state), QrCode.Ecc.LOW));
         message.setText(R.string.login_waiting);
     }
@@ -206,17 +209,20 @@ public class LoginActivity extends Activity {
         private final InetAddress address;
         private final String state;
         private final String verifier;
+        /** The Client ID in the authorize URL. */
+        private final String clientId;
         private volatile boolean stopped;
         private volatile ServerSocket server;
         /** The connection being served, closed by shutdown() to end a pending read. */
         private volatile Socket current;
 
-        Listener(InetAddress address, String state, String verifier) {
+        Listener(InetAddress address, String state, String verifier, String clientId) {
             super("overhear-login");
             setDaemon(true);
             this.address = address;
             this.state = state;
             this.verifier = verifier;
+            this.clientId = clientId;
         }
 
         /** Any thread; closes the port right away. */
@@ -318,7 +324,7 @@ public class LoginActivity extends Activity {
             final boolean[] ok = new boolean[1]; // written before countDown(), read after await()
             Spotify.get(LoginActivity.this).run(new Spotify.Call<String>() {
                 @Override public String run(SpotifyApi api) throws IOException {
-                    api.auth().exchangeCode(code, verifier, Spotify.REDIRECT_URI, Spotify.CLIENT_ID);
+                    api.auth().exchangeCode(code, verifier, Spotify.REDIRECT_URI, clientId);
                     try {
                         return api.me();
                     } catch (IOException e) {
