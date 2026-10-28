@@ -119,14 +119,16 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## Remix Icon (icons)
 
-- The player, notification and status bar icons are rasterised (by
+- The player, library, notification and status bar icons are rasterised (by
   `tools/make_icons.py`) from Remix Icon 4.5.0 (npm package
   `remixicon@4.5.0`): shuffle-line, repeat-2-line, repeat-one-line,
-  skip-back-fill, skip-forward-fill, play-fill, pause-fill, play-circle-fill,
-  pause-circle-fill, play-list-2-fill, album-line,
-  settings-3-line, close-line, music-2-line and music-2-fill. Recoloured,
-  resized and composed (the toggle dot, the artwork placeholder); otherwise
-  unmodified.
+  skip-back-fill, skip-forward-fill, play-fill, play-circle-fill,
+  pause-circle-fill, pause-fill, play-list-2-fill, album-line, settings-3-line,
+  more-2-line, close-line, music-2-line, music-2-fill, arrow-left-line,
+  loop-right-line, search-line, heart-line, play-list-line, user-line,
+  history-line, login-box-line, play-line, arrow-right-s-line, bar-chart-fill
+  and shut-down-line. Recoloured, resized and composed (the toggle dot, the
+  artwork placeholder); otherwise unmodified.
 - Licence: Apache License 2.0 (SPDX `Apache-2.0`). The package's `License`
   file is the unmodified Apache-2.0 text, and its `package.json` says
   `Apache-2.0`. Its README adds a request (not a licence condition) that the
