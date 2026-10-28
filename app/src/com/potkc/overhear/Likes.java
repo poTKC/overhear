@@ -134,7 +134,7 @@ final class Likes {
         });
     }
 
-    /** "Log in again" with a button to LoginActivity; a toast if activity is gone. */
+    /** "Log in again" with a button to スマホで認証 (LoginActivity); a toast if activity is gone. */
     private static void offerLogin(final Activity activity) {
         if (activity.isFinishing() || activity.isDestroyed()) {
             Toast.makeText(activity.getApplicationContext(), R.string.like_relogin, Toast.LENGTH_LONG).show();

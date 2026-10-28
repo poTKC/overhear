@@ -3,8 +3,9 @@ package com.potkc.overhear;
 import java.util.Locale;
 
 /**
- * What the setup screen saves, normalized for Prefs.save (one commit), and
- * the settings' defaults. Pure Java (host tests).
+ * What the setup screen saves, normalized for Prefs.save (one commit), the
+ * settings' defaults, and the Client ID's rules (「スマホで認証」 checks
+ * and stores it: PhoneSetup, Prefs.saveAccount). Pure Java (host tests).
  */
 final class SetupValues {
     /** The device name when the model name (android.os.Build.MODEL) is blank. */
@@ -18,9 +19,7 @@ final class SetupValues {
     /** The idle stop's choices in setup, in order (R.array.setup_idle_stop_entries). */
     static final int[] IDLE_STOP_CHOICES = {5, 15, 30, 0};
 
-    private final String key;
     private final String deviceName;
-    private final String clientId;
     private final boolean autoStart;
     private final boolean fullscreen;
     private final int idleStopMinutes;
@@ -73,39 +72,18 @@ final class SetupValues {
 
     /**
      * A blank deviceName becomes defaultDeviceName(model); a negative
-     * idleStopMinutes, 0 (never); a blank clientId, none. The
-     * clientId must pass isValidClientId (SetupActivity checks first).
+     * idleStopMinutes, 0 (never).
      */
-    SetupValues(String key, String deviceName, String model, String clientId, boolean autoStart,
-            boolean fullscreen, int idleStopMinutes) {
-        String k = key == null ? "" : key.trim();
-        this.key = k.isEmpty() ? null : k;
+    SetupValues(String deviceName, String model, boolean autoStart, boolean fullscreen, int idleStopMinutes) {
         String n = deviceName == null ? "" : deviceName.trim();
         this.deviceName = n.isEmpty() ? defaultDeviceName(model) : n;
-        String c = normalizeClientId(clientId);
-        this.clientId = c.isEmpty() ? null : c;
         this.autoStart = autoStart;
         this.fullscreen = fullscreen;
         this.idleStopMinutes = Math.max(0, idleStopMinutes);
     }
 
-    /** The trimmed key, or null to keep the stored one. */
-    String keyToStore() {
-        return key;
-    }
-
     String deviceName() {
         return deviceName;
-    }
-
-    /** The normalized Client ID, or null for none (nothing stored). */
-    String clientIdToStore() {
-        return clientId;
-    }
-
-    /** The Client ID these values put in use (effectiveClientId): "" for none. */
-    String spotifyClientId() {
-        return effectiveClientId(clientId);
     }
 
     boolean autoStart() {

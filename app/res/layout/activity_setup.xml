@@ -24,47 +24,29 @@
             android:layout_marginTop="0dp"
             android:text="@string/setup_section_account" />
 
+        <!-- Read only: スマホで認証 (LoginActivity) is the only way to change these. -->
         <TextView
+            android:id="@+id/key_status"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/setup_key_label"
-            android:textColor="#ffffffff"
-            android:textStyle="bold"
-            android:textSize="13sp" />
-
-        <EditText
-            android:id="@+id/api_key"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="@string/setup_key_hint"
-            android:imeOptions="actionNext|flagNoExtractUi"
-            android:inputType="textPassword|textNoSuggestions"
-            android:saveEnabled="false"
             android:singleLine="true"
+            android:textColor="#ffffffff"
             android:textSize="14sp" />
 
-        <CheckBox
-            android:id="@+id/show_key"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:saveEnabled="false"
-            android:text="@string/setup_show_key"
-            android:textSize="13sp" />
-
         <TextView
+            android:id="@+id/client_id_status"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="@string/setup_spotify_label"
+            android:singleLine="true"
             android:textColor="#ffffffff"
-            android:textStyle="bold"
-            android:textSize="13sp" />
+            android:textSize="14sp" />
 
-        <!-- Takes effect at once, not on save. -->
+        <!-- Log out takes effect at once, not on save; the button shows only while logged in. -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
+            android:minHeight="32dp"
             android:orientation="horizontal">
 
             <TextView
@@ -78,31 +60,26 @@
                 android:textSize="14sp" />
 
             <Button
-                android:id="@+id/spotify_button"
+                android:id="@+id/spotify_logout"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content" />
+                android:layout_height="wrap_content"
+                android:text="@string/setup_spotify_logout"
+                android:visibility="gone" />
         </LinearLayout>
+
+        <Button
+            android:id="@+id/phone_setup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/setup_phone" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="@string/setup_client_id_label"
-            android:textColor="#ffffffff"
-            android:textStyle="bold"
-            android:textSize="13sp" />
-
-        <!-- Saved with the rest; a change logs out (Prefs.save). -->
-        <EditText
-            android:id="@+id/client_id"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="@string/setup_client_id_hint"
-            android:imeOptions="actionNext|flagNoExtractUi"
-            android:inputType="text|textNoSuggestions"
-            android:maxLength="64"
-            android:singleLine="true"
-            android:textSize="14sp" />
+            android:text="@string/setup_phone_explain"
+            android:textColor="#ffaaaaaa"
+            android:textSize="12sp" />
 
         <TextView
             style="@style/Overhear.SetupSection"

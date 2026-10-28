@@ -2,9 +2,8 @@ package com.potkc.overhear.spotify;
 
 /**
  * The app's Spotify Web API settings: the relay page the login redirects
- * to, and the scopes it asks for (in this order: the QR code size was
- * checked with exactly this string). There is no built-in Client ID: each
- * user registers their own app and enters its ID in setup
+ * to, and the scopes it asks for. There is no built-in Client ID: each
+ * user registers their own app and enters its ID through 「スマホで認証」
  * (Prefs.getSpotifyClientId). Pure Java, so the host tests use the same
  * values.
  */

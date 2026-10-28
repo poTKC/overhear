@@ -833,13 +833,15 @@ public class LibraryActivity extends Activity {
         }
     }
 
-    /** No Client ID in setup, so no login: says so, and a tap opens setup (l's error, if any, is dropped). */
+    /**
+     * No Client ID saved, so no login: says so, and a tap opens スマホで認証
+     * (LoginActivity), which can save one and log in (l's error, if any, is dropped).
+     */
     private Row clientIdRow(final Loaded l) {
         return Row.note(getString(R.string.need_client_id), new Runnable() {
             @Override public void run() {
                 if (l != null) l.error = null; // loads again once back, logged in or not
-                startActivity(new Intent(LibraryActivity.this, SetupActivity.class)
-                        .putExtra(SetupActivity.EXTRA_EDIT, true));
+                startActivity(new Intent(LibraryActivity.this, LoginActivity.class));
             }
         });
     }

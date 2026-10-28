@@ -8,9 +8,9 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
-import android.text.TextUtils;
 import android.util.Log;
 import android.view.View;
+import android.widget.Button;
 import android.widget.TextView;
 
 import java.io.BufferedInputStream;
@@ -25,6 +25,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.security.SecureRandom;
+import java.util.Arrays;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -35,20 +36,29 @@ import com.potkc.overhear.spotify.SpotifyApi;
 import io.nayuki.qrcodegen.QrCode;
 
 /**
- * Logs in to Spotify from a phone: shows the authorize URL as a QR code and
- * listens on the Wi-Fi address, port 8889, for the browser that the relay
- * page sends back with the code (state "<ip>:<port>~<nonce>"). The code is
- * traded for tokens through Spotify.run while the phone waits for the page
- * that tells it how it went.
+ * 「スマホで認証」, the only way to set the Soloist API key and the Spotify
+ * Client ID, and to log in to Spotify: shows a QR code for
+ * http://<Wi-Fi address>:8889/setup?n=<nonce> and listens there. The phone
+ * gets a form (PhoneSetupPage) and posts it back (PhoneSetup checks it; a
+ * blank field keeps what is stored). The save runs on the main thread
+ * through Prefs.saveAccount: a new Client ID logs out
+ * (SpotifyAuth.setClientId), a new key restarts Soloist through a running
+ * service (with none running, setup's save installs and starts it, and this
+ * screen says so). If the form asks to log in, the reply is a 303 to
+ * Spotify's authorize URL (PKCE; state "<ip>:<port>~<nonce>", another nonce
+ * than the QR code's); the relay page sends the browser back here
+ * (/callback) with the code, which is traded for tokens through Spotify.run
+ * while the phone waits, and the browser goes on to the relay's done page.
+ * The QR code's nonce is spent by the first save that goes through; the
+ * login it started can still come back.
  *
  * The listener runs on its own thread, one connection at a time, only while
  * this screen is open and for at most five minutes; onDestroy closes it.
- * Each connection gets five seconds in all to send its request line and
- * headers, so a slow peer cannot hold the listener. Leaving the screen
- * during an exchange does not stop it: the login may still complete, and
- * Setup then shows it (the tokens are saved either way). Without a Client
- * ID in setup it only says so: there is nothing to log in to.
- * The code, the verifier and the request line are never logged.
+ * Each connection gets five seconds in all to send its request (a form body
+ * of at most 8 KB included), so a slow peer cannot hold the listener.
+ * Leaving the screen during an exchange does not stop it: the login may
+ * still complete, and Setup then shows it (the tokens are saved either way).
+ * The key, the code, the verifier and the request line are never logged.
  */
 public class LoginActivity extends Activity {
     static final int PORT = 8889;
@@ -66,22 +76,33 @@ public class LoginActivity extends Activity {
     /** The relay page's "logged in" view, where a successful callback sends the browser on. */
     private static final String DONE_URL = Spotify.REDIRECT_URI + "?done=1";
 
+    /** How long to wait for the main thread's save. */
+    private static final long SAVE_WAIT_MS = 30 * 1000L;
+
     private final Handler main = new Handler(Looper.getMainLooper());
+    private Prefs prefs;
     private QrView qr;
     private TextView message;
+    private Button cancel;
     private Listener listener;
     /** Main thread. */
     private boolean destroyed;
     private boolean loggedIn;
     private boolean expired;
+    /** A form was saved (Prefs.saveAccount). */
+    private boolean saved;
+    /** Nothing more to wait for: saved without a login, or logged in. */
+    private boolean finished;
+    /** Line added to the final message: the new key waits for setup's save to start the service; or "". */
+    private String note = "";
 
     private final Runnable expire = new Runnable() {
         @Override public void run() {
-            if (loggedIn) return;
+            if (finished) return;
             expired = true;
             stopListening();
             qr.setVisibility(View.INVISIBLE);
-            message.setText(R.string.login_expired);
+            message.setText(saved ? R.string.login_expired_saved : R.string.login_expired);
         }
     };
 
@@ -89,21 +110,16 @@ public class LoginActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_login);
+        prefs = new Prefs(this);
         qr = (QrView) findViewById(R.id.qr);
         message = (TextView) findViewById(R.id.message);
-        findViewById(R.id.cancel).setOnClickListener(new View.OnClickListener() {
+        cancel = (Button) findViewById(R.id.cancel);
+        cancel.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 finish();
             }
         });
 
-        // As saved: setup's SpotifyAuth.setClientId may still wait behind a call,
-        // but runs before this login's exchange, which checks the ID again.
-        String clientId = new Prefs(this).getSpotifyClientId();
-        if (clientId.isEmpty()) {
-            message.setText(R.string.need_client_id);
-            return;
-        }
         byte[] ip = wifiAddress(this);
         if (ip == null) {
             message.setText(R.string.login_need_wifi);
@@ -115,6 +131,7 @@ public class LoginActivity extends Activity {
             return;
         }
         Pkce pkce = Pkce.create(random);
+        String nonce = Pkce.nonce(random);
         String host = (ip[0] & 0xff) + "." + (ip[1] & 0xff) + "." + (ip[2] & 0xff) + "." + (ip[3] & 0xff);
         String state = Pkce.state(host, PORT, pkce.nonce);
         InetAddress address;
@@ -123,11 +140,11 @@ public class LoginActivity extends Activity {
         } catch (IOException e) {
             throw new AssertionError(e); // only for a wrong length
         }
-        listener = new Listener(address, state, pkce.verifier, clientId);
+        listener = new Listener(address, nonce, state, pkce);
         listener.start();
         main.postDelayed(expire, LISTEN_MS);
-        qr.setCode(QrCode.encodeText(Pkce.authorizeUrl(clientId, Spotify.REDIRECT_URI, Spotify.SCOPES,
-                pkce.challenge, state), QrCode.Ecc.LOW));
+        qr.setCode(QrCode.encodeText("http://" + host + ":" + PORT + PhoneSetup.PATH + "?n=" + nonce,
+                QrCode.Ecc.LOW));
         message.setText(R.string.login_waiting);
     }
 
@@ -160,17 +177,73 @@ public class LoginActivity extends Activity {
         });
     }
 
+    private void show(final int text) {
+        show(getString(text));
+    }
+
+    /** Saved from the phone (main thread, not destroyed); login: the phone goes on to Spotify. */
+    private void onSaved(boolean login) {
+        saved = true;
+        qr.setVisibility(View.INVISIBLE);
+        if (login) message.setText(R.string.login_logging_in);
+        else onFinished(getString(R.string.login_saved));
+    }
+
     private void onLoggedIn(String id) { // main thread, not destroyed
         loggedIn = true;
-        main.removeCallbacks(expire);
-        stopListening();
         qr.setVisibility(View.INVISIBLE);
-        message.setText(id.isEmpty() ? getString(R.string.login_done) : getString(R.string.login_done_as, id));
+        onFinished(id.isEmpty() ? getString(R.string.login_done) : getString(R.string.login_done_as, id));
+    }
+
+    /**
+     * Nothing more to wait for: the listener stops after its reply. Closes by
+     * itself unless the note asks for setup's save.
+     */
+    private void onFinished(String text) {
+        finished = true;
+        main.removeCallbacks(expire);
+        if (listener != null) listener.finishAfterReply();
+        message.setText(note.isEmpty() ? text : text + "\n" + note);
+        cancel.setText(R.string.login_close);
+        if (!note.isEmpty()) return;
         main.postDelayed(new Runnable() {
             @Override public void run() {
                 finish();
             }
         }, FINISH_DELAY_MS);
+    }
+
+    /**
+     * Stores the submission as setup's save did (main thread, not destroyed);
+     * whether it was written. A new Client ID logs Spotify out on its thread,
+     * before any login this save starts; a new key restarts a running
+     * service's Soloist (as does a service that gave up).
+     */
+    private boolean store(PhoneSetup.Submission s) {
+        boolean newKey = s.key != null && !s.key.equals(prefs.getApiKey());
+        final String clientId = s.effectiveClientId;
+        boolean newClient = !clientId.equals(prefs.getSpotifyClientId());
+        if (!prefs.saveAccount(s.key, s.clientId)) return false;
+        if (newClient) {
+            Spotify.get(this).run(new Spotify.Call<Boolean>() {
+                @Override public Boolean run(SpotifyApi api) {
+                    return api.auth().setClientId(clientId);
+                }
+            }, new Spotify.Callback<Boolean>() {
+                @Override public void done(Boolean loggedOut) {
+                }
+
+                @Override public void failed(IOException e) {
+                }
+            });
+        }
+        PlayerService running = PlayerService.current();
+        if (running != null) {
+            if (newKey || running.getSupervisorState() == Supervisor.State.FAILED) running.retry();
+        } else if (s.key != null) {
+            note = getString(R.string.login_note_start);
+        }
+        return true;
     }
 
     /** The Wi-Fi IPv4 address in network order, or null when not connected. */
@@ -212,22 +285,29 @@ public class LoginActivity extends Activity {
     /** The accept loop. */
     private final class Listener extends Thread {
         private final InetAddress address;
+        /** The QR code's: every /setup request must carry it. */
+        private final String nonce;
         private final String state;
         private final String verifier;
-        /** The Client ID in the authorize URL. */
-        private final String clientId;
+        private final String challenge;
+        /** Listener thread only: a save went through (the nonce is spent), and it started a login. */
+        private boolean spent;
+        private boolean loginStarted;
+        /** Listener thread only: the Client ID in the authorize URL, once a login started. */
+        private String clientId;
         private volatile boolean stopped;
         private volatile ServerSocket server;
         /** The connection being served, closed by shutdown() to end a pending read. */
         private volatile Socket current;
 
-        Listener(InetAddress address, String state, String verifier, String clientId) {
+        Listener(InetAddress address, String nonce, String state, Pkce pkce) {
             super("overhear-login");
             setDaemon(true);
             this.address = address;
+            this.nonce = nonce;
             this.state = state;
-            this.verifier = verifier;
-            this.clientId = clientId;
+            this.verifier = pkce.verifier;
+            this.challenge = pkce.challenge;
         }
 
         /** Any thread; closes the port right away. */
@@ -235,6 +315,11 @@ public class LoginActivity extends Activity {
             stopped = true;
             closeQuietly(server);
             closeQuietly(current);
+        }
+
+        /** Any thread; the connection being served still gets its reply, then the port closes. */
+        void finishAfterReply() {
+            stopped = true;
         }
 
         @Override public void run() {
@@ -293,9 +378,104 @@ public class LoginActivity extends Activity {
             InputStream in = new BufferedInputStream(client.getInputStream());
             long deadline = SystemClock.elapsedRealtime() + REQUEST_MS;
             String line = readLine(in, MAX_LINE, deadline);
-            OAuthCallback cb = OAuthCallback.parse(line, state);
-            if (line != null) skipHeaders(in, deadline);
-            Log.i(TAG, "request: " + cb.kind);
+            long length = line == null ? -1 : readHeaders(in, deadline);
+            PhoneSetup.Route route = PhoneSetup.route(line, nonce, spent, loginStarted);
+            Log.i(TAG, "request: " + route);
+            switch (route) {
+                case FORM:
+                    show(R.string.login_form_opened);
+                    page(client, "200 OK", PhoneSetupPage.form(nonce, prefs.hasApiKey(),
+                            prefs.getSpotifyClientId(), "", true, null));
+                    break;
+                case SAVE:
+                    save(client, in, length, deadline);
+                    break;
+                case USED:
+                    page(client, "410 Gone", PhoneSetupPage.message(PhoneSetupPage.USED));
+                    break;
+                case CALLBACK:
+                    callback(client, OAuthCallback.parse(line, state));
+                    break;
+                case FORBIDDEN:
+                    respond(client, "403 Forbidden", "Forbidden");
+                    break;
+                case NOT_FOUND:
+                    respond(client, "404 Not Found", "Not Found");
+                    break;
+                default:
+                    respond(client, "400 Bad Request", "Bad Request");
+                    break;
+            }
+        }
+
+        /** POST /setup: the form again with its problem, or the save and what follows it. */
+        private void save(Socket client, InputStream in, long length, long deadline) throws IOException {
+            if (length == -2) {
+                respond(client, "400 Bad Request", "Bad Request");
+                return;
+            }
+            if (length < 0) {
+                respond(client, "411 Length Required", "Length Required");
+                return;
+            }
+            if (length > PhoneSetup.MAX_BODY) {
+                respond(client, "413 Payload Too Large", "Payload Too Large");
+                return;
+            }
+            byte[] raw = readBody(in, (int) length, deadline);
+            String body = new String(raw, "ISO-8859-1"); // %-escaped ASCII
+            Arrays.fill(raw, (byte) 0);
+            PhoneSetup.Submission s = PhoneSetup.check(body, prefs.hasApiKey(), prefs.getSpotifyClientId());
+            if (!s.ok()) {
+                page(client, "200 OK", PhoneSetupPage.form(nonce, prefs.hasApiKey(), prefs.getSpotifyClientId(),
+                        s.typedClientId, s.login, PhoneSetupPage.problem(s.problem)));
+                return;
+            }
+            if (!storeOnMain(s)) {
+                page(client, "500 Internal Server Error", PhoneSetupPage.message(PhoneSetupPage.SAVE_FAILED));
+                return;
+            }
+            spent = true;
+            if (s.login) {
+                clientId = s.effectiveClientId;
+                loginStarted = true;
+                redirect(client, Pkce.authorizeUrl(clientId, Spotify.REDIRECT_URI, Spotify.SCOPES, challenge, state));
+            } else {
+                page(client, "200 OK", PhoneSetupPage.message(PhoneSetupPage.SAVED));
+                stopped = true;
+            }
+        }
+
+        /**
+         * store() on the main thread, waiting for it; false if it failed or the
+         * screen is gone or timed out by then (nothing saved).
+         */
+        private boolean storeOnMain(final PhoneSetup.Submission s) {
+            final CountDownLatch done = new CountDownLatch(1);
+            final boolean[] ok = new boolean[1]; // written before countDown(), read after await()
+            main.post(new Runnable() {
+                @Override public void run() {
+                    try {
+                        if (destroyed || expired) return;
+                        ok[0] = store(s);
+                        if (ok[0]) onSaved(s.login);
+                        else message.setText(R.string.login_save_failed);
+                    } finally {
+                        done.countDown();
+                    }
+                }
+            });
+            try {
+                if (!done.await(SAVE_WAIT_MS, TimeUnit.MILLISECONDS)) return false;
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+            return ok[0];
+        }
+
+        /** The relay's /callback for the login a save started. */
+        private void callback(Socket client, OAuthCallback cb) throws IOException {
             switch (cb.kind) {
                 case ERROR:
                     ui(new Runnable() {
@@ -324,7 +504,8 @@ public class LoginActivity extends Activity {
 
         /** Trades the code for tokens on the Spotify thread and waits for the outcome. */
         private boolean exchange(final String code) {
-            show(getString(R.string.login_exchanging));
+            show(R.string.login_exchanging);
+            final String clientId = this.clientId;
             final CountDownLatch done = new CountDownLatch(1);
             final boolean[] ok = new boolean[1]; // written before countDown(), read after await()
             Spotify.get(LoginActivity.this).run(new Spotify.Call<String>() {
@@ -383,22 +564,40 @@ public class LoginActivity extends Activity {
 
     /**
      * Reads up to the blank line ending the headers, so closing does not
-     * reset the reply; at most MAX_HEADER_BYTES, within the deadline.
+     * reset the reply; at most MAX_HEADER_BYTES, within the deadline. Returns
+     * the Content-Length: -1 without one, -2 if malformed or given twice
+     * differently.
      */
-    private static void skipHeaders(InputStream in, long deadline) throws IOException {
+    private static long readHeaders(InputStream in, long deadline) throws IOException {
         int left = MAX_HEADER_BYTES;
+        long length = -1;
         while (left > 0) {
             String h = readLine(in, left, deadline);
-            if (h == null || h.isEmpty()) return;
+            if (h == null || h.isEmpty()) return length;
             left -= h.length() + 2;
+            long n = PhoneSetup.contentLength(h);
+            if (n == -1) continue;
+            length = n == -2 || length == -2 || (length >= 0 && length != n) ? -2 : n;
         }
         throw new IOException("headers too long");
     }
 
-    /** A 303 to location (a constant https URL), with a link in case the browser stays. */
+    /** Exactly length bytes of body, within the request's deadline. */
+    private static byte[] readBody(InputStream in, int length, long deadline) throws IOException {
+        byte[] b = new byte[length];
+        for (int n = 0; n < length; ) {
+            if (SystemClock.elapsedRealtime() > deadline) throw new SocketTimeoutException("request too slow");
+            int r = in.read(b, n, length - n);
+            if (r < 0) throw new IOException("body cut short");
+            n += r;
+        }
+        return b;
+    }
+
+    /** A 303 to location (an https URL of ours or Spotify's), with a link in case the browser stays. */
     private static void redirect(Socket client, String location) throws IOException {
         byte[] body = ("<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Overhear</title></head><body>"
-                + "<a href=\"" + TextUtils.htmlEncode(location) + "\">Overhear</a></body></html>").getBytes("UTF-8");
+                + "<a href=\"" + PhoneSetupPage.escape(location) + "\">Overhear</a></body></html>").getBytes("UTF-8");
         String head = "HTTP/1.1 303 See Other\r\n"
                 + "Location: " + location + "\r\n"
                 + "Content-Type: text/html; charset=utf-8\r\n"
@@ -412,17 +611,19 @@ public class LoginActivity extends Activity {
         out.flush();
     }
 
+    /** A page with one line of text (escaped). */
     private static void respond(Socket client, String status, String text) throws IOException {
-        String html = "<!DOCTYPE html><html lang=\"ja\"><head><meta charset=\"utf-8\">"
-                + "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
-                + "<title>Overhear</title></head><body style=\"font-family:sans-serif;padding:1em\"><p>"
-                + TextUtils.htmlEncode(text) + "</p></body></html>";
+        page(client, status, PhoneSetupPage.message(text));
+    }
+
+    private static void page(Socket client, String status, String html) throws IOException {
         byte[] body = html.getBytes("UTF-8");
         String head = "HTTP/1.1 " + status + "\r\n"
                 + "Content-Type: text/html; charset=utf-8\r\n"
                 + "Content-Length: " + body.length + "\r\n"
                 + "Referrer-Policy: no-referrer\r\n"
                 + "Cache-Control: no-store\r\n"
+                + "X-Frame-Options: DENY\r\n"
                 + "Connection: close\r\n\r\n";
         OutputStream out = client.getOutputStream();
         out.write(head.getBytes("US-ASCII"));

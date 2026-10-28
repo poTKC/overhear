@@ -40,8 +40,8 @@
     <string name="like_added">お気に入りに追加しました</string>
     <string name="like_removed">お気に入りから削除しました</string>
     <string name="like_failed">お気に入りを変更できませんでした</string>
-    <string name="like_relogin">お気に入りを変更するには、Spotify にログインし直してください。</string>
-    <string name="like_login">ログイン</string>
+    <string name="like_relogin">お気に入りを変更するには、「スマホで認証」で Spotify にログインし直してください。</string>
+    <string name="like_login">スマホで認証</string>
     <string name="setup_service_label">再生サービス</string>
     <string name="setup_service_running">動作中</string>
     <string name="setup_service_stopped">停止中</string>
@@ -49,12 +49,8 @@
 
     <!-- setup -->
     <string name="setup_title">Overhear の設定</string>
-    <string name="setup_key_label">Soloist API キー</string>
-    <string name="setup_key_hint">Soloist の API キーを貼り付け</string>
-    <string name="setup_key_saved_hint">保存済み（変更する場合のみ入力）</string>
     <string name="setup_cancel">キャンセル</string>
     <string name="setup_cancelled">キャンセルしました</string>
-    <string name="setup_show_key">キーを表示</string>
     <string name="setup_name_label">デバイス名（Spotify に表示）</string>
     <string name="setup_auto_start">起動時・アプリを開いたときに自動で開始</string>
     <string name="setup_idle_stop_label">再生していないときの自動停止</string>
@@ -70,44 +66,52 @@
     <string name="licenses_missing">ライセンス情報を読み込めませんでした</string>
     <string name="setup_save">保存して開始</string>
     <string name="setup_save_edit">保存</string>
-    <string name="setup_need_key">Soloist API キーを入力してください</string>
+    <string name="setup_need_key">先に「スマホで認証」で Soloist API キーを保存してください</string>
     <string name="setup_installing">ランタイムを準備中…</string>
     <string name="setup_downloading">Soloist をダウンロード中… %d%%</string>
     <string name="setup_extracting">Soloist を展開中…</string>
     <string name="setup_failed">失敗しました: %s</string>
     <string name="setup_retry">再試行</string>
     <string name="setup_save_failed">設定を保存できませんでした</string>
-    <string name="setup_spotify_label">Spotify（ライブラリ）</string>
     <string name="setup_section_account">アカウント</string>
     <string name="setup_section_playback">再生</string>
     <string name="setup_section_display">表示</string>
-    <string name="setup_spotify_logged_out">ログインしていません</string>
-    <string name="setup_spotify_logged_in">ログイン中</string>
-    <string name="setup_spotify_logged_in_as">ログイン中: %s</string>
-    <string name="setup_spotify_login">ログイン</string>
+    <string name="setup_spotify_logged_out">Spotify: ログインしていません</string>
+    <string name="setup_spotify_logged_in">Spotify: ログイン中</string>
+    <string name="setup_spotify_logged_in_as">Spotify: ログイン中（%s）</string>
     <string name="setup_spotify_logout">ログアウト</string>
-    <string name="setup_client_id_label">Client ID</string>
-    <string name="setup_client_id_hint">Developer アプリの Client ID</string>
-    <!-- Beside the disabled login button: short, it shares the row -->
-    <string name="setup_spotify_need_client_id">Client ID が必要です</string>
-    <!-- The library and the login screen without a Spotify Client ID -->
-    <string name="need_client_id">設定で Client ID を保存すると使えます</string>
-    <string name="setup_bad_client_id">Client ID は 32 文字の16進数（0–9, a–f）です</string>
+    <string name="setup_key_saved">Soloist API キー: 保存済み</string>
+    <string name="setup_key_missing">Soloist API キー: 未設定</string>
+    <string name="setup_client_id_saved">Client ID: 設定済み</string>
+    <string name="setup_client_id_missing">Client ID: 未設定</string>
+    <string name="setup_phone">スマホで認証</string>
+    <string name="setup_phone_explain">QR を読み取り、スマホで API キーと Client ID を入力（続けて Spotify にログイン）</string>
+    <string name="setup_spotify_need_client_id">Spotify: Client ID が必要です</string>
+    <!-- The library without a Spotify Client ID (a tap opens スマホで認証) -->
+    <string name="need_client_id">スマホで認証から Client ID を保存すると使えます</string>
 
-    <!-- Spotify login (the html_* pages are shown on the phone) -->
-    <string name="login_title">Spotify にログイン</string>
-    <string name="login_explain">スマホで QR コードを読み取り、Spotify にログインしてください。スマホと端末は同じ Wi-Fi につないでください。</string>
+    <!-- スマホで認証, LoginActivity (the html_* pages are shown on the phone) -->
+    <string name="login_title">スマホで認証</string>
+    <string name="login_explain">スマホで QR コードを読み取り、Soloist API キーと Client ID を入力してください。続けて Spotify にもログインできます。スマホと端末は同じ Wi-Fi につないでください。</string>
     <string name="login_cancel">キャンセル</string>
-    <string name="login_waiting">読み取りを待っています（5 分間）</string>
+    <string name="login_close">閉じる</string>
+    <string name="login_waiting">スマホで QR を読み取ってください（5 分間）</string>
+    <string name="login_form_opened">スマホで入力してください</string>
     <string name="login_need_wifi">Wi-Fi につないでください</string>
-    <string name="login_no_random">乱数を用意できないため、ログインを始められません</string>
+    <string name="login_no_random">乱数を用意できないため、始められません</string>
     <string name="login_listen_failed">待ち受けを始められませんでした: %s</string>
-    <string name="login_exchanging">ログインしています…</string>
-    <string name="login_denied">キャンセルされました。もう一度読み取れます</string>
-    <string name="login_failed">ログインできませんでした。もう一度読み取れます</string>
-    <string name="login_done">ログインしました</string>
-    <string name="login_done_as">ログインしました: %s</string>
+    <string name="login_save_failed">保存できませんでした</string>
+    <string name="login_saved">保存しました</string>
+    <string name="login_logging_in">保存しました。Spotify にログイン中…</string>
+    <string name="login_exchanging">Spotify にログイン中…</string>
+    <string name="login_denied">ログインはキャンセルされました（設定は保存済み）</string>
+    <string name="login_failed">ログインできませんでした（設定は保存済み）</string>
+    <string name="login_done">完了</string>
+    <string name="login_done_as">完了: %s でログインしました</string>
+    <!-- After a new key with the service not running: setup's save installs and starts it -->
+    <string name="login_note_start">設定画面の保存ボタンで再生サービスを始めてください</string>
     <string name="login_expired">時間切れです。開き直してください</string>
+    <string name="login_expired_saved">ログインは時間切れです（設定は保存済み）。開き直してください</string>
     <string name="login_html_failed">ログインできませんでした。端末の画面を確認してください。</string>
     <string name="login_html_denied">キャンセルされました。</string>
 
@@ -124,7 +128,7 @@
     <string name="library_artists">アーティスト</string>
     <string name="library_recent">最近再生</string>
     <string name="library_tracks">曲</string>
-    <string name="library_login">Spotify にログイン</string>
+    <string name="library_login">スマホで認証してログイン</string>
     <string name="library_play">再生</string>
     <string name="library_play_artist">このアーティストを再生</string>
     <string name="library_open_album">アルバムを開く</string>
@@ -137,7 +141,7 @@
     <string name="library_others_starting">曲の一覧を取得しています…</string>
     <string name="library_others_failed">曲の一覧を取得できませんでした — ▶ か ⇄ で再生し直してください</string>
     <string name="library_others_no_player">再生サービスに接続していません</string>
-    <string name="library_login_expired">Spotify のログインが切れました — タップしてログイン</string>
+    <string name="library_login_expired">Spotify のログインが切れました — タップしてスマホで認証</string>
     <string name="library_rate_limited">混み合っています。しばらくしてから ↻ を押してください</string>
     <string name="library_load_failed">読み込めませんでした — タップで再試行</string>
     <string name="library_play_from_top">最初から再生します</string>
