@@ -2,7 +2,7 @@ package com.potkc.overhear;
 
 /**
  * How to play on this device while Soloist is not the active Connect device
- * ("Waiting…"), where Soloist's own play does nothing useful:
+ * ("Standby"), where Soloist's own play does nothing useful:
  *
  * - resume (▶, the notification, a media key): the last track again, in its
  *   context from that track (offset) when Spotify takes an offset there

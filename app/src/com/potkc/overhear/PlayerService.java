@@ -1047,7 +1047,7 @@ public final class PlayerService extends Service {
     // --- idle stop ---
 
     /**
-     * Idle: not playing here (Waiting, paused, no track, disconnected,
+     * Idle: not playing here (Standby, paused, no track, disconnected,
      * restarting and failed all count), no player or library visible, and
      * no play here or jump under way.
      */

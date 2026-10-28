@@ -58,15 +58,15 @@ public class PlayerTextTest {
         assertEquals("Login error \u2014 tap", s.text);
     }
 
-    @Test public void connectedButNotActiveIsWaiting() throws Exception {
+    @Test public void connectedButNotActiveIsStandby() throws Exception {
         PlayerText.Status s = PlayerText.status(true, Supervisor.State.RUNNING, false, PlayerText.Phase.READY, 0,
                 null, true, state(false, false), "ST15i");
         assertEquals(PlayerText.Action.NONE, s.action);
-        assertEquals("Waiting\u2026", s.text);
+        assertEquals("Standby", s.text);
         // Logged in but another device plays: the same.
         s = PlayerText.status(true, Supervisor.State.RUNNING, false, PlayerText.Phase.READY, 0, null, true,
                 state(true, false), "Kitchen");
-        assertEquals("Waiting\u2026", s.text);
+        assertEquals("Standby", s.text);
     }
 
     @Test public void activeIsConnectedWhetherPlayingOrPaused() throws Exception {

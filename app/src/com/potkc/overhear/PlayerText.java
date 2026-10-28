@@ -35,7 +35,7 @@ final class PlayerText {
 
     // The on-screen status line, short and in English (bottom-left of the player).
     static final String CONNECTED = "Connected";
-    static final String WAITING = "Waiting\u2026";
+    static final String STANDBY = "Standby";
     static final String TAP_TO_START = "Stopped \u2014 tap to start";
     static final String TAP_TO_RETRY = "Failed \u2014 tap to retry";
     static final String CHECK_KEY = "Check API key \u2014 tap";
@@ -80,7 +80,7 @@ final class PlayerText {
         if (connected) {
             // Playing and paused both read "Connected"; the play button shows which.
             if (ps.isLoggedIn() && ps.isActive()) return new Status(CONNECTED, Action.NONE);
-            return new Status(WAITING, Action.NONE);
+            return new Status(STANDBY, Action.NONE);
         }
         return new Status(phaseText(phase, value), Action.NONE);
     }
