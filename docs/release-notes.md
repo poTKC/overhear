@@ -27,7 +27,7 @@
 ## インストール
 
 古い Android のブラウザは GitHub からダウンロードできないため、下の `overhear.apk` を PC かスマホでダウンロードし、
-端末に移して（USB・SD カード・Bluetooth など）ファイルマネージャーで開くか、`adb install -r overhear.apk` で入れてください。
+端末に移して（USB・SD カード・Bluetooth など）ファイルマネージャーで開くか、（adb に慣れていれば）`adb install -r overhear.apk` で入れてください。
 詳しくは <https://potkc.github.io/overhear/> を見てください。
 
 APK はこのプロジェクトの署名鍵で署名しています。今後のリリースも同じ鍵で署名するので、上書きインストールで更新でき、
