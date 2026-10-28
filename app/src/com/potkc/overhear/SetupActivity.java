@@ -10,11 +10,13 @@ import android.os.Looper;
 import android.text.InputType;
 import android.view.View;
 import android.view.WindowManager;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.ProgressBar;
+import android.widget.Spinner;
 import android.widget.TextView;
 
 import java.io.IOException;
@@ -52,6 +54,8 @@ public class SetupActivity extends Activity {
     private CheckBox showKey;
     private CheckBox autoStart;
     private CheckBox fullscreen;
+    /** Choices in SetupValues.IDLE_STOP_CHOICES order. */
+    private Spinner idleStop;
     private Button save;
     private Button cancel;
     private ProgressBar progress;
@@ -82,6 +86,11 @@ public class SetupActivity extends Activity {
         showKey = (CheckBox) findViewById(R.id.show_key);
         autoStart = (CheckBox) findViewById(R.id.auto_start);
         fullscreen = (CheckBox) findViewById(R.id.fullscreen);
+        idleStop = (Spinner) findViewById(R.id.idle_stop);
+        ArrayAdapter<CharSequence> idleStops = ArrayAdapter.createFromResource(this,
+                R.array.setup_idle_stop_entries, R.layout.setup_spinner_item);
+        idleStops.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        idleStop.setAdapter(idleStops);
         save = (Button) findViewById(R.id.save);
         cancel = (Button) findViewById(R.id.cancel);
         progress = (ProgressBar) findViewById(R.id.progress);
@@ -106,6 +115,7 @@ public class SetupActivity extends Activity {
             name.setText(prefs.getDeviceName());
             autoStart.setChecked(prefs.isAutoStart());
             fullscreen.setChecked(prefs.isFullscreen());
+            idleStop.setSelection(SetupValues.idleStopIndex(prefs.getIdleStopMinutes()));
         }
         showKey.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override public void onCheckedChanged(CompoundButton b, boolean checked) {
@@ -267,7 +277,8 @@ public class SetupActivity extends Activity {
         if (n.isEmpty()) n = Prefs.defaultDeviceName();
         boolean changed = (!typed.isEmpty() && !typed.equals(prefs.getApiKey()))
                 || !n.equals(prefs.getDeviceName());
-        if (!prefs.save(new SetupValues(typed, n, android.os.Build.MODEL, autoStart.isChecked(), fullscreen.isChecked()))) {
+        if (!prefs.save(new SetupValues(typed, n, android.os.Build.MODEL, autoStart.isChecked(), fullscreen.isChecked(),
+                SetupValues.idleStopMinutes(idleStop.getSelectedItemPosition())))) {
             message.setText(R.string.setup_save_failed);
             return;
         }
@@ -362,6 +373,7 @@ public class SetupActivity extends Activity {
         showKey.setEnabled(!working);
         autoStart.setEnabled(!working);
         fullscreen.setEnabled(!working);
+        idleStop.setEnabled(!working);
         cancel.setVisibility(working ? View.VISIBLE : View.GONE);
         progress.setVisibility(working ? View.VISIBLE : View.GONE);
         progress.setIndeterminate(true);

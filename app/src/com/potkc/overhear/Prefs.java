@@ -58,8 +58,8 @@ public final class Prefs {
     }
 
     /**
-     * Stores the device name, auto start, full screen and, unless the key is
-     * blank, the key, in one commit. Returns whether it was written.
+     * Stores the device name, auto start, full screen, the idle stop and,
+     * unless the key is blank, the key, in one commit. Returns whether it was written.
      */
     boolean save(SetupValues v) {
         SharedPreferences.Editor e = prefs.edit();
@@ -67,6 +67,7 @@ public final class Prefs {
         e.putString(DEVICE_NAME, v.deviceName());
         e.putBoolean(AUTO_START, v.autoStart());
         e.putBoolean(FULLSCREEN, v.fullscreen());
+        e.putInt(IDLE_STOP_MINUTES, v.idleStopMinutes());
         return e.commit();
     }
 

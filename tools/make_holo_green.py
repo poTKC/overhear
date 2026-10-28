@@ -5,7 +5,7 @@ themselves are recoloured, in two variants:
 
   green   holo_g_*  #1ED760: the list selector (player popup menu, queue)
   neutral holo_w_*  setup screen: text fields, check boxes, buttons, the
-                    horizontal progress bar, list selectors, selectable
+                    horizontal progress bar, spinners, list selectors, selectable
                     backgrounds and text selection handles. Blue marks become
                     light grey (#33B5E5 -> #E5E5E5); pressed and button
                     states become white at 20 % of their alpha, so white
@@ -45,6 +45,7 @@ VARIANTS = {
         "progress_indeterminate_horizontal_holo",
         "list_selector_holo_dark",
         "item_background_holo_dark",
+        "spinner_background_holo_dark",
     ], ["text_select_handle_left", "text_select_handle_right", "text_select_handle_middle"]),
 }
 

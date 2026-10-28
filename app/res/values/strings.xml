@@ -56,6 +56,14 @@
     <string name="setup_show_key">キーを表示</string>
     <string name="setup_name_label">デバイス名（Spotify に表示）</string>
     <string name="setup_auto_start">起動時・アプリを開いたときに自動で開始</string>
+    <string name="setup_idle_stop_label">再生していないときの自動停止</string>
+    <!-- In the order of SetupValues.IDLE_STOP_CHOICES (5, 15, 30, 0 minutes). -->
+    <string-array name="setup_idle_stop_entries">
+        <item>5分</item>
+        <item>15分</item>
+        <item>30分</item>
+        <item>しない</item>
+    </string-array>
     <string name="setup_fullscreen">再生画面とライブラリを全画面表示</string>
     <string name="licenses">ライセンス</string>
     <string name="licenses_missing">ライセンス情報を読み込めませんでした</string>

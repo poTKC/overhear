@@ -141,7 +141,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 - `res/drawable*/holo_g_*` (the list selector, green) and `holo_w_*` (the
   setup screen's text fields, check boxes, buttons, horizontal progress bar,
-  list selectors, selectable backgrounds and text selection handles, neutral
+  spinners, list selectors, selectable backgrounds and text selection handles, neutral
   white/grey) are the Holo dark framework drawables of Android 4.3 (API 18),
   copied by `tools/make_holo_green.py` from the SDK's
   `platforms/android-18/data/res` with their Holo blue recoloured and their
