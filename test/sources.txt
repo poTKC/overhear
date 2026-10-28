@@ -47,3 +47,5 @@ app/src/io/nayuki/qrcodegen/QrSegment.java
 app/src/com/potkc/overhear/PlayPlan.java
 app/src/com/potkc/overhear/ResumePlan.java
 app/src/com/potkc/overhear/IdleStop.java
+app/src/com/potkc/overhear/PhoneSetup.java
+app/src/com/potkc/overhear/PhoneSetupPage.java

@@ -23,7 +23,12 @@ public final class Pkce {
     }
 
     public static Pkce create(SecureRandom random) {
-        return new Pkce(base64Url(bytes(random, 48)), base64Url(bytes(random, 32)));
+        return new Pkce(base64Url(bytes(random, 48)), nonce(random));
+    }
+
+    /** An unguessable nonce (32 random bytes, base64url): a state's, or any other one-time token. */
+    public static String nonce(SecureRandom random) {
+        return base64Url(bytes(random, 32));
     }
 
     public static String state(String ip, int port, String nonce) {
