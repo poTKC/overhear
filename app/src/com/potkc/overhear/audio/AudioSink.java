@@ -1,9 +1,11 @@
 package com.potkc.overhear.audio;
 
 import android.content.Context;
+import android.content.Intent;
 import android.media.AudioFormat;
 import android.media.AudioManager;
 import android.media.AudioTrack;
+import android.media.audiofx.AudioEffect;
 import android.net.Credentials;
 import android.net.LocalServerSocket;
 import android.net.LocalSocket;
@@ -38,6 +40,9 @@ import java.io.InputStream;
  * The jump mute (setJumpMuted, for QueueJump's skips) silences the track on
  * the same volume path, independently of focus: either one muting wins.
  * Neither touches the media volume.
+ *
+ * Each track's audio session is announced to equalizer apps (DSP Manager,
+ * MusicFX and the like) while the track exists, so their effects apply.
  */
 public final class AudioSink {
     public static final String SOCKET_NAME = "overhear-audio";
@@ -69,6 +74,7 @@ public final class AudioSink {
         void resumePlayback();
     }
 
+    private final Context context;
     private final AudioManager audioManager;
     private final Listener listener;
     private final FocusPolicy focusPolicy = new FocusPolicy();
@@ -178,6 +184,7 @@ public final class AudioSink {
     /** @param listener may be null */
     public AudioSink(Context context, Listener listener) {
         Context app = context.getApplicationContext();
+        this.context = app;
         this.audioManager = (AudioManager) app.getSystemService(Context.AUDIO_SERVICE);
         this.listener = listener;
     }
@@ -418,6 +425,8 @@ public final class AudioSink {
             currentTrack = t;
         }
         applyVolume();
+        final int sessionId = t.getAudioSessionId();
+        announceSession(AudioEffect.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION, sessionId);
         Log.i(TAG, "track created: buffer " + size + " bytes (min " + minBuf + ")");
         return new StreamSession.Track() {
             @Override
@@ -455,8 +464,18 @@ public final class AudioSink {
                     }
                     t.release();
                 }
+                announceSession(AudioEffect.ACTION_CLOSE_AUDIO_EFFECT_CONTROL_SESSION, sessionId);
             }
         };
+    }
+
+    /** Tells equalizer apps that a session opened or closed. */
+    private void announceSession(String action, int sessionId) {
+        Intent i = new Intent(action);
+        i.putExtra(AudioEffect.EXTRA_AUDIO_SESSION, sessionId);
+        i.putExtra(AudioEffect.EXTRA_PACKAGE_NAME, context.getPackageName());
+        i.putExtra(AudioEffect.EXTRA_CONTENT_TYPE, AudioEffect.CONTENT_TYPE_MUSIC);
+        context.sendBroadcast(i);
     }
 
     private static void closeQuietly(LocalSocket s) {
