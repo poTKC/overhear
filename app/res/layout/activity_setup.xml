@@ -163,6 +163,15 @@
             android:layout_height="wrap_content"
             android:minWidth="160dp" />
 
+        <!-- Shown only when an equalizer app handles the control panel intent. -->
+        <Button
+            android:id="@+id/equalizer"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/setup_equalizer"
+            android:visibility="gone" />
+
         <TextView
             style="@style/Overhear.SetupSection"
             android:layout_marginTop="16dp"
@@ -223,6 +232,14 @@
             android:padding="8dp"
             android:text="@string/licenses"
             android:textColor="#ffffffff"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/version"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:textColor="#ff8f8f8f"
             android:textSize="12sp" />
     </LinearLayout>
 </ScrollView>

@@ -49,6 +49,9 @@ public final class AudioSink {
     private static final String TAG = "OverhearAudio";
     private static final long BIND_RETRY_MS = 1000;
 
+    /** The session of the track that exists now, or 0. */
+    private static volatile int activeSession;
+
     /**
      * Sink state for the service and UI. Callbacks run on the audio read
      * thread and must return quickly (post to a Handler); a slow callback
@@ -187,6 +190,11 @@ public final class AudioSink {
         this.context = app;
         this.audioManager = (AudioManager) app.getSystemService(Context.AUDIO_SERVICE);
         this.listener = listener;
+    }
+
+    /** The audio session of the current track, or 0 when there is none. Any thread. */
+    public static int activeSessionId() {
+        return activeSession;
     }
 
     /** Routes focus-driven pause/resume; null drops them. Any thread. */
@@ -426,6 +434,7 @@ public final class AudioSink {
         }
         applyVolume();
         final int sessionId = t.getAudioSessionId();
+        activeSession = sessionId;
         announceSession(AudioEffect.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION, sessionId);
         Log.i(TAG, "track created: buffer " + size + " bytes (min " + minBuf + ")");
         return new StreamSession.Track() {
@@ -464,6 +473,7 @@ public final class AudioSink {
                     }
                     t.release();
                 }
+                if (activeSession == sessionId) activeSession = 0;
                 announceSession(AudioEffect.ACTION_CLOSE_AUDIO_EFFECT_CONTROL_SESSION, sessionId);
             }
         };

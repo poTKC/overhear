@@ -63,6 +63,8 @@
     </string-array>
     <string name="setup_fullscreen">再生画面とライブラリを全画面表示</string>
     <string name="licenses">ライセンス</string>
+    <string name="version">Overhear %s</string>
+    <string name="setup_equalizer">イコライザ</string>
     <string name="licenses_missing">ライセンス情報を読み込めませんでした</string>
     <string name="setup_save">保存して開始</string>
     <string name="setup_save_edit">保存</string>

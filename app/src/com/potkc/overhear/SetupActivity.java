@@ -3,7 +3,9 @@ package com.potkc.overhear;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.Paint;
+import android.media.audiofx.AudioEffect;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -18,6 +20,7 @@ import android.widget.TextView;
 
 import java.io.IOException;
 
+import com.potkc.overhear.audio.AudioSink;
 import com.potkc.overhear.runtime.ProgressListener;
 import com.potkc.overhear.runtime.RuntimeInstaller;
 import com.potkc.overhear.spotify.SpotifyApi;
@@ -27,9 +30,10 @@ import com.potkc.overhear.spotify.SpotifyApi;
  * the Spotify Client ID are stored, and the Spotify login, with ログアウト
  * while logged in, which takes effect at once; 「スマホで認証」
  * (LoginActivity) is the only way to change them, and onResume shows them
- * again), 再生 (the device name, the service row in edit mode, auto start)
- * and 表示 (full screen for the player and the library); then save and the
- * licence notices. Saving needs a stored key; it installs the runtime and
+ * again), 再生 (the device name, the service row in edit mode, auto start,
+ * and イコライザ when an equalizer app is installed) and 表示 (full screen
+ * for the player and the library); then save, the licence notices and the
+ * version. Saving needs a stored key; it installs the runtime and
  * downloads Soloist (with progress, cancellable) when the service is not
  * running yet, then starts the service and opens the player; from the
  * player (EXTRA_EDIT) a change restarts Soloist through the running service
@@ -140,6 +144,33 @@ public class SetupActivity extends Activity {
                 Licenses.show(SetupActivity.this);
             }
         });
+        TextView version = (TextView) findViewById(R.id.version);
+        try {
+            version.setText(getString(R.string.version,
+                    getPackageManager().getPackageInfo(getPackageName(), 0).versionName));
+        } catch (PackageManager.NameNotFoundException e) {
+            version.setVisibility(View.GONE);
+        }
+        Button equalizer = (Button) findViewById(R.id.equalizer);
+        if (getPackageManager().resolveActivity(equalizerIntent(), 0) != null) {
+            equalizer.setVisibility(View.VISIBLE);
+            equalizer.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    // The control panel expects startActivityForResult; the result is unused.
+                    startActivityForResult(equalizerIntent(), 0);
+                }
+            });
+        }
+    }
+
+    /** The equalizer app's control panel, for the playing track's session if there is one. */
+    private Intent equalizerIntent() {
+        Intent i = new Intent(AudioEffect.ACTION_DISPLAY_AUDIO_EFFECT_CONTROL_PANEL);
+        i.putExtra(AudioEffect.EXTRA_PACKAGE_NAME, getPackageName());
+        i.putExtra(AudioEffect.EXTRA_CONTENT_TYPE, AudioEffect.CONTENT_TYPE_MUSIC);
+        int session = AudioSink.activeSessionId();
+        if (session != 0) i.putExtra(AudioEffect.EXTRA_AUDIO_SESSION, session);
+        return i;
     }
 
     @Override
