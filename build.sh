@@ -54,13 +54,27 @@ cp build/base.apk build/unsigned.apk
 
 "$BT/zipalign" -f 4 build/unsigned.apk build/aligned.apk
 
-if [ ! -f keys/debug.jks ]; then
-    mkdir -p keys
-    keytool -genkeypair -keystore keys/debug.jks -storepass android -keypass android \
-        -alias debug -keyalg RSA -keysize 2048 -validity 10000 \
-        -dname "CN=ST15i Player Debug" >/dev/null
+# keys/release.jks signs the Releases APKs (and every build made next to it, so
+# DEBUGGABLE builds install over them). Its password comes from
+# OVERHEAR_KS_PASS or the macOS keychain item "overhear-release-keystore".
+# Without it, a local debug key is generated and used instead.
+if [ -f keys/release.jks ]; then
+    if [ -z "${OVERHEAR_KS_PASS:-}" ] && command -v security >/dev/null; then
+        OVERHEAR_KS_PASS=$(security find-generic-password -s overhear-release-keystore -w 2>/dev/null) || true
+    fi
+    [ -n "${OVERHEAR_KS_PASS:-}" ] || die "keys/release.jks needs OVERHEAR_KS_PASS (or the keychain item)"
+    export OVERHEAR_KS_PASS
+    sign_opts=(--ks keys/release.jks --ks-pass env:OVERHEAR_KS_PASS)
+else
+    if [ ! -f keys/debug.jks ]; then
+        mkdir -p keys
+        keytool -genkeypair -keystore keys/debug.jks -storepass android -keypass android \
+            -alias debug -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Overhear Debug" >/dev/null
+    fi
+    sign_opts=(--ks keys/debug.jks --ks-pass pass:android --key-pass pass:android)
 fi
-"$BT/apksigner" sign --ks keys/debug.jks --ks-pass pass:android --key-pass pass:android \
+"$BT/apksigner" sign "${sign_opts[@]}" \
     --v4-signing-enabled false --out "$OUT" build/aligned.apk
 
 echo "Built $OUT"
