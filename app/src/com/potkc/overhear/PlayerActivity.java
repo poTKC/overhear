@@ -795,11 +795,27 @@ public class PlayerActivity extends Activity {
     }
 
     /**
+     * Whether the library can play: not while Soloist is connected but not
+     * logged in (it logs in only when the phone's Spotify picks this
+     * device), when nothing the library asks for would play; a dialog says so
+     * instead.
+     */
+    private boolean libraryUsable() {
+        if (!connected || state.isLoggedIn()) return true;
+        Dialogs.neutral(new AlertDialog.Builder(this)
+                .setMessage(getString(R.string.library_needs_phone, prefs.getDeviceName()))
+                .setPositiveButton(android.R.string.ok, null)
+                .show());
+        return false;
+    }
+
+    /**
      * Opens the library at the page of what plays now: Soloist's context as
      * of the last render (none while no player is connected), which
      * LibraryActivity turns into its stack.
      */
     private void openLibrary() {
+        if (!libraryUsable()) return;
         Intent i = new Intent(this, LibraryActivity.class);
         // Without a track (as render shows it; Soloist idle after a restart, say) nothing plays,
         // whatever the context says.
@@ -982,6 +998,7 @@ public class PlayerActivity extends Activity {
                     return true;
                 }
                 LibraryPath.Node n = links.get(item.getItemId());
+                if (!libraryUsable()) return true;
                 startActivity(new Intent(PlayerActivity.this, LibraryActivity.class)
                         .putExtra(LibraryActivity.EXTRA_CONTEXT_URI, n.uri)
                         .putExtra(LibraryActivity.EXTRA_CONTEXT_NAME, n.title)
