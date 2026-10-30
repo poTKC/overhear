@@ -416,6 +416,18 @@ public class PlayerActivity extends Activity {
     }
 
     @Override
+    public boolean dispatchTouchEvent(MotionEvent e) {
+        // In full screen a pull from the top edge opens the notification panel.
+        return (topStrip != null && topStrip.dispatchTouch(e)) || super.dispatchTouchEvent(e);
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (topStrip != null) topStrip.windowFocus(hasFocus); // full screen again once the panel closes
+    }
+
+    @Override
     protected void onPause() {
         started = false;
         dismissTrackMenu();

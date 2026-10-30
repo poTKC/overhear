@@ -8,8 +8,10 @@ import android.content.IntentFilter;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.BatteryManager;
+import android.os.Build;
 import android.text.format.DateFormat;
 import android.util.Log;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.TextView;
@@ -24,17 +26,32 @@ import java.util.Calendar;
  * strip only then; call it before setContentView (no jump at launch) and on
  * every resume (setup may have changed it). The clock and battery receivers
  * run only between resume() and pause(): the strip is not seen otherwise.
+ *
+ * Up to Android 4.3 the hidden status bar cannot be pulled down, so in full
+ * screen dispatchTouch() takes a pull from the top edge (TopPull) and opens
+ * the notification panel itself (EXPAND_STATUS_BAR). From 4.4 the system
+ * shows the bar on that swipe and the touch never reaches the window, so
+ * PULL is off there. The panel lives in the status bar's window, which stays hidden over a
+ * full-screen window: the pull lifts full screen (laid out as before, the
+ * bar over the strip) until the window has focus again (windowFocus).
  * Main thread only.
  */
 final class TopStrip {
     /** Rubik Regular's digits (subset, tools/make_fonts.py), loaded once. */
     private static Typeface digits;
+    /** Before 4.4 (KITKAT, 19; built against API 18): the top-edge pull. */
+    private static final boolean PULL = Build.VERSION.SDK_INT < 19;
 
     private final Activity activity;
     private final View strip;
     private final TextView clock;
     private final TextView battery;
     private final GradientDrawable batteryDot;
+    private final TopPull pull;
+    /** The current touch became a pull: the rest of it is taken. */
+    private boolean pulled;
+    /** Full screen is lifted for the notification panel. */
+    private boolean lifted;
     private boolean registered;
 
     /** For the strip included in activity's content view. */
@@ -46,6 +63,8 @@ final class TopStrip {
         batteryDot = new GradientDrawable();
         batteryDot.setShape(GradientDrawable.OVAL);
         batteryDot.setColor(StatusStrip.UNKNOWN);
+        float density = activity.getResources().getDisplayMetrics().density;
+        pull = new TopPull(24 * density, 32 * density);
         activity.findViewById(R.id.battery_dot).setBackground(batteryDot);
         // Digits and ':' only (StatusStrip.DIGITS_FONT_CHARS).
         Typeface d = digits(activity);
@@ -69,6 +88,67 @@ final class TopStrip {
             else activity.getWindow().clearFlags(full);
         }
         return shown;
+    }
+
+    /**
+     * From the activity's dispatchTouchEvent, before its views: whether e is
+     * taken. In full screen, once a touch becomes a pull from the top edge,
+     * the views get a cancel instead of it, the notification panel opens,
+     * and the rest of the touch is taken.
+     */
+    boolean dispatchTouch(MotionEvent e) {
+        switch (e.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                pulled = false;
+                boolean full = (activity.getWindow().getAttributes().flags
+                        & WindowManager.LayoutParams.FLAG_FULLSCREEN) != 0;
+                if (PULL && full) pull.down(e.getRawX(), e.getRawY());
+                else pull.end();
+                return false;
+            case MotionEvent.ACTION_MOVE:
+                if (pulled) return true;
+                if (!pull.move(e.getRawX(), e.getRawY())) return false;
+                pulled = true;
+                MotionEvent cancel = MotionEvent.obtain(e);
+                cancel.setAction(MotionEvent.ACTION_CANCEL);
+                activity.getWindow().superDispatchTouchEvent(cancel);
+                cancel.recycle();
+                openNotifications();
+                return true;
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                pull.end();
+                return pulled;
+            default:
+                return pulled;
+        }
+    }
+
+    /** From onWindowFocusChanged: back with focus, the panel is closed and full screen returns. */
+    void windowFocus(boolean hasFocus) {
+        if (!hasFocus || !lifted) return;
+        lifted = false;
+        // Unless setup turned it off meanwhile (apply on resume hid the strip).
+        if (strip.getVisibility() == View.VISIBLE) {
+            activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        }
+        activity.getWindow().getDecorView().setSystemUiVisibility(0);
+    }
+
+    /** StatusBarManager is hidden API: expand() on 4.1, expandNotificationsPanel() from 4.2. */
+    private void openNotifications() {
+        lifted = true;
+        // Laid out as in full screen: the content does not move under the bar.
+        activity.getWindow().getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+        activity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        try {
+            Object bar = activity.getSystemService("statusbar");
+            String method = Build.VERSION.SDK_INT >= 17 ? "expandNotificationsPanel" : "expand";
+            bar.getClass().getMethod(method).invoke(bar);
+        } catch (Exception e) {
+            Log.w("OverhearPlayer", "notification panel: " + e);
+        }
     }
 
     /** The strip's height (its layout's), for what lies below it. */

@@ -21,6 +21,7 @@ app/src/com/potkc/overhear/ArtworkLoader.java
 app/src/com/potkc/overhear/SeekHold.java
 app/src/com/potkc/overhear/SetupValues.java
 app/src/com/potkc/overhear/StatusStrip.java
+app/src/com/potkc/overhear/TopPull.java
 app/src/com/potkc/overhear/QueueJump.java
 app/src/com/potkc/overhear/WebJump.java
 app/src/com/potkc/overhear/QueueRoute.java

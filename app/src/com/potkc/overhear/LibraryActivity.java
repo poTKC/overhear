@@ -15,6 +15,7 @@ import android.os.SystemClock;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.EditorInfo;
@@ -294,6 +295,18 @@ public class LibraryActivity extends Activity {
         }
         if (service != null) service.addUiListener(uiListener);
         render(); // the login may have changed in LoginActivity
+    }
+
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent e) {
+        // In full screen a pull from the top edge opens the notification panel.
+        return topStrip.dispatchTouch(e) || super.dispatchTouchEvent(e);
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        topStrip.windowFocus(hasFocus); // full screen again once the panel closes
     }
 
     @Override
