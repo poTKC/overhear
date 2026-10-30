@@ -406,6 +406,74 @@
         border-left: 3px solid var(--accent);
       }
 
+      .guide {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 20px;
+        margin: 0 0 28px;
+      }
+      .shot {
+        position: relative;
+        width: 100%;
+        max-width: 260px;
+        flex: none;
+        border: 8px solid #262626;
+        border-radius: 12px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+      }
+      .shot img {
+        display: block;
+        width: 100%;
+        height: auto;
+        border-radius: 4px;
+      }
+      .mark,
+      ol.legend > li::before {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: var(--accent);
+        color: #000;
+        font-size: 0.75rem;
+        font-weight: 700;
+        line-height: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .mark {
+        position: absolute;
+        transform: translate(-50%, -50%);
+        box-shadow: 0 0 0 2px var(--bg);
+      }
+      ol.legend {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        counter-reset: legend;
+        width: 100%;
+      }
+      ol.legend > li {
+        position: relative;
+        counter-increment: legend;
+        padding: 0 0 12px 34px;
+        color: var(--text-2);
+        font-size: 0.92rem;
+        line-height: 1.7;
+      }
+      ol.legend > li::before {
+        content: counter(legend);
+        position: absolute;
+        left: 0;
+        top: 1px;
+      }
+      ol.legend strong {
+        display: block;
+        color: var(--text);
+        font-size: 0.98rem;
+      }
+
       .screens {
         display: flex;
         justify-content: center;
@@ -477,6 +545,13 @@
           padding-left: 44px;
         }
       }
+      @media (min-width: 640px) {
+        .guide {
+          flex-direction: row;
+          align-items: flex-start;
+          gap: 32px;
+        }
+      }
       @media (min-width: 720px) {
         body {
           font-size: 17px;
@@ -540,7 +615,7 @@
           <li><a href="#requirements">必要なもの</a></li>
           <li><a href="#install">インストール</a></li>
           <li><a href="#setup">初回セットアップ</a></li>
-          <li><a href="#usage">使い方のメモ</a></li>
+          <li><a href="#usage">使い方</a></li>
           <li><a href="#privacy">キーとログインの扱い</a></li>
           <li><a href="#known-issues">既知の不具合</a></li>
         </ol>
@@ -805,7 +880,53 @@
       </section>
 
       <section id="usage">
-        <h2>使い方のメモ</h2>
+        <h2>使い方</h2>
+        <h3>再生画面</h3>
+        <div class="guide">
+            <div class="shot">
+              <img src="screen-player.png" width="320" height="480" alt="再生画面。番号の付いた各部の説明が右にある" />
+              <span class="mark" style="left: 80.6%; top: 9.2%">1</span>
+              <span class="mark" style="left: 85.0%; top: 62.3%">2</span>
+              <span class="mark" style="left: 10.9%; top: 90.8%">3</span>
+              <span class="mark" style="left: 70.6%; top: 90.8%">4</span>
+              <span class="mark" style="left: 81.9%; top: 90.8%">5</span>
+              <span class="mark" style="left: 92.8%; top: 90.8%">6</span>
+            </div>
+            <ol class="legend">
+              <li><strong>アートワーク</strong>上にフリックするとキューが開きます。サービスが止まっている間は電源ボタンになり、タップで開始します。</li>
+              <li><strong>メニュー（⋮）</strong>いまの曲をお気に入りに追加・削除したり、アルバムやアーティストをライブラリで開いたりします。</li>
+              <li><strong>ステータス行</strong>状態を短い英語で表示します（<code>Connected</code>・<code>Standby</code>・<code>Stopped</code> など）。タップすると状態に応じて開始・再試行・設定を開きます。</li>
+              <li><strong>ライブラリ</strong>選曲の画面を開きます。戻るキーでも開きます。</li>
+              <li><strong>キュー</strong>次に再生する曲の一覧です。曲をタップするとその曲に飛びます。</li>
+              <li><strong>設定</strong>デバイス名・自動開始・自動停止・ログインなどの設定と、再生サービスの停止・開始。</li>
+            </ol>
+        </div>
+
+        <h3>ライブラリ</h3>
+        <p class="muted">
+          トップから検索・お気に入りの曲・プレイリスト・アルバム・アーティスト・最近再生をたどり、アルバムやプレイリストのページで再生します。再生を始めると再生画面に戻ります。
+        </p>
+        <div class="guide">
+            <div class="shot">
+              <img src="screen-library.png" width="320" height="480" alt="ライブラリのアルバムのページ。番号の付いた各部の説明が右にある" />
+              <span class="mark" style="left: 8.1%; top: 15.0%">1</span>
+              <span class="mark" style="left: 78.1%; top: 15.0%">2</span>
+              <span class="mark" style="left: 91.2%; top: 15.0%">3</span>
+              <span class="mark" style="left: 33.8%; top: 19.4%">4</span>
+              <span class="mark" style="left: 46.9%; top: 30.4%">5</span>
+              <span class="mark" style="left: 91.2%; top: 50.8%">6</span>
+            </div>
+            <ol class="legend">
+              <li><strong>戻る</strong>ひとつ前の一覧に戻ります。</li>
+              <li><strong>再読み込み</strong>一覧を取り直します。</li>
+              <li><strong>再生画面へ</strong>再生画面に戻ります。</li>
+              <li><strong>再生</strong>1 曲目から順番どおりに再生します。</li>
+              <li><strong>シャッフル</strong>シャッフルをオンにして、ランダムな曲から再生します。</li>
+              <li><strong>曲</strong>タップするとその曲から再生します。長押しでお気に入りの追加・削除や、アルバム・アーティストのページを開けます。いま再生している曲は緑になります。</li>
+            </ol>
+        </div>
+
+        <h3>そのほか</h3>
         <dl class="faq">
           <dt>しばらく使わないと止まります</dt>
           <dd>
